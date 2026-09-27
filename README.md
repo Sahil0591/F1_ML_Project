@@ -29,9 +29,29 @@ Historical data is cached under `data/raw/jolpica`; typed Parquet tables go to
 recheck an older season; current and future seasons refresh automatically.
 Run one ingestion process at a time to share the API request budget.
 
-The offline tests use mocks. The project does not produce predictions yet;
-historical publication times remain unknown and must be resolved before strict
-point-in-time feature use.
+## Session and forecast enrichment
+
+```powershell
+.\.venv\Scripts\python.exe -m f1_ml_predictor list-openf1-sessions 2025
+.\.venv\Scripts\python.exe -m f1_ml_predictor ingest-openf1-session 2025 1 9689
+.\.venv\Scripts\python.exe -m pip install -e ".[dev,fastf1]"
+.\.venv\Scripts\python.exe -m f1_ml_predictor ingest-fastf1-session 2025 1 Q
+```
+
+Ingest the Jolpica season first to establish event and driver-number crosswalks.
+OpenF1 session keys come from API discovery. Only completed practice and qualifying
+sessions are accepted. FastF1 loads lap timing and race-control metadata, not car
+telemetry. Cached responses and content-addressed Parquet summaries are reused.
+
+`capture-forecast <season> <round>` captures Open-Meteo weather for an event within
+the next seven days. Archived model runs require explicit release-time evidence
+through the Python client; model initialization alone is not publication proof.
+FIA document URLs and publication times can be recorded with `record_fia_evidence`.
+
+Normal tests use mocks and do not require external APIs. The project does not
+produce predictions yet. Retrospectively fetched sessions keep their capture-time
+availability; historical Jolpica publication times remain unknown. Strict backtests
+must exclude unsupported historical inputs rather than backdate them.
 
 ## Graphify
 

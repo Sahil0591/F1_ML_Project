@@ -8,10 +8,15 @@ version = "0.1.0"
 description = "Point-in-time Formula 1 race and championship prediction"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["httpx>=0.27,<1", "pyarrow>=17,<27"]
+dependencies = [
+    "httpx>=0.27,<1",
+    "pyarrow>=17,<27",
+    "tzdata>=2024.1; sys_platform == 'win32'",
+]
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<9", "ruff>=0.12,<1", "mypy>=1.15,<2"]
+fastf1 = ["fastf1>=3.5,<4"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

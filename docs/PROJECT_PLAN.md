@@ -1,6 +1,6 @@
 # F1 ML Predictor Project Plan
 
-Status: Phases 1 and 2 complete; Phase 3 next. Updated 2026-09-28.
+Status: Phases 1 through 3 complete; Phase 4 next. Updated 2026-09-28.
 
 ## Product and prediction contract
 
@@ -28,7 +28,7 @@ Success means a user can reproduce a historical prediction using only informatio
 | [Jolpica](https://github.com/jolpica/jolpica-f1/blob/main/docs/README.md) | Schedules, stable IDs, entries, results, qualifying, points, standings, pit stops | Historical backbone. Paginate explicitly, identify the client, obey [documented limits](https://github.com/jolpica/jolpica-f1/blob/main/docs/rate_limits.md) of 4 requests/second and 500/hour for unauthenticated use. Current standings and corrected results cannot be used as historical pre-race inputs without an as-of record. |
 | [FastF1](https://github.com/theOehrly/Fast-F1) | Practice and qualifying lap, tyre, and selected pace summaries | Use its [cache and rate-limit behavior](https://github.com/theOehrly/Fast-F1/blob/main/docs/api_reference/cache_and_rate_limits.rst). Defer detailed telemetry. Session data must be available by the cutoff. |
 | [OpenF1](https://openf1.org/docs/) | Recent session timing, stints, pits, grid, weather, and cross-checks | Primarily 2023 onward. Free historical API is documented at 3 requests/second and 30/minute; live access requires paid authentication. Same-race race data cannot enter pre-race features. |
-| [Open-Meteo](https://open-meteo.com/en/docs/historical-forecast-api) | Forecasts at prediction time and historical forecast runs for backtests | Store run issuance and retrieval times. Historical actual weather and retrospectively stitched forecasts leak future information. Check [plan limits and terms](https://open-meteo.com/en/pricing) before scheduled use. |
+| [Open-Meteo](https://open-meteo.com/en/docs/single-runs-api) | Captured forecasts and exact archived model runs | Model initialization is not public release. Require evidence for archived availability; do not use stitched historical forecasts or actual weather as as-of forecasts. Check [plan limits and terms](https://open-meteo.com/en/pricing) before scheduled use. |
 | [FIA](https://www.fia.com/documents) | Authoritative classification, grid, penalty, and rule audit | Public documents have publication times and provisional/final versions. No general public JSON API was established; begin with manual audit links, then review rights and automation feasibility. |
 
 Before each client is implemented, recheck its official documentation for endpoints, authentication, limits, and terms. Packaging follows the [Python Packaging User Guide](https://packaging.python.org/en/latest/guides/writing-pyproject-toml/); Parquet writing will follow [PyArrow documentation](https://arrow.apache.org/docs/python/parquet.html).
@@ -45,6 +45,8 @@ Before each client is implemented, recheck its official documentation for endpoi
 ## Phases
 
 Each phase ends with focused tests, formatting/lint/type checks where configured, diff and artifact review, plan update, one clean commit, commit inspection, and a push to the configured remote. A failed push leaves the local commit intact and is reported with its exact error.
+
+Commit subjects describe the delivered engineering capability. Commit bodies explain scope, rationale, and verification evidence so the history is useful to collaborators and recruiters. Keep claims factual and do not rewrite published history without explicit instruction.
 
 | Phase | Objective and dependencies | Tests and acceptance criteria | Main risk and output |
 | --- | --- | --- | --- |
@@ -70,6 +72,24 @@ Jolpica ingestion now covers schedules and per-event qualifying/results, with de
 Historical seasons use the cache by default; current/future seasons refresh on each run. `--refresh` explicitly rechecks older data. Run one ingestion process per shared API budget. Normalized `available_at` remains null because Jolpica does not supply historical publication timestamps. Grid values in race results are outcomes for auditing, not pre-race features. DNF labels are deferred because status semantics vary and can be revised.
 
 Verification: 54 offline tests passed, including mocked HTTP-to-Parquet integration and interrupted-run recovery. A bounded live 2025 smoke run completed 24 events; a repeat made zero API fetches, hit 49 cached collections, and skipped 73 unchanged Parquet partitions. Lint, format, type, and punctuation checks passed.
+
+## Phase 3 result
+
+OpenF1 discovery and session ingestion now cover completed practice and qualifying lap/stint/pit summaries. Driver numbers are mapped within the selected event to canonical IDs; conflicting aliases and mixed-session responses are rejected. Unmapped laps are reported rather than assigned invented identities. Summaries exclude pit laps and invalid timing; missing stint ranges retain missing tyre values. The optional FastF1 adapter loads lap timing and race-control messages needed for deleted-lap filtering, with telemetry and actual-weather loading disabled.
+
+Open-Meteo live forecasts retain first capture-time availability. Exact archived runs require a model initialization time, independently supported release time, evidence reference, and prediction cutoff. Forecast target time and availability are separate columns. Validation rejects unsupported backdating, malformed arrays, nonfinite values, and non-UTC responses before cache persistence. FIA integration records official document links and supplied publication times for audit, not parsed grids or automated document scraping.
+
+Enrichment responses and typed Parquet outputs are content-addressed. Unchanged captures preserve first retrieval time; changed inputs produce separate summary versions. Source identity, event crosswalks, and their retrieval timestamps participate in OpenF1 summary provenance. HTTP requests have bounded retries/timeouts and local source-specific budgets. Run one process per shared source budget. FastF1 remains an optional dependency; Windows installs `tzdata` for Parquet timezone conversion.
+
+Verification: 112 offline tests passed, including mocked APIs, schema/integration checks, cache reuse, race/future-session rejection, mixed-session rejection, invalid tyre ages, and forecast backdating rejection. Live Australian 2025 qualifying smoke runs produced 21 OpenF1 and 22 FastF1 driver/compound rows; both reused unchanged outputs on rerun. The different counts reflect source-specific quality filters, not interchangeable pace estimates. Ruff lint/format and strict mypy passed. No bulk telemetry was downloaded.
+
+Coverage limitations remain explicit: OpenF1 historical coverage begins in 2023. Open-Meteo Single Runs documentation lists IFS HRES 9 km coverage from 2024-03-14 and other listed models from 2026-04-02; verify model-specific coverage when requesting a run. Neither a session end timestamp nor a forecast initialization timestamp proves when corrected data was publicly available. Present-day historical fetches cannot establish strict old pre-race availability.
+
+## Phase 4 implementation gate
+
+Build deterministic feature snapshots over explicitly versioned, availability-stamped inputs. Require a published qualifying snapshot, entered-driver roster, race start, and prediction cutoff before the race. Reject unknown or late required inputs; leave unavailable optional inputs missing. Select prior-event result versions by availability, lag rolling form and reliability, and never derive the current event grid from race results. Weather targets may be in the future, but the forecast itself must be known by the cutoff. Persist a feature dictionary and per-row provenance bound. Tests must prove that future results, late corrections, race telemetry, and actual weather cannot alter an earlier snapshot.
+
+Historical validation remains gated on defensible source availability evidence. Software tests can use controlled fixtures; fixture metrics are not real-world model performance. Do not relabel current retrospective downloads as historical as-of data to unblock training.
 
 ## Orchestration
 

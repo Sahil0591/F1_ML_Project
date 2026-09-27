@@ -2,11 +2,22 @@
 
 import argparse
 from dataclasses import asdict
+from datetime import UTC, date, datetime
 from pathlib import Path
 
-from f1_ml_predictor.ingestion.jolpica import JolpicaSeasonIngestor
+from f1_ml_predictor.identifiers import EventId
+from f1_ml_predictor.ingestion.enrichment import (
+    EnrichmentReport,
+    event_race,
+    ingest_fastf1_session,
+    ingest_openf1_session,
+    persist_forecast,
+)
+from f1_ml_predictor.ingestion.jolpica import IngestReport, JolpicaSeasonIngestor
 from f1_ml_predictor.paths import StoragePaths
-from f1_ml_predictor.sources.jolpica import JolpicaClient, JolpicaError
+from f1_ml_predictor.sources.jolpica import JolpicaClient
+from f1_ml_predictor.sources.open_meteo import OpenMeteoClient
+from f1_ml_predictor.sources.openf1 import OpenF1Client
 
 
 def main() -> None:
@@ -14,19 +25,82 @@ def main() -> None:
     subcommands = parser.add_subparsers(dest="command", required=True)
     ingest = subcommands.add_parser("ingest-season", help="Ingest one Jolpica season")
     ingest.add_argument("season", type=int)
-    ingest.add_argument("--root", type=Path, default=Path.cwd())
     ingest.add_argument("--refresh", action="store_true")
+    openf1 = subcommands.add_parser("ingest-openf1-session", help="Ingest one completed session")
+    openf1.add_argument("season", type=int)
+    openf1.add_argument("round", type=int)
+    openf1.add_argument("session_key", type=int)
+    openf1.add_argument("--refresh", action="store_true")
+    fastf1 = subcommands.add_parser(
+        "ingest-fastf1-session", help="Ingest lightweight lap summaries"
+    )
+    fastf1.add_argument("season", type=int)
+    fastf1.add_argument("round", type=int)
+    fastf1.add_argument("session_code", choices=["FP1", "FP2", "FP3", "Q"])
+    forecast = subcommands.add_parser(
+        "capture-forecast", help="Capture a forecast for an upcoming event"
+    )
+    forecast.add_argument("season", type=int)
+    forecast.add_argument("round", type=int)
+    discovery = subcommands.add_parser("list-openf1-sessions", help="Find historical session keys")
+    discovery.add_argument("season", type=int)
+    for command in (ingest, openf1, fastf1, forecast):
+        command.add_argument("--root", type=Path, default=Path.cwd())
     args = parser.parse_args()
-    if args.command == "ingest-season":
-        try:
+    paths = StoragePaths(getattr(args, "root", Path.cwd()))
+    report: IngestReport | EnrichmentReport
+    try:
+        if args.command == "list-openf1-sessions":
+            with OpenF1Client() as openf1_client:
+                sessions = openf1_client.sessions(args.season)
+            for session in sessions:
+                if session.get("session_name") in {
+                    "Practice 1",
+                    "Practice 2",
+                    "Practice 3",
+                    "Qualifying",
+                }:
+                    print(
+                        f"{session['session_key']} {session['date_start']} "
+                        f"{session['session_name']} {session['circuit_short_name']}"
+                    )
+            return
+        if args.command == "ingest-season":
             with JolpicaClient() as client:
-                report = JolpicaSeasonIngestor(StoragePaths(args.root), client).ingest_season(
+                report = JolpicaSeasonIngestor(paths, client).ingest_season(
                     args.season, refresh=args.refresh
                 )
-        except (JolpicaError, ValueError, OSError) as exc:
-            parser.exit(1, f"Ingestion failed: {exc}\n")
-        for key, value in asdict(report).items():
-            print(f"{key}: {value}")
+        elif args.command == "ingest-openf1-session":
+            with OpenF1Client() as openf1_client:
+                report = ingest_openf1_session(
+                    paths,
+                    EventId(args.season, args.round),
+                    args.session_key,
+                    openf1_client,
+                    refresh=args.refresh,
+                )
+        elif args.command == "ingest-fastf1-session":
+            report = ingest_fastf1_session(
+                paths, EventId(args.season, args.round), args.session_code
+            )
+        else:
+            event = EventId(args.season, args.round)
+            race = event_race(paths, event)
+            days_until = (date.fromisoformat(race["date"]) - datetime.now(UTC).date()).days
+            if not 0 <= days_until <= 6:
+                raise ValueError(
+                    "live forecast capture requires an event within the next seven days"
+                )
+            location = race["Circuit"]["Location"]
+            with OpenMeteoClient() as weather_client:
+                snapshot = weather_client.capture_forecast(
+                    float(location["lat"]), float(location["long"])
+                )
+            report = persist_forecast(paths, event, snapshot)
+    except (RuntimeError, ValueError, OSError, KeyError) as exc:
+        parser.exit(1, f"Ingestion failed: {exc}\n")
+    for key, value in asdict(report).items():
+        print(f"{key}: {value}")
 
 
 if __name__ == "__main__":

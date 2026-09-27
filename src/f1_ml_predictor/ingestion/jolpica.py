@@ -3,18 +3,16 @@
 from __future__ import annotations
 
 import hashlib
-import os
-import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pyarrow as pa
-import pyarrow.parquet as pq
 
 from f1_ml_predictor.identifiers import EventId
 from f1_ml_predictor.ingestion.cache import CachedCollection, RawCache
+from f1_ml_predictor.ingestion.parquet import write_partition
 from f1_ml_predictor.normalization.jolpica import (
     normalize_entries,
     normalize_qualifying,
@@ -109,19 +107,7 @@ class JolpicaSeasonIngestor:
     def _write_partition(
         table: pa.Table, path: Path, source_hash: str, report: IngestReport
     ) -> None:
-        metadata = {
-            b"schema_version": SCHEMA_VERSION.encode(),
-            b"source_sha256": source_hash.encode(),
-        }
-        if path.exists() and pq.read_schema(path).metadata == metadata:
+        if not write_partition(table, path, source_hash, SCHEMA_VERSION):
             report.skipped_partitions += 1
-            return
-        path.parent.mkdir(parents=True, exist_ok=True)
-        fd, temp_name = tempfile.mkstemp(prefix=".pending-", suffix=".parquet", dir=path.parent)
-        os.close(fd)
-        try:
-            pq.write_table(table.replace_schema_metadata(metadata), temp_name)
-            os.replace(temp_name, path)
-        finally:
-            Path(temp_name).unlink(missing_ok=True)
-        report.written_partitions += 1
+        else:
+            report.written_partitions += 1
