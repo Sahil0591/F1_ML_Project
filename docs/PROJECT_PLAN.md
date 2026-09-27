@@ -1,6 +1,6 @@
 # F1 ML Predictor Project Plan
 
-Status: Phase 1 complete; Phase 2 next. Updated 2026-09-27.
+Status: Phases 1 and 2 complete; Phase 3 next. Updated 2026-09-28.
 
 ## Product and prediction contract
 
@@ -11,7 +11,7 @@ Success means a user can reproduce a historical prediction using only informatio
 ## Architecture and data contracts
 
 - `src/f1_ml_predictor/`: installable Python package. Keep `sources`, `ingestion`, `normalization`, `features`, `models`, `simulation`, and `explain` separate as those phases arrive. A future `api` or dashboard package reads published predictions and never owns ingestion or training logic.
-- `data/raw/<source>/`: immutable or versioned responses with request metadata, retrieval time, source publication time when supplied, and content hash. Cache unchanged historical responses. Do not put large telemetry archives here by default.
+- `data/raw/<source>/`: versioned unnormalized response collections with request endpoint, first retrieval time, source publication time when supplied, and content hash. Cache unchanged historical responses. Do not put large telemetry archives here by default.
 - `data/normalized/`: typed Parquet tables for events, entries, qualifying, race results, sessions, weather snapshots, and provenance. Preserve source identifiers and raw references.
 - `data/features/`: Parquet feature snapshots keyed by event, driver, cutoff, and feature version. Every feature records or derives an availability bound.
 - `models/`: fitted model files and manifests with training window, features, code version, and metrics.
@@ -63,13 +63,21 @@ Acceptance requires: `pyproject.toml` defines an installable `src` package and t
 
 Phase 1 verification: editable install succeeded in a local virtual environment; 17 offline tests passed; Ruff lint and format checks passed; strict mypy passed; no forbidden character was found in changed content.
 
+## Phase 2 result
+
+Jolpica ingestion now covers schedules and per-event qualifying/results, with derived entries. The HTTP client paginates, identifies itself, enforces local request budgets, and retries bounded transient failures with timeouts. Raw source collections are content-addressed and versioned; normalized Parquet partitions are replaced atomically and skipped when their source hashes and schema version are unchanged. Failed jobs can resume from cached collections.
+
+Historical seasons use the cache by default; current/future seasons refresh on each run. `--refresh` explicitly rechecks older data. Run one ingestion process per shared API budget. Normalized `available_at` remains null because Jolpica does not supply historical publication timestamps. Grid values in race results are outcomes for auditing, not pre-race features. DNF labels are deferred because status semantics vary and can be revised.
+
+Verification: 54 offline tests passed, including mocked HTTP-to-Parquet integration and interrupted-run recovery. A bounded live 2025 smoke run completed 24 events; a repeat made zero API fetches, hit 49 cached collections, and skipped 73 unchanged Parquet partitions. Lint, format, type, and punctuation checks passed.
+
 ## Orchestration
 
 The main agent owns architecture, phase integration, ML choices, final review, and git operations. Bounded independent work can be delegated for current API documentation, isolated source clients after contracts exist, test fixtures, and leakage review. Agents should receive only the relevant interface and should avoid overlapping edits. Mechanical checks remain deterministic scripts.
 
 ## Current decisions and open risks
 
-- Begin with standard-library contracts and pytest, adding PyArrow and HTTP clients only when Phase 2 needs them. A lockfile can be added once the runtime dependency set stabilizes.
+- Phase 1 uses standard-library contracts; Phase 2 adds HTTPX and PyArrow. PyArrow does not ship typing markers, so its imports have a scoped mypy override and table shapes are covered by schema tests. A lockfile can be added once the runtime dependency set stabilizes.
 - Store source publication time where available. For older records without it, strict historical backtests must use conservative availability rules or exclude that field.
 - Race calendar changes, sprint format changes, points rules, penalties, and constructor/driver transfers require season-aware handling in later phases.
 - Forecast archives, FastF1 coverage, and FIA document access may limit historical backtest depth. Report coverage explicitly rather than silently imputing future data.

@@ -10,15 +10,28 @@ acceptance criteria.
 Use Python 3.11 or newer. From the repository root:
 
 ```powershell
-python -m pip install -e ".[dev]"
-python -m pytest
-python -m ruff check .
-python -m ruff format --check .
-python -m mypy
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.\.venv\Scripts\python.exe -m pytest
+.\.venv\Scripts\python.exe -m ruff check .
+.\.venv\Scripts\python.exe -m ruff format --check .
+.\.venv\Scripts\python.exe -m mypy
 ```
 
-Phase 1 provides package and point-in-time contracts. It does not fetch live
-data or produce predictions yet.
+## Historical ingestion
+
+```powershell
+.\.venv\Scripts\python.exe -m f1_ml_predictor ingest-season 2025
+```
+
+Historical data is cached under `data/raw/jolpica`; typed Parquet tables go to
+`data/normalized`. Reruns skip unchanged historical data. Use `--refresh` to
+recheck an older season; current and future seasons refresh automatically.
+Run one ingestion process at a time to share the API request budget.
+
+The offline tests use mocks. The project does not produce predictions yet;
+historical publication times remain unknown and must be resolved before strict
+point-in-time feature use.
 
 ## Graphify
 
