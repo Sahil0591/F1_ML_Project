@@ -1,6 +1,6 @@
 # F1 ML Predictor Project Plan
 
-Status: Phases 1 through 7 complete; Phase 8 infrastructure extended and first eight-race Gold Core evaluation completed. Prospective collection is scheduled. Independent Phase 9 simulation infrastructure is undergoing final integration. Real-world model selection remains deferred with five paired test races and no audited DNF labels. Updated 2026-09-29.
+Status: Phases 1 through 7 complete; Phase 8 infrastructure extended and first eight-race Gold Core evaluation completed. Prospective collection is scheduled. Independent Phase 9 simulation infrastructure is delivered. Real-world model selection, validated championship forecasts and model explanations remain gated with five paired test races and no audited DNF labels. Updated 2026-09-29.
 
 ## Product and prediction contract
 
@@ -58,7 +58,7 @@ Commit subjects describe the delivered engineering capability. Commit bodies exp
 | 6. Evidence-tiered benchmarks | Depends on 5. Build Gold, Silver, and Development datasets with final audited outcome labels, machine-readable manifests, and race/feature coverage and exclusion reports. | Deterministic partitions and hashes; event-complete label joins; no label columns used as features; no tier promotion; empty Gold explicitly reported when unsupported. | Risk: sparse certified coverage and exploratory leakage. Output: three Parquet datasets, benchmark manifest, coverage report. |
 | 7. Baselines and chronological backtests | Depends on 6. Heuristic and logistic winner/podium/DNF baselines, position baseline, rolling event-grouped evaluation, calibration reports and manifests. | Training-only transforms, time-ordered folds, label availability at training time, deterministic seeds, model smoke tests, probability coherence, per-tier metrics and honest insufficient-data states. | Risk: small sample and imbalance. Output: baseline/evaluation infrastructure; primary accuracy claims only on Gold. |
 | 8. Stronger probabilistic race models | Software delivered. Add optional isotonic calibration and retain existing adapters, device policy, grouped folds and paired baselines. Audit historical Gold Core while capturing future races. | At least eight eligible Gold races for one cutoff before real selection; eight distinct paired test races and no baseline regressions before provisional selection. Calibration remains earlier-history only. | Risk: sparse direct evidence. Output: reproducible comparisons; selected model remains data-gated. |
-| 9. Championship simulation and explanations | Develop independently using the existing joint race sampler and explicit synthetic inputs. Validated real outputs depend on Phase 8 Gold acceptance. | Whole-order sampling, fixed seeds, season/event scoring, explicit classification eligibility, constructor transfers, unresolved countback ties, serialization and provenance. | Risk: changing rules and compounded uncertainty. Output: engineering simulation infrastructure now; real probabilities and compatible explanations later. |
+| 9. Championship simulation and explanations | Simulation infrastructure delivered using the shared joint race sampler and explicit synthetic inputs. Validated real outputs and model explanations depend on Phase 8 Gold acceptance. | Whole-order sampling, fixed seeds, season/event scoring, explicit classification eligibility, constructor transfers, unresolved countback ties, serialization and provenance. | Risk: changing rules and compounded uncertainty. Output: engineering simulation infrastructure now; real probabilities and compatible explanations later. |
 | 10. Dashboard and operations | Depends on 7 for initial interface and 9 for full scope. Separate read-only API/UI for published predictions, evidence tier, uncertainty and freshness; scheduled bounded refresh. | API/UI integration, responsive workflows, stale/missing states, deployment/runbook, offline suite. | Risk: presenting exploratory or stale outputs as reliable. Output: dashboard and operational collection workflow. |
 
 ## Remaining roadmap policy
@@ -253,6 +253,32 @@ future independent confirmation. Real Phase 9 WDC/WCC claims remain gated on tha
 validated race model. Phase 10 can later expose published reports with tier,
 sample-count and freshness states; it cannot present these diagnostics as
 validated championship forecasts.
+
+## Phase 9 simulation infrastructure result
+
+The offline championship simulator consumes complete joint sampled orders from
+the shared race sampler. It resamples whole orders, preserving within-race driver
+dependencies. Event-specific constructor assignments preserve transfers without
+reallocating old team points. Scoring is explicit by season, race/sprint and
+distance case; 2019-2024 fastest-lap bonuses require explicit eligibility, and
+2025 onward rejects that bonus. Points classification is supplied separately
+because a sampled DNF does not establish FIA eligibility or a retirement ordinal.
+
+Fixed seeds, canonical event ordering, exact rational points, unresolved countback
+tie mass, JSON serialization and source/input hashes make engineering runs
+reproducible. Default outputs are `engineering_only`. A validated scenario requires
+explicit provenance for a validated Gold model from at least eight independent races,
+compatible model IDs, pre-cutoff evidence, earlier validation rounds and explicit
+classification samples. This checks a provenance contract; it does not establish
+championship calibration. Remaining events are independent and season-wide shared
+effects are omitted. See [simulation assumptions](SIMULATION.md).
+
+Verification: 39 deterministic simulation tests and the complete 534-test offline
+suite passed. Ruff lint and format checks and strict mypy passed for 54 source
+files; diff, generated-artifact and forbidden-punctuation reviews passed before
+commit. Fixtures are engineering checks, with no real WDC/WCC probability claim.
+Validated models, championship calibration, explanations and dashboard integration
+remain on the roadmap rather than being marked complete by fixture tests.
 
 ## Orchestration
 
