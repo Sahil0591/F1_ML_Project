@@ -1,6 +1,6 @@
 # F1 ML Predictor Project Plan
 
-Status: Phases 1 through 5 complete; Phase 6 evidence-tiered benchmark datasets are next. Updated 2026-09-28.
+Status: Phases 1 through 6 complete; Phase 7 baseline modelling and chronological backtesting are in progress. Updated 2026-09-28.
 
 ## Product and prediction contract
 
@@ -69,7 +69,9 @@ Gold requires verified direct pre-cutoff evidence for every used sensitive input
 
 Prospective collection freezes exact fresh API payloads and derived input versions with UTC capture times and hashes. Named post-qualifying, provisional-grid, and pre-race windows are separate prediction cohorts. A frozen cutoff cannot be overwritten or retrospectively populated. FIA audit metadata retains exact document identity, printed publication time/timezone, revision/recall status, and hash. Weather initialization is separate from actual availability. FastF1/OpenF1 arbitration selects a documented provider per session and flags disagreement, never averages incompatible filters.
 
-Phase 6 will run against available local data without manufacturing Gold/Silver races. It must emit valid empty tiers and explicit exclusion reasons when evidence or audited labels are absent. Baseline software can be developed on deterministic fixtures and clearly labelled Development data while certified coverage accumulates; fixture metrics are not real-world accuracy.
+Phase 6 runs against available local data without manufacturing Gold/Silver races. It emits valid empty tiers and explicit exclusion reasons when evidence or audited labels are absent. Baseline software can be developed on deterministic fixtures and clearly labelled Development data while certified coverage accumulates; fixture metrics are not real-world accuracy.
+
+Benchmark catalogs bind exact feature and final audited outcome Parquet bytes to event, prediction timestamp, and named cutoff. A race/window joins only when its complete feature roster exactly matches audited labels, labels are published after the prediction cutoff, and exactly one winner is present. Outcome columns are prefixed `label_`; they never enter the feature column list. Multiple cutoff cohorts for one event are permitted. Each dataset has a content hash; the machine-readable manifest binds tier files and coverage.
 
 ## Phase 1 implementation gate
 
@@ -121,7 +123,13 @@ Feature snapshots support post-qualifying, provisional-grid, and pre-race window
 
 Prospective capture infrastructure freezes bounded fresh official API payloads into immutable, hash-verified bundles. Its CLI rejects past cutoffs, result/actual-weather/race-session endpoints, malformed requests, and session payloads without validated metadata. Exact retries verify the existing bundle. No scheduler is armed, and no missed historic race is represented as a live capture. Captures still require normalization, event crosswalk, and audit work before feature certification.
 
-Verification: 271 offline tests passed. Ruff lint and format checks passed; strict mypy passed for 33 source files. Leakage review regressions cover required and optional corrections, provider disagreements across evidence tiers, contradictory archive timestamps, capture-bound weather rows, cancellation, and collection-plan authorization. Historical coverage limitations remain: existing retrospective downloads are Development unless exact-version availability can be audited. Phase 6 must report unsupported/empty Gold and Silver tiers honestly.
+Verification: 271 offline tests passed. Ruff lint and format checks passed; strict mypy passed for 33 source files. Leakage review regressions cover required and optional corrections, provider disagreements across evidence tiers, contradictory archive timestamps, capture-bound weather rows, cancellation, and collection-plan authorization. Historical coverage limitations remain: existing retrospective downloads are Development unless exact-version availability can be audited. Phase 6 reports unsupported/empty Gold and Silver tiers honestly.
+
+## Phase 6 result
+
+The benchmark builder reads workspace-contained Parquet files after verifying catalog SHA-256 values. It validates feature schemas, per-row evidence tier and cutoff bounds, exact field completeness, final audited label taxonomy, one winner per race, and label publication after prediction time. It writes deterministic Gold, Silver, and Development Parquet datasets, a machine-readable hash manifest, and coverage for each race/cutoff with evidence quality, missing feature counts, and exclusion reasons. Label columns are prefixed and listed separately from predictive feature columns. Legacy feature schemas remain Development.
+
+Verification: the full suite passed 275 offline tests, including four benchmark builder tests for all tiers, deterministic reruns, hash tampering, incomplete field joins, early labels, and local race discovery. Ruff lint and format checks passed; strict mypy passed for 35 source files. The local scan found 24 normalized 2025 races. There are zero registered feature snapshots and zero final audited outcome files, so all three datasets are valid typed empty Parquet files and all 24 race windows are excluded with explicit reasons. No historical evidence or outcome labels were synthesized.
 
 ## Orchestration
 

@@ -21,6 +21,10 @@ class StoragePaths:
         return self.root / "data" / "features"
 
     @property
+    def benchmarks(self) -> Path:
+        return self.root / "data" / "benchmarks"
+
+    @property
     def models(self) -> Path:
         return self.root / "models"
 

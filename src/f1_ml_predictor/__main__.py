@@ -5,6 +5,7 @@ from dataclasses import asdict
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+from f1_ml_predictor.benchmarks.builder import build_benchmarks
 from f1_ml_predictor.features.manifest import load_feature_request
 from f1_ml_predictor.features.snapshot import build_snapshot
 from f1_ml_predictor.features.storage import persist_snapshot
@@ -65,8 +66,13 @@ def main() -> None:
     capture.add_argument("plan", type=Path)
     verify = subcommands.add_parser("verify-capture", help="Verify an immutable prospective bundle")
     verify.add_argument("bundle", type=Path)
+    benchmarks = subcommands.add_parser(
+        "build-benchmarks", help="Build evidence-tiered benchmark datasets and coverage"
+    )
+    benchmarks.add_argument("--catalog", type=Path)
     for command in (ingest, openf1, fastf1, forecast, features, capture):
         command.add_argument("--root", type=Path, default=Path.cwd())
+    benchmarks.add_argument("--root", type=Path, default=Path.cwd())
     args = parser.parse_args()
     paths = StoragePaths(getattr(args, "root", Path.cwd()))
     report: IngestReport | EnrichmentReport
@@ -77,6 +83,12 @@ def main() -> None:
         if args.command == "verify-capture":
             manifest = verify_bundle(args.bundle)
             print(f"verified: {manifest['manifest_sha256']}")
+            return
+        if args.command == "build-benchmarks":
+            benchmark_report = build_benchmarks(paths.root, paths.benchmarks, args.catalog)
+            print(f"included_races: {benchmark_report['included_races']}")
+            print(f"excluded_races: {benchmark_report['excluded_races']}")
+            print(f"path: {paths.benchmarks}")
             return
         if args.command == "build-snapshot":
             inputs, cutoff = load_feature_request(args.manifest, paths.root)

@@ -21,6 +21,7 @@ data/interim/
 data/processed/
 data/normalized/
 data/features/
+data/benchmarks/
 data/predictions/
 data/cache/
 models/

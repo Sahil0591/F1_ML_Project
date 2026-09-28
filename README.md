@@ -77,6 +77,16 @@ See [data trust](docs/DATA_TRUST.md) for the audit contract and capture-plan for
 race is relabelled as a live capture. Benchmarks and baseline evaluation follow;
 historical evidence coverage remains the gate for primary accuracy claims.
 
+## Benchmark Datasets
+
+Run `build-benchmarks` to scan locally ingested race partitions, or pass
+`--catalog <catalog.json>` with feature/outcome Parquet paths, exact SHA-256 values,
+prediction timestamps, and cutoff kinds. The command writes Gold, Silver, and
+Development datasets plus `manifest.json` and `coverage.json` under
+`data/benchmarks`. Gold is the primary accuracy tier. Current local coverage is
+zero included and 24 excluded races: no feature snapshots or final audited outcome
+files are registered. The builder does not upgrade retrospective rows to fill them.
+
 ## Graphify
 
 Graphify is configured through a git post-commit hook. After each commit, the hook updates the local knowledge graph outputs in `graphify-out/`.
