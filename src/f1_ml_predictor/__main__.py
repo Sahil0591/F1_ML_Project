@@ -1,6 +1,7 @@
 """Small command-line entry point for bounded ingestion jobs."""
 
 import argparse
+import json
 from dataclasses import asdict
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -19,6 +20,9 @@ from f1_ml_predictor.ingestion.enrichment import (
 )
 from f1_ml_predictor.ingestion.jolpica import IngestReport, JolpicaSeasonIngestor
 from f1_ml_predictor.models.backtest import run_backtest_files
+from f1_ml_predictor.models.boosting import BACKENDS
+from f1_ml_predictor.models.hardware import inspect_hardware
+from f1_ml_predictor.models.probabilistic import run_probabilistic_files
 from f1_ml_predictor.paths import StoragePaths
 from f1_ml_predictor.sources.jolpica import JolpicaClient
 from f1_ml_predictor.sources.open_meteo import OpenMeteoClient
@@ -82,10 +86,57 @@ def main() -> None:
     backtest.add_argument("--min-train-events", type=int, default=2)
     backtest.add_argument("--seed", type=int, default=42)
     backtest.add_argument("--root", type=Path, default=Path.cwd())
+    hardware = subcommands.add_parser(
+        "model-hardware", help="Probe and benchmark installed CPU/GPU backends"
+    )
+    hardware.add_argument("--workload-rows", type=int, default=8000)
+    hardware.add_argument("--root", type=Path, default=Path.cwd())
+    stronger = subcommands.add_parser(
+        "compare-models", help="Compare calibrated chronological race models"
+    )
+    stronger.add_argument("--tier", choices=[tier.value for tier in BenchmarkTier], default="Gold")
+    stronger.add_argument("--backends", choices=BACKENDS, nargs="+", default=list(BACKENDS))
+    stronger.add_argument("--min-train-events", type=int, default=2)
+    stronger.add_argument("--seed", type=int, default=42)
+    stronger.add_argument("--draws", type=int, default=4096)
+    stronger.add_argument("--device", choices=["cpu", "auto", "cuda"], default="auto")
+    stronger.add_argument("--root", type=Path, default=Path.cwd())
     args = parser.parse_args()
     paths = StoragePaths(getattr(args, "root", Path.cwd()))
     report: IngestReport | EnrichmentReport
     try:
+        if args.command == "model-hardware":
+            output = paths.models / "experiments" / "hardware.json"
+            result = inspect_hardware(output, workload_rows=args.workload_rows)
+            print(f"backends: {list(result['backends'])}")
+            print(f"path: {output}")
+            return
+        if args.command == "compare-models":
+            tier = BenchmarkTier(args.tier)
+            hardware_path = paths.models / "experiments" / "hardware.json"
+            hardware_report = (
+                json.loads(hardware_path.read_text(encoding="utf-8"))
+                if (args.device != "cpu" and hardware_path.exists())
+                else None
+            )
+            report_path = paths.models / "experiments" / tier.value.lower() / "comparison.json"
+            result = run_probabilistic_files(
+                paths.benchmarks / f"{tier.value.lower()}.parquet",
+                tier,
+                report_path,
+                paths.predictions / "probabilistic" / f"{tier.value.lower()}.parquet",
+                backends=tuple(args.backends),
+                min_train_events=args.min_train_events,
+                seed=args.seed,
+                draws=args.draws,
+                device=args.device,
+                hardware=hardware_report,
+            )
+            print(f"status: {result['status']}")
+            print(f"prediction_rows: {result['prediction_rows']}")
+            print(f"selection: {result['selection']}")
+            print(f"path: {report_path}")
+            return
         if args.command == "capture-weekend":
             print(f"path: {collect_weekend(args.plan, paths.root)}")
             return

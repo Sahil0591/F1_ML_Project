@@ -96,7 +96,7 @@ def rolling_folds(
             if prior_event == event_id or prior_kind != cutoff_kind or prior_cutoff >= cutoff:
                 continue
             known = [index for index in indices if rows[index]["label_available_at"] <= cutoff]
-            if known:
+            if len(known) == len(indices):
                 current = eligible.get(prior_event)
                 if current is None or prior_cutoff > current[0]:
                     eligible[prior_event] = (prior_cutoff, known)

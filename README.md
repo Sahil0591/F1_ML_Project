@@ -97,6 +97,22 @@ metrics under `models/backtests` and out-of-fold predictions under
 without accuracy metrics. Silver and Development results remain exploratory;
 fixture checks are not performance claims.
 
+## Probabilistic Race Models
+
+`compare-models --tier Gold` runs bounded histogram boosting and available optional
+XGBoost, LightGBM, and CatBoost configurations on chronological race folds. An earlier
+race calibrates DNF probabilities and race-order temperature. Winner, podium, DNF,
+and finish distributions come from one seeded joint simulation. Paired baseline
+comparisons record regressions; model selection remains deferred when coverage is
+insufficient. Current Gold still returns zero predictions and no accuracy metrics.
+
+Optional backends can be installed with `pip install -e ".[xgboost,catboost,lightgbm]"`.
+`model-hardware --workload-rows 32000` checks actual driver/runtime/library support and
+benchmarks CPU/GPU fits. `compare-models --device auto` uses a recent matching probe
+only when the workload and measured speed justify GPU training. CPU fallback and
+CUDA-independent offline tests remain supported. See [modeling](docs/MODELING.md)
+for calibration, selection, artifact, GPU, and distribution limitations.
+
 ## Graphify
 
 Graphify is configured through a git post-commit hook. After each commit, the hook updates the local knowledge graph outputs in `graphify-out/`.

@@ -1,6 +1,6 @@
 # F1 ML Predictor Project Plan
 
-Status: Phases 1 through 7 complete; Phase 8 stronger probabilistic race models is next. Updated 2026-09-28.
+Status: Phases 1 through 7 complete; Phase 8 modeling infrastructure implemented and verified. Real-world model selection remains deferred pending audited benchmark coverage. Updated 2026-09-28.
 
 ## Product and prediction contract
 
@@ -146,6 +146,45 @@ The `backtest` command evaluates each evidence tier independently. It groups eve
 Heuristic and logistic baselines produce winner, podium, and DNF probabilities. Winner probabilities are normalized per event; podium marginals are bounded and sum to the available podium places. A grid-based ordering heuristic and Ridge finish-position baseline report MAE. Evaluation includes log loss, Brier score, calibration bins, winner top-1/top-3 accuracy, and finish MAE. Unknown DNS/DSQ DNF labels stay out of DNF fitting and scoring. Empty classes and undersized histories produce `insufficient_data` task or cohort results.
 
 Verification: 280 offline tests passed. Ruff lint and format checks passed; strict mypy passed for 37 source files. Rolling-fold tests verify grouped races and delayed-label gating; deterministic model smoke tests verify probability coherence and Development claim labelling. The real CLI flow built current benchmarks and returned `insufficient_data` for Gold with zero prediction rows and no accuracy metrics. Local coverage still has 24 excluded races and no registered final audited labels or feature snapshots. Fixture results are test evidence only, not real-world accuracy.
+
+## Phase 8 result
+
+The `compare-models` command evaluates bounded histogram boosting, XGBoost,
+LightGBM, and CatBoost configurations with the Phase 7 chronological protocol.
+An earlier complete event calibrates DNF logits and joint race-order temperature;
+fit labels must already be known at that calibration event's cutoff. Imputation
+fits only on earlier fit events. A fold edge case was tightened so one unavailable
+driver label excludes its entire training race, preserving complete event groups.
+
+One seeded joint simulation produces coherent winner, podium, DNF, and full finish
+distributions. Reports include calibration, ranking, position, and probability
+metrics on paired baseline/candidate cohorts, with explicit regression lists.
+Selection stays separate by cutoff kind and requires five paired events without
+baseline regressions. Any selection is provisional until future independent
+confirmation. Model artifacts retain fit/calibration membership, parameters,
+hashes, code and library versions, and actual training devices. Dataset and
+coverage hashes are verified before fitting. See [modeling](MODELING.md).
+
+Hardware checks found RTX 3050 Laptop GPU with 4 GiB, driver 616.56, driver CUDA
+API 13.4, toolkit 12.9.41, and toolkit runtime API 12.9. Reviewed binary wheels
+installed XGBoost 3.4.1, CatBoost 1.2.10, and LightGBM 4.7.0 as optional backends.
+XGBoost's CUDA 13.3 build and CatBoost passed actual GPU training probes.
+LightGBM's wheel lacks both CUDA and OpenCL GPU support and remains CPU. No
+driver/toolkit changes or custom builds were made. On controlled 32,000-row,
+32-feature, 80-tree timing workloads, GPU fits were approximately 28% faster for
+XGBoost and 46% faster for CatBoost; smaller 8,000-row improvements did not meet
+the 15% automatic-use threshold. CPU fallback remains available and normal tests
+do not require CUDA or optional boosting libraries.
+
+Verification: 300 offline tests passed. All four installed backends completed CPU
+fixture smoke comparisons; histogram boosting prediction reruns and artifact
+reloads were deterministic. Ruff lint/format and strict mypy passed for 41 source
+files. The real Gold CLI verified its benchmark and wrote `insufficient_data`,
+zero predictions, no accuracy metrics, and deferred selection. There are still
+24 excluded local races and no registered audited snapshot/outcome joins. No
+fixture metrics or synthetic timing workloads are claimed as real-world accuracy.
+Phase 8 software is delivered; the selected real-world race model remains a
+data-dependent acceptance gate before Phase 9 uses it.
 
 ## Orchestration
 
