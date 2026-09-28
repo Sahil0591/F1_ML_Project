@@ -5,6 +5,9 @@ from dataclasses import asdict
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+from f1_ml_predictor.features.manifest import load_feature_request
+from f1_ml_predictor.features.snapshot import build_snapshot
+from f1_ml_predictor.features.storage import persist_snapshot
 from f1_ml_predictor.identifiers import EventId
 from f1_ml_predictor.ingestion.enrichment import (
     EnrichmentReport,
@@ -44,12 +47,26 @@ def main() -> None:
     forecast.add_argument("round", type=int)
     discovery = subcommands.add_parser("list-openf1-sessions", help="Find historical session keys")
     discovery.add_argument("season", type=int)
-    for command in (ingest, openf1, fastf1, forecast):
+    features = subcommands.add_parser(
+        "build-snapshot", help="Build a verified pre-race feature snapshot"
+    )
+    features.add_argument("manifest", type=Path)
+    features.add_argument("--form-window", type=int, default=5)
+    features.add_argument("--session-source", choices=["fastf1", "openf1"], default="fastf1")
+    for command in (ingest, openf1, fastf1, forecast, features):
         command.add_argument("--root", type=Path, default=Path.cwd())
     args = parser.parse_args()
     paths = StoragePaths(getattr(args, "root", Path.cwd()))
     report: IngestReport | EnrichmentReport
     try:
+        if args.command == "build-snapshot":
+            inputs, cutoff = load_feature_request(args.manifest, paths.root)
+            table = build_snapshot(
+                inputs, cutoff, form_window=args.form_window, session_source=args.session_source
+            )
+            print(f"rows: {table.num_rows}")
+            print(f"path: {persist_snapshot(paths, table)}")
+            return
         if args.command == "list-openf1-sessions":
             with OpenF1Client() as openf1_client:
                 sessions = openf1_client.sessions(args.season)

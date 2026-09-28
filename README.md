@@ -53,6 +53,18 @@ produce predictions yet. Retrospectively fetched sessions keep their capture-tim
 availability; historical Jolpica publication times remain unknown. Strict backtests
 must exclude unsupported historical inputs rather than backdate them.
 
+## Pre-race features
+
+`build-snapshot <manifest.json>` creates deterministic Parquet features from verified
+as-of input versions. It rejects unknown/late required publications, excludes current
+and future race results, and leaves unavailable optional features missing. See the
+[feature dictionary](docs/FEATURE_DICTIONARY.md) for input contracts and manifest fields.
+
+An evidence manifest binds publication times to exact file hashes. It is not a way to
+backdate present-day downloads. Real training/backtests await verified historical
+snapshots or a prospective archive; offline fixture tests are not model-performance
+evidence.
+
 ## Graphify
 
 Graphify is configured through a git post-commit hook. After each commit, the hook updates the local knowledge graph outputs in `graphify-out/`.

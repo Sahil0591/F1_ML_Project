@@ -1,6 +1,6 @@
 # F1 ML Predictor Project Plan
 
-Status: Phases 1 through 3 complete; Phase 4 next. Updated 2026-09-28.
+Status: Phases 1 through 4 complete; Phase 5 real-data validation awaits an as-of archive. Updated 2026-09-28.
 
 ## Product and prediction contract
 
@@ -90,6 +90,16 @@ Coverage limitations remain explicit: OpenF1 historical coverage begins in 2023.
 Build deterministic feature snapshots over explicitly versioned, availability-stamped inputs. Require a published qualifying snapshot, entered-driver roster, race start, and prediction cutoff before the race. Reject unknown or late required inputs; leave unavailable optional inputs missing. Select prior-event result versions by availability, lag rolling form and reliability, and never derive the current event grid from race results. Weather targets may be in the future, but the forecast itself must be known by the cutoff. Persist a feature dictionary and per-row provenance bound. Tests must prove that future results, late corrections, race telemetry, and actual weather cannot alter an earlier snapshot.
 
 Historical validation remains gated on defensible source availability evidence. Software tests can use controlled fixtures; fixture metrics are not real-world model performance. Do not relabel current retrospective downloads as historical as-of data to unblock training.
+
+## Phase 4 result
+
+The feature layer selects the latest known published roster/qualifying and prior-result versions at a UTC cutoff after qualifying and before the race. It excludes current/future event results independently of their timestamps. Optional session, forecast, circuit, pit, reliability, and standings inputs remain missing when unavailable. Current grid values only come from a known roster/grid publication. All numeric features have explicit missingness flags; DNF requires audited Boolean labels rather than guessed status categories. Practice sources remain separate.
+
+Each deterministic Parquet snapshot records a conservative availability bound, content hashes/evidence references, event and prior-race completion times, feature version, form window, and source policy. The `build-snapshot` CLI reads a versioned JSON manifest, verifies declared source kinds and exact local Parquet file hashes, and rejects workspace-escaping paths or mismatched files. The [feature dictionary](FEATURE_DICTIONARY.md) documents definitions, limitations, and the explicit evidence-verification trust boundary. No code automatically promotes unknown retrospective availability into historical publication time.
+
+Verification: 139 offline tests passed, including feature calculations, row-order invariance, required/unknown/late inputs, later corrections, event exclusion, race-session and observed-weather rejection, archived-release evidence, source preference, manifest tampering, and offline CLI-to-Parquet integration. Ruff lint/format and strict mypy passed. Empty qualifying and unknown tyre-compound edge cases found in review are covered by regression tests.
+
+Phase 5's real-data benchmark is gated on verified historical qualifying/roster/result availability or an accumulated prospective archive. The existing retrospective 2025 downloads do not satisfy that gate. A source archive or a collection policy is required before claiming real rolling-backtest performance. The user has been asked whether an archive is available or future snapshots should be collected. No fixture-only accuracy claims or arbitrary historical timestamps will be substituted.
 
 ## Orchestration
 
