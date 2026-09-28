@@ -7,8 +7,14 @@ from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pytest
 
-from f1_ml_predictor.benchmarks.builder import build_benchmarks, discover_local_races, file_sha256
+from f1_ml_predictor.benchmarks.builder import (
+    _tier_from_evidence,
+    build_benchmarks,
+    discover_local_races,
+    file_sha256,
+)
 from f1_ml_predictor.features.snapshot import CONSERVATIVE_ALIASES, FEATURE_SCHEMA, NUMERIC_FEATURES
 from f1_ml_predictor.identifiers import EventId
 from f1_ml_predictor.trust.evidence import BenchmarkTier, EvidenceClass
@@ -251,3 +257,64 @@ def test_tampered_catalog_hash_is_reported_as_excluded_race(tmp_path: Path) -> N
     )
     report = build_benchmarks(tmp_path, tmp_path / "out", catalog)
     assert "hash does not match" in report["coverage"][0]["reasons"][0]
+
+
+def missing_qualifying_row() -> dict:
+    row = feature_table(EventId(2025, 1), BenchmarkTier.GOLD).to_pylist()[0]
+    original = json.loads(row["feature_evidence"])["qualifying_position"]["inputs"][0]["evidence"]
+    sources = []
+    for reference in ("event", "roster", "qualifying"):
+        proof = {**original, "reference": reference}
+        sources.append({"reference": reference, "evidence": proof})
+    for name in NUMERIC_FEATURES:
+        row[name] = None
+        row[f"{name}_missing"] = True
+    row["feature_evidence"] = json.dumps({"__context__": {"tier": "Gold", "inputs": sources}})
+    row["provenance"] = json.dumps(
+        {
+            "event_id": row["event_id"],
+            "event_reference": "event",
+            "event_evidence": sources[0]["evidence"],
+            "inputs": [
+                {
+                    "reference": source["reference"],
+                    "sha256": original["artifact_sha256"],
+                    "available_at": original["available_at"],
+                }
+                for source in sources[1:]
+            ],
+        }
+    )
+    return row
+
+
+def test_missing_qualifying_retains_gold_only_with_exact_required_context() -> None:
+    row = missing_qualifying_row()
+    assert _tier_from_evidence(row) == BenchmarkTier.GOLD
+    assert all(row[name] is None for name in NUMERIC_FEATURES)
+    row["feature_evidence"] = "{}"
+    with pytest.raises(ValueError, match="stronger tier"):
+        _tier_from_evidence(row)
+
+
+@pytest.mark.parametrize("mutation", ["hash", "late", "omitted", "duplicate", "current"])
+def test_missing_qualifying_rejects_unsupported_context(mutation: str) -> None:
+    row = missing_qualifying_row()
+    evidence = json.loads(row["feature_evidence"])
+    sources = evidence["__context__"]["inputs"]
+    if mutation == "hash":
+        sources[1]["evidence"]["artifact_sha256"] = "0" * 64
+    elif mutation == "late":
+        sources[1]["evidence"]["available_at"] = (UTC_TIME + timedelta(days=1)).isoformat()
+        sources[1]["evidence"]["captured_at"] = sources[1]["evidence"]["available_at"]
+    elif mutation == "omitted":
+        sources.pop()
+    elif mutation == "duplicate":
+        sources[2] = sources[1]
+    else:
+        sources[1]["evidence"].update(
+            {"class": "current_state_only", "tier": "Development", "captured_at": None}
+        )
+    row["feature_evidence"] = json.dumps(evidence)
+    with pytest.raises(ValueError):
+        _tier_from_evidence(row)

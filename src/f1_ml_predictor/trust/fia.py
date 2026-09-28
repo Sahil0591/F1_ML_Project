@@ -32,6 +32,7 @@ class FiaDocumentMetadata:
     table_sha256: str
     audited: bool = False
     audit_reference: str | None = None
+    publication_precision_seconds: int = 0
 
     def __post_init__(self) -> None:
         parsed = urlsplit(self.url)
@@ -53,6 +54,10 @@ class FiaDocumentMetadata:
             raise ValueError("explicit FIA document status is required")
         if not isinstance(self.audited, bool):
             raise ValueError("explicit audit flag is required")
+        if type(
+            self.publication_precision_seconds
+        ) is not int or self.publication_precision_seconds not in {0, 60}:
+            raise ValueError("publication precision must be exact or one minute")
         if self.audited and (not self.audit_reference or not self.audit_reference.strip()):
             raise ValueError("audited FIA metadata requires an audit reference")
         require_utc(self.published_at, "published_at")
@@ -90,14 +95,17 @@ def fia_publication_evidence(
             "printed_timezone": metadata.printed_timezone,
             "status": metadata.status.value,
             "audit_reference": metadata.audit_reference,
+            "publication_precision_seconds": metadata.publication_precision_seconds,
         },
         sort_keys=True,
     )
     return AvailabilityEvidence(
         kind=EvidenceClass.SOURCE_PUBLISHED_TIMESTAMP,
         reference=reference,
-        available_at=metadata.published_at,
+        available_at=metadata.published_at
+        + timedelta(seconds=metadata.publication_precision_seconds),
         artifact_sha256=metadata.table_sha256,
         source_published_at=metadata.published_at,
         audited=metadata.audited,
+        publication_precision_seconds=metadata.publication_precision_seconds,
     )

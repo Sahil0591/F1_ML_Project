@@ -22,6 +22,7 @@ fastf1 = ["fastf1>=3.5,<4"]
 xgboost = ["xgboost>=3.4,<4"]
 catboost = ["catboost>=1.2.10,<2"]
 lightgbm = ["lightgbm>=4.7,<5"]
+audit = ["pypdf>=6,<7"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

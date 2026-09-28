@@ -27,10 +27,18 @@ from f1_ml_predictor.paths import StoragePaths
 from f1_ml_predictor.sources.jolpica import JolpicaClient
 from f1_ml_predictor.sources.open_meteo import OpenMeteoClient
 from f1_ml_predictor.sources.openf1 import OpenF1Client
+from f1_ml_predictor.trust.candidates import discover_candidates
 from f1_ml_predictor.trust.collector import collect_weekend
 from f1_ml_predictor.trust.cutoffs import CutoffKind
 from f1_ml_predictor.trust.evidence import BenchmarkTier
+from f1_ml_predictor.trust.historical import discover_auditability, reconstruct_gold_core
 from f1_ml_predictor.trust.prospective import verify_bundle
+from f1_ml_predictor.trust.scheduler import (
+    import_scheduler_outcomes,
+    scheduler_status,
+    scheduler_tick,
+)
+from f1_ml_predictor.trust.winter import audit_winter_pool
 
 
 def main() -> None:
@@ -79,6 +87,43 @@ def main() -> None:
     for command in (ingest, openf1, fastf1, forecast, features, capture):
         command.add_argument("--root", type=Path, default=Path.cwd())
     benchmarks.add_argument("--root", type=Path, default=Path.cwd())
+    candidates = subcommands.add_parser(
+        "discover-gold-candidates", help="Discover and rank a bounded official registry pool"
+    )
+    candidates.add_argument(
+        "--seasons",
+        type=int,
+        nargs="+",
+        default=[datetime.now(UTC).year, datetime.now(UTC).year - 1],
+    )
+    candidates.add_argument("--limit", type=int, default=17)
+    candidates.add_argument("--root", type=Path, default=Path.cwd())
+    historical = subcommands.add_parser("audit-candidates", help="Rank a bounded FIA audit pool")
+    historical.add_argument("catalog", type=Path)
+    historical.add_argument("--limit", type=int, default=17)
+    historical.add_argument("--root", type=Path, default=Path.cwd())
+    core = subcommands.add_parser(
+        "build-gold-core", help="Freeze an audited historical Core request"
+    )
+    core.add_argument("manifest", type=Path)
+    core.add_argument("--root", type=Path, default=Path.cwd())
+    winter = subcommands.add_parser("audit-winter", help="Audit a bounded direct-publication pool")
+    winter.add_argument("catalog", type=Path)
+    winter.add_argument("--root", type=Path, default=Path.cwd())
+    winter.add_argument("--reuse-retained", action="store_true")
+    scheduled = subcommands.add_parser("collect-next-race", help="Run one bounded prospective tick")
+    scheduled.add_argument("--season", type=int)
+    scheduled.add_argument("--new-capture", action="store_true")
+    scheduled.add_argument("--pre-race", action="store_true")
+    scheduled.add_argument("--root", type=Path, default=Path.cwd())
+    status = subcommands.add_parser("collection-status", help="Read prospective collection status")
+    status.add_argument("--root", type=Path, default=Path.cwd())
+    outcomes = subcommands.add_parser(
+        "register-collected-outcomes", help="Link audited final labels"
+    )
+    outcomes.add_argument("outcomes", type=Path)
+    outcomes.add_argument("--sha256", required=True)
+    outcomes.add_argument("--root", type=Path, default=Path.cwd())
     backtest = subcommands.add_parser(
         "backtest", help="Run a tier-labelled chronological baseline evaluation"
     )
@@ -86,6 +131,7 @@ def main() -> None:
     backtest.add_argument("--min-train-events", type=int, default=2)
     backtest.add_argument("--seed", type=int, default=42)
     backtest.add_argument("--root", type=Path, default=Path.cwd())
+    backtest.add_argument("--benchmark-dir", type=Path)
     hardware = subcommands.add_parser(
         "model-hardware", help="Probe and benchmark installed CPU/GPU backends"
     )
@@ -99,12 +145,66 @@ def main() -> None:
     stronger.add_argument("--min-train-events", type=int, default=2)
     stronger.add_argument("--seed", type=int, default=42)
     stronger.add_argument("--draws", type=int, default=4096)
+    stronger.add_argument(
+        "--calibration", choices=["sigmoid", "isotonic", "identity"], default="sigmoid"
+    )
+    stronger.add_argument("--calibration-events", type=int, default=1)
     stronger.add_argument("--device", choices=["cpu", "auto", "cuda"], default="auto")
     stronger.add_argument("--root", type=Path, default=Path.cwd())
+    stronger.add_argument("--benchmark-dir", type=Path)
     args = parser.parse_args()
     paths = StoragePaths(getattr(args, "root", Path.cwd()))
     report: IngestReport | EnrichmentReport
     try:
+        if args.command == "discover-gold-candidates":
+            result = discover_candidates(paths.root, seasons=tuple(args.seasons), limit=args.limit)
+            print(f"status: {result['auditability_report']['status']}")
+            print(f"candidates: {len(result['catalog']['candidates'])}")
+            print(f"eligible_gold_races: {result['catalog']['eligible_gold_races']}")
+            print(f"catalog: {result['catalog_path']}")
+            print(f"report: {result['report_path']}")
+            return
+        if args.command == "audit-candidates":
+            result = discover_auditability(args.catalog, paths.root, limit=args.limit)
+            print(f"status: {result['status']}")
+            print(f"candidates: {len(result['candidates'])}")
+            print(f"eligible_gold_races: {result['eligible_gold_races']}")
+            return
+        if args.command == "build-gold-core":
+            print(json.dumps(reconstruct_gold_core(args.manifest, paths.root), indent=2))
+            return
+        if args.command == "audit-winter":
+            print(
+                json.dumps(
+                    audit_winter_pool(args.catalog, paths.root, reuse_retained=args.reuse_retained),
+                    indent=2,
+                )
+            )
+            return
+        if args.command == "collect-next-race":
+            result = scheduler_tick(
+                paths.root,
+                season=args.season,
+                new_capture=args.new_capture,
+                collect_pre_race=args.pre_race,
+            )
+            print(json.dumps(result, indent=2))
+            if result.get("status") == "error":
+                raise SystemExit(1)
+            return
+        if args.command == "collection-status":
+            print(json.dumps(scheduler_status(paths.root), indent=2))
+            return
+        if args.command == "register-collected-outcomes":
+            print(
+                json.dumps(
+                    import_scheduler_outcomes(
+                        paths.root, args.outcomes, expected_sha256=args.sha256
+                    ),
+                    indent=2,
+                )
+            )
+            return
         if args.command == "model-hardware":
             output = paths.models / "experiments" / "hardware.json"
             result = inspect_hardware(output, workload_rows=args.workload_rows)
@@ -121,7 +221,7 @@ def main() -> None:
             )
             report_path = paths.models / "experiments" / tier.value.lower() / "comparison.json"
             result = run_probabilistic_files(
-                paths.benchmarks / f"{tier.value.lower()}.parquet",
+                (args.benchmark_dir or paths.benchmarks) / f"{tier.value.lower()}.parquet",
                 tier,
                 report_path,
                 paths.predictions / "probabilistic" / f"{tier.value.lower()}.parquet",
@@ -131,6 +231,8 @@ def main() -> None:
                 draws=args.draws,
                 device=args.device,
                 hardware=hardware_report,
+                calibration_method=args.calibration,
+                calibration_event_count=args.calibration_events,
             )
             print(f"status: {result['status']}")
             print(f"prediction_rows: {result['prediction_rows']}")
@@ -153,7 +255,7 @@ def main() -> None:
         if args.command == "backtest":
             tier = BenchmarkTier(args.tier)
             result = run_backtest_files(
-                paths.benchmarks / f"{tier.value.lower()}.parquet",
+                (args.benchmark_dir or paths.benchmarks) / f"{tier.value.lower()}.parquet",
                 tier,
                 paths.models / "backtests" / f"{tier.value.lower()}.json",
                 paths.root / "data" / "predictions" / "backtests" / f"{tier.value.lower()}.parquet",

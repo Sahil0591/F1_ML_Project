@@ -18,7 +18,7 @@ from f1_ml_predictor.features.snapshot import (
 )
 from f1_ml_predictor.identifiers import EntityId, EntityKind, EventId
 from f1_ml_predictor.time import require_known_by, require_utc
-from f1_ml_predictor.trust.evidence import BenchmarkTier, EvidenceClass
+from f1_ml_predictor.trust.evidence import BenchmarkTier, EvidenceClass, evidence_from_dict
 from f1_ml_predictor.trust.outcomes import OUTCOME_SCHEMA, validate_audited_outcomes
 
 _TIERS = (BenchmarkTier.GOLD, BenchmarkTier.SILVER, BenchmarkTier.DEVELOPMENT)
@@ -78,6 +78,10 @@ def _tier_from_evidence(row: dict[str, Any]) -> BenchmarkTier:
         return BenchmarkTier.DEVELOPMENT
     evidence = json.loads(raw)
     tiers: list[BenchmarkTier] = []
+    if all(row.get(feature) is None for feature in NUMERIC_FEATURES):
+        context = evidence.get("__context__")
+        if context is not None:
+            tiers.append(_context_tier(row, context))
     for feature in NUMERIC_FEATURES:
         if row.get(feature) is None:
             continue
@@ -118,7 +122,62 @@ def _tier_from_evidence(row: dict[str, Any]) -> BenchmarkTier:
     return declared_tier
 
 
+def _context_tier(row: dict[str, Any], context: Any) -> BenchmarkTier:
+    """Validate required published context without inventing an absent numeric value."""
+    if not isinstance(context, dict) or context.get("tier") != row["benchmark_tier"]:
+        raise ValueError("missing-value context has an inconsistent tier")
+    provenance = json.loads(row["provenance"])
+    records = provenance.get("inputs")
+    sources = context.get("inputs")
+    if (
+        provenance.get("event_id") != row["event_id"]
+        or not isinstance(records, list)
+        or len(records) < 2
+        or not isinstance(sources, list)
+        or len(sources) != len(records) + 1
+    ):
+        raise ValueError("missing-value context lacks required event, roster and qualifying inputs")
+    event_reference = provenance["event_reference"]
+    event_proof = provenance.get("event_evidence")
+    if not isinstance(event_proof, dict):
+        raise ValueError("missing-value context lacks event evidence")
+    expected = {
+        (record["reference"], record["sha256"], record["available_at"]) for record in records
+    }
+    event_key = (
+        event_reference,
+        event_proof.get("artifact_sha256"),
+        event_proof.get("available_at"),
+    )
+    expected.add(event_key)
+    seen = set()
+    tiers = []
+    for source in sources:
+        reference = source.get("reference")
+        proof = source.get("evidence")
+        if not isinstance(proof, dict):
+            raise ValueError("missing-value context has malformed evidence")
+        key = (reference, proof.get("artifact_sha256"), proof.get("available_at"))
+        if key in seen or proof.get("reference") != reference:
+            raise ValueError("missing-value context has malformed or duplicate evidence")
+        _validate_evidence_record(proof)
+        seen.add(key)
+        if key == event_key:
+            if proof != event_proof:
+                raise ValueError("missing-value event context does not match its provenance")
+        elif key not in expected:
+            raise ValueError("missing-value input context does not match its exact provenance")
+        available = proof.get("available_at")
+        if isinstance(available, str):
+            require_known_by(datetime.fromisoformat(available), row["prediction_timestamp"])
+        tiers.append(evidence_from_dict(proof).tier)
+    if seen != expected:
+        raise ValueError("missing-value context omits a required input")
+    return max(tiers, key=_TIERS.index)
+
+
 def _validate_evidence_record(proof: dict[str, Any]) -> None:
+    evidence_from_dict(proof)
     if not isinstance(proof.get("reference"), str) or not proof["reference"].strip():
         raise ValueError("feature input evidence has no reference")
     available = proof.get("available_at")
@@ -260,7 +319,13 @@ def _read_candidate(
         raise ValueError("benchmark input paths and hashes must be strings")
     feature_path = _safe_file(root, feature_relative, feature_hash)
     outcome_path = _safe_file(root, outcome_relative, outcome_hash)
-    return event, cutoff, cutoff_kind, pq.read_table(feature_path), pq.read_table(outcome_path)
+    return (
+        event,
+        cutoff,
+        cutoff_kind,
+        pq.ParquetFile(feature_path).read(),
+        pq.ParquetFile(outcome_path).read(),
+    )
 
 
 def _empty_table() -> pa.Table:

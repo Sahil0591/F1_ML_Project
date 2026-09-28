@@ -15,7 +15,7 @@ from f1_ml_predictor.benchmarks.builder import (
 )
 from f1_ml_predictor.models import probabilistic
 from f1_ml_predictor.models.backtest import rolling_folds
-from f1_ml_predictor.models.distributions import race_distribution
+from f1_ml_predictor.models.distributions import race_distribution, sample_race_orders
 from f1_ml_predictor.models.hardware import choose_device, library_versions
 from f1_ml_predictor.models.probabilistic import (
     calibration_split,
@@ -137,7 +137,9 @@ def test_missing_dnf_labels_keep_prior_and_do_not_invent_metrics():
         BenchmarkTier.DEVELOPMENT,
         backends=("hist",),
     )
-    assert result["folds"][0]["dnf_training_status"] == "smoothed_prior"
+    assert result["folds"][0]["dnf_training_status"] == "insufficient_data_prior"
+    assert result["folds"][0]["dnf_prior"] == 0.5
+    assert result["observation_counts"]["known_dnf_labels"] == 0
     assert result["folds"][0]["dnf_training_labels"] == 0
     assert result["comparisons"]["post_qualifying"]["hist"]["metrics"]["dnf"] == {
         "status": "insufficient_data",
@@ -281,9 +283,9 @@ def test_optional_libraries_are_not_required(monkeypatch):
     assert {row["backend"] for row in result["predictions"]} == {"hist"}
 
 
-def test_selection_requires_five_events_and_no_regressions():
+def test_selection_requires_eight_gold_events_and_no_regressions():
     metrics = {
-        task: {"status": "evaluated", "n": 5, "log_loss": 0.3}
+        task: {"status": "evaluated", "n": 8, "log_loss": 0.3}
         for task in (
             "winner",
             "podium",
@@ -291,10 +293,47 @@ def test_selection_requires_five_events_and_no_regressions():
             "finishing_position",
         )
     }
-    comparison = {"hist": {"metrics": metrics, "regressions": []}}
-    assert select_candidate(comparison)["selected_backend"] == "hist"
-    comparison["hist"]["regressions"] = [{"task": "dnf"}]
+    comparison = {
+        "hist": {
+            "metrics": metrics,
+            "regressions": [],
+            "paired_event_ids": [f"season=2025/round={i:02}" for i in range(1, 9)],
+        }
+    }
     assert select_candidate(comparison)["selected_backend"] is None
+    assert (
+        select_candidate(comparison, tier=BenchmarkTier.SILVER, eligible_events=20)[
+            "selected_backend"
+        ]
+        is None
+    )
+    assert (
+        select_candidate(comparison, tier=BenchmarkTier.GOLD, eligible_events=7)["selected_backend"]
+        is None
+    )
+    assert (
+        select_candidate(comparison, tier=BenchmarkTier.GOLD, eligible_events=8)["selected_backend"]
+        == "hist"
+    )
+    comparison["hist"]["regressions"] = [{"task": "dnf"}]
+    assert (
+        select_candidate(comparison, tier=BenchmarkTier.GOLD, eligible_events=8)["selected_backend"]
+        is None
+    )
+    with pytest.raises(ValueError, match="eight"):
+        select_candidate(comparison, minimum_events=7)
+
+
+def test_joint_order_export_matches_reported_marginals():
+    orders = sample_race_orders([1, 2, 3], [0.1, 0.2, 0.3], draws=256, seed=7)
+    marginals = race_distribution([1, 2, 3], [0.1, 0.2, 0.3], draws=256, seed=7)
+    assert all(sorted(order) == [0, 1, 2] for order in orders)
+    assert orders == sample_race_orders([1, 2, 3], [0.1, 0.2, 0.3], draws=256, seed=7)
+    for driver in range(3):
+        assert (
+            sum(order[0] == driver for order in orders) / 256
+            == marginals[driver]["winner_probability"]
+        )
 
 
 def test_cutoff_kinds_are_evaluated_and_selected_separately():
@@ -331,3 +370,19 @@ def test_future_features_duplicate_rosters_and_tier_mismatches_are_rejected():
     rows[0]["feature_timestamp"] = rows[0]["prediction_timestamp"] + timedelta(seconds=1)
     with pytest.raises(ValueError):
         run_probabilistic_backtest(pa.Table.from_pylist(rows), BenchmarkTier.DEVELOPMENT)
+
+
+def test_backend_missing_sentinel_is_preserved_in_strict_artifact_json() -> None:
+    from f1_ml_predictor.models.probabilistic import _estimator_configuration
+
+    class Backend:
+        def get_params(self) -> dict:
+            return {"missing": float("nan"), "seed": 42, "device": "cpu"}
+
+    configuration = _estimator_configuration(Backend())
+    assert configuration == {
+        "missing": {"type": "float", "value": "NaN"},
+        "seed": 42,
+        "device": "cpu",
+    }
+    assert json.loads(json.dumps(configuration, allow_nan=False)) == configuration

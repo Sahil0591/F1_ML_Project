@@ -1,6 +1,6 @@
 # F1 ML Predictor Project Plan
 
-Status: Phases 1 through 7 complete; Phase 8 modeling infrastructure implemented and verified. Real-world model selection remains deferred pending audited benchmark coverage. Updated 2026-09-28.
+Status: Phases 1 through 7 complete; Phase 8 infrastructure extended and first eight-race Gold Core evaluation completed. Prospective collection is scheduled. Independent Phase 9 simulation infrastructure is undergoing final integration. Real-world model selection remains deferred with five paired test races and no audited DNF labels. Updated 2026-09-29.
 
 ## Product and prediction contract
 
@@ -57,11 +57,26 @@ Commit subjects describe the delivered engineering capability. Commit bodies exp
 | 5. Data trust and as-of certification | Extend 4, do not rebuild it. Add explicit evidence classes, tier policy, per-feature provenance, named cutoffs, immutable prospective collection, audited outcomes, provider arbitration, cancelled qualifying and pit-lane schemas. | Offline tests reject quality upgrades, backdated live captures, late revisions, ambiguous provider data, weather-init-as-release, invalid start states, and unsafe snapshot overwrite. Legacy features stay usable but Development-labelled. | Risk: confusing publication claims with verified value versions. Output: certification contracts, audit metadata, capture CLI, conservative feature vocabulary. |
 | 6. Evidence-tiered benchmarks | Depends on 5. Build Gold, Silver, and Development datasets with final audited outcome labels, machine-readable manifests, and race/feature coverage and exclusion reports. | Deterministic partitions and hashes; event-complete label joins; no label columns used as features; no tier promotion; empty Gold explicitly reported when unsupported. | Risk: sparse certified coverage and exploratory leakage. Output: three Parquet datasets, benchmark manifest, coverage report. |
 | 7. Baselines and chronological backtests | Depends on 6. Heuristic and logistic winner/podium/DNF baselines, position baseline, rolling event-grouped evaluation, calibration reports and manifests. | Training-only transforms, time-ordered folds, label availability at training time, deterministic seeds, model smoke tests, probability coherence, per-tier metrics and honest insufficient-data states. | Risk: small sample and imbalance. Output: baseline/evaluation infrastructure; primary accuracy claims only on Gold. |
-| 8. Stronger probabilistic race models | Depends on 7. Compare gradient boosting, XGBoost, LightGBM, and CatBoost where justified, then calibrated coherent winner/podium/DNF/finish distributions. | Same chronological protocol; calibration, ranking, position and DNF tests; no undocumented baseline regression. | Risk: overfit and incoherent probabilities. Output: selected probabilistic race model. |
-| 9. Championship simulation and explanations | Depends on 8. Monte Carlo WDC/WCC with current known points, season-aware rules, local/global explanations and SHAP where compatible. | Fixed seeds, points fixtures, probability sums, sensitivity, explanation provenance. | Risk: changing rules and compounded uncertainty. Output: championship probabilities and explanations. |
+| 8. Stronger probabilistic race models | Software delivered. Add optional isotonic calibration and retain existing adapters, device policy, grouped folds and paired baselines. Audit historical Gold Core while capturing future races. | At least eight eligible Gold races for one cutoff before real selection; eight distinct paired test races and no baseline regressions before provisional selection. Calibration remains earlier-history only. | Risk: sparse direct evidence. Output: reproducible comparisons; selected model remains data-gated. |
+| 9. Championship simulation and explanations | Develop independently using the existing joint race sampler and explicit synthetic inputs. Validated real outputs depend on Phase 8 Gold acceptance. | Whole-order sampling, fixed seeds, season/event scoring, explicit classification eligibility, constructor transfers, unresolved countback ties, serialization and provenance. | Risk: changing rules and compounded uncertainty. Output: engineering simulation infrastructure now; real probabilities and compatible explanations later. |
 | 10. Dashboard and operations | Depends on 7 for initial interface and 9 for full scope. Separate read-only API/UI for published predictions, evidence tier, uncertainty and freshness; scheduled bounded refresh. | API/UI integration, responsive workflows, stale/missing states, deployment/runbook, offline suite. | Risk: presenting exploratory or stale outputs as reliable. Output: dashboard and operational collection workflow. |
 
 ## Remaining roadmap policy
+
+Run two data tracks concurrently. First rank a bounded 12-to-20-race historical
+pool by direct publication/version evidence, audit strongest candidates first,
+and stop expanding when useful Gold evaluation coverage exists. Gold Core can
+omit unverifiable optional inputs. Gold Full can grow through richer prospective
+captures and is not a prerequisite for baseline evaluation. Target at least eight
+eligible Core races for the post-qualifying cohort without relaxing evidence
+requirements. Retain per-snapshot manifests, availability matrices, hashes,
+registry entries and explicit exclusion reasons. See [Gold workflow](GOLD_WORKFLOW.md).
+
+Prospective ticks discover the next race and freeze fresh post-qualifying input
+versions while historical audits proceed. Later audited outcomes attach separately.
+Missed captures are never backdated. Phase 9 may use synthetic joint orders while
+real model selection is blocked; fixture metrics and WDC/WCC outputs are engineering
+checks only. Avoid exhaustive model searches before Gold coverage exists.
 
 Phase 5 evidence classes are `captured_live`, `source_published_timestamp`, `versioned_archive`, `conservative_reconstruction`, and `current_state_only`. Evidence must bind to the exact value version. Captured-live availability equals capture time; published/archive evidence requires independently audited timestamp/version metadata; conservative reconstruction requires an explicit method and upper availability bound. Existing free-form references default to current-state/Development, never upgraded implicitly.
 
@@ -185,6 +200,59 @@ zero predictions, no accuracy metrics, and deferred selection. There are still
 fixture metrics or synthetic timing workloads are claimed as real-world accuracy.
 Phase 8 software is delivered; the selected real-world race model remains a
 data-dependent acceptance gate before Phase 9 uses it.
+
+## Dual-track Gold and Phase 8 continuation result
+
+Automatic discovery resolves exact FIA season/event selectors and ranks a bounded
+17-race pool from retained current schedules and publication registries without
+asserting Gold eligibility. Direct-document auditing then checks a reviewed
+nine-race winter shortlist and stops at eight eligible post-qualifying races:
+2025 China, Sao Paulo, Las Vegas, Qatar and Abu Dhabi; 2026 Australia, China and
+Japan. The cohort contains 166 drivers. Exact qualifying, roster, schedule and
+final-target sources have separate hashes, publication bounds, evidence manifests,
+availability matrices, inclusion/exclusion reasons and immutable snapshots.
+Unverifiable optional grid, weather, practice and historical aggregates remain
+missing. Withdrawn preliminary audits remain preserved with explicit reasons.
+
+The Gold baseline backtest evaluated six chronological races with 126 prediction
+rows. All four stronger backends completed five identical paired test races,
+reserving earlier training and calibration history: 106 drivers per backend,
+424 prediction rows. Winner metrics have five race observations, podium metrics
+106 driver observations, finishing-position metrics 89 known ordinals, and DNF
+metrics zero audited labels. All folds used CPU under the verified device policy.
+No champion is selected: eight eligible races permit evaluation, but five paired
+tests, missing DNF metrics and recorded baseline regressions fail selection.
+The initial historical audit stops here; future independent data must confirm
+performance. See [Gold workflow](GOLD_WORKFLOW.md) for hashes and limitations.
+
+Sigmoid, isotonic and identity calibration now reserve configurable earlier event
+windows and skip with explicit counts when unsupported. Missing qualifying values
+stay null, including an entered driver's all-missing numeric row; Gold requires
+exact event, roster and qualifying context rather than invented values.
+Model reports preserve the explicit unvalidated DNF prior and strict-JSON backend
+parameters. The eight-race selection floor cannot be reduced or bypassed by
+duplicate cutoffs, Silver, Development or fixture metrics.
+
+The limited-user Windows task `f1_ml_predictor_prospective` is installed and its
+first scheduled tick exited successfully. Five-minute ticks discover fresh
+schedules, freeze post-qualifying versions, normalize only frozen bytes, and later
+audit final FIA outcomes separately before benchmark eligibility. A crash releases
+the OS advisory lock; captured features cannot be overwritten or backfilled.
+The laptop must remain awake and the user logged in. Renew the one-year task in
+September 2027. No prospective race snapshot exists before qualifying is observed.
+
+Verification: 495 data/model/collection tests passed, including bounded candidate discovery,
+exact historical sources and targets, immutable replay, crash-safe collection,
+calibration leakage and Gold selection guards. An additional 35 Phase 9 fixtures
+passed during integration. Ruff lint/format and strict mypy passed. Source punctuation,
+diff/artifact and commit-message checks are required before the milestone commit.
+
+Remaining Phase 8 acceptance requires at least eight distinct paired Gold test
+races, auditable DNF targets and no required baseline regressions, followed by
+future independent confirmation. Real Phase 9 WDC/WCC claims remain gated on that
+validated race model. Phase 10 can later expose published reports with tier,
+sample-count and freshness states; it cannot present these diagnostics as
+validated championship forecasts.
 
 ## Orchestration
 

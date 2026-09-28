@@ -1,0 +1,1051 @@
+{
+  "schema_version": 1,
+  "research_date": "2026-09-28",
+  "purpose": "Official-source discovery manifest for 17 recent historical post_qualifying candidates; candidate count is not Gold race count.",
+  "certification_status": "No candidate certified Gold by this manifest.",
+  "identifier_basis": {
+    "style": "Project Ergast/Jolpica canonical circuit identifiers",
+    "local_schedule_path": "data/normalized/events/season=2025/data.parquet",
+    "local_cross_check_status": "Pending: shell helper failed when reading schedule; known 2025 round mappings were used. Local schedule is identity reference only, not historical availability evidence."
+  },
+  "first_eight_research_priority": [
+    {
+      "season": 2025,
+      "round": 14
+    },
+    {
+      "season": 2025,
+      "round": 9
+    },
+    {
+      "season": 2025,
+      "round": 12
+    },
+    {
+      "season": 2025,
+      "round": 10
+    },
+    {
+      "season": 2025,
+      "round": 15
+    },
+    {
+      "season": 2025,
+      "round": 8
+    },
+    {
+      "season": 2025,
+      "round": 5
+    },
+    {
+      "season": 2025,
+      "round": 24
+    }
+  ],
+  "audit_policy": {
+    "feature_scope": "Qualifying plus explicitly evidenced roster and circuit identity. Omit optional fields lacking auditable pre-cutoff provenance.",
+    "publication_clock": "The official registry prints CET. Exact fixed UTC+1 versus colloquial Central European summer time has not been independently established.",
+    "pdf_clock": "Cover Date and Time carry no timezone. Event-local interpretation is plausible from comparisons but is an inference, not explicit PDF evidence.",
+    "source_availability_utc": null,
+    "qualification_completed": "A matching classification issue is a potential completion upper bound after its timezone is established. Scheduled qualifying end is not evidence of actual completion.",
+    "version_selection": "Resolve every original, revised and recalled required-field document published by cutoff. A current generic URL can point to a later replacement.",
+    "availability_proof_limit": "Official PDFs and present registry provide printed issue/publication claims observed today. They do not independently prove which bytes were publicly served at a historical instant. Retain raw PDF bytes, hashes and registry snapshots; strengthen with archived release evidence where available.",
+    "conservative_timezone_bound": "max(UTC under CET, UTC under CEST) can be a conservative release bound if these are the only plausible interpretations. It is not an exact timestamp and cannot satisfy an exact-timestamp Gold contract.",
+    "labels": "Final race classifications are post-race labels and must never enter pre-race features.",
+    "weather": "Omitted from Gold Core until actual operational forecast release availability is evidenced."
+  },
+  "shared_schedule_source": {
+    "publisher": "Formula 1",
+    "url": "https://www.formula1.com/en/latest/article/f1-announces-race-start-times-for-2025-season.490KLLD7T1AAM7wQl28tn6",
+    "observed_fields": [
+      "Race date",
+      "Local scheduled start",
+      "GMT scheduled start"
+    ],
+    "publication_datetime": "2025-02-03T17:02:00Z",
+    "publication_verification": "Official page explicitly prints UTC publication timestamp; this is a source claim observed today, not independent archived-byte proof.",
+    "clock_semantics": "F1 table says start time. FIA event timetables explicitly define starred race times as formation-lap start; do not silently call these actual lights-out.",
+    "publication_raw": "Feb 03, 2025 5:02pm UTC"
+  },
+  "weather_research": {
+    "single_runs_url": "https://open-meteo.com/en/docs/single-runs-api",
+    "historical_forecast_url": "https://open-meteo.com/en/docs/historical-forecast-api",
+    "finding": "Model initialization is not public release time. Historical forecast is a stitched series, not retained race-time forecast horizon. Archive run IDs and historical dissemination evidence are required before inclusion."
+  },
+  "parsing_rules": [
+    "Match PDF cover event, year, document number, title and actual enclosed timing table.",
+    "Parse qualifying rows by coordinates or validated table columns; retain car number, driver, entrant, Q1/Q2/Q3, laps and missing-value status.",
+    "Do not invent numeric qualifying positions for NOT CLASSIFIED or DISQUALIFIED rows.",
+    "Do not conflate classification rank with later starting-grid slot. Grid PDFs use spatial two-column ordering.",
+    "Capture the exact raw publication and issue strings before deriving timestamps.",
+    "Validate event/year in returned registry content because some FIA URL filters appear to be ignored.",
+    "Verify original versus replacement bytes and cover metadata even when filenames are identical."
+  ],
+  "candidates": [
+    {
+      "season": 2025,
+      "round": 1,
+      "circuit_id": "albert_park",
+      "event_name": "Australian Grand Prix",
+      "research_priority": null,
+      "audit_status": "Excluded from certified Gold pending exact availability, event-contract and version audits.",
+      "qualifying": {
+        "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2025-2071/event/Australian%20Grand%20Prix",
+        "pdf_url": "https://www.fia.com/system/files/decision-document/2025_australian_grand_prix_-_provisional_qualifying_classification.pdf",
+        "document_number": 23,
+        "title": "Provisional Qualifying Classification",
+        "pdf_issue": {
+          "raw_datetime": "2025-03-15T17:28:00",
+          "printed_timezone": null,
+          "interpretation_status": "unresolved_event_local_inference"
+        },
+        "registry_publication": {
+          "raw_datetime": "2025-03-15T07:30:00",
+          "printed_timezone": "CET",
+          "interpretation_status": "unresolved_CET_vs_CEST"
+        },
+        "availability_utc": null,
+        "verification_status": "Official PDF cover and registry publication row were read during research.",
+        "historical_bytes_verification": "No independent historical byte archive verified."
+      },
+      "pre_race_event": {
+        "scheduled_race_date": "2025-03-16",
+        "scheduled_race_local_time": "15:00",
+        "scheduled_race_gmt_time": "04:00",
+        "source_url": "https://www.formula1.com/en/latest/article/f1-announces-race-start-times-for-2025-season.490KLLD7T1AAM7wQl28tn6",
+        "source_publication_datetime": "2025-02-03T17:02:00Z",
+        "circuit_id_evidence_status": "Canonical mapping recorded; retain pre-cutoff official circuit map/timing footer or timetable for circuit identity proof.",
+        "qualifying_completed_at": null,
+        "qualifying_completed_status": "Potential upper bound from classification issue after timezone verification; not inferred from scheduled timetable end.",
+        "fia_timetable": null,
+        "timetable_lead": null
+      },
+      "final_race_label": {
+        "url": "https://www.fia.com/system/files/decision-document/2025_australian_grand_prix_-_final_race_classification.pdf",
+        "verification_status": "Candidate URL pattern only; final label document and later amendments must be independently verified.",
+        "feature_use_allowed": false
+      },
+      "caveats": [],
+      "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2025-2071/event/Australian%20Grand%20Prix",
+      "qualifying_url": "https://www.fia.com/system/files/decision-document/2025_australian_grand_prix_-_provisional_qualifying_classification.pdf",
+      "document_id": "23"
+    },
+    {
+      "season": 2025,
+      "round": 3,
+      "circuit_id": "suzuka",
+      "event_name": "Japanese Grand Prix",
+      "research_priority": null,
+      "audit_status": "Excluded from certified Gold pending exact availability, event-contract and version audits.",
+      "qualifying": {
+        "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/event/Japanese%20Grand%20Prix/season/season-2025-2071",
+        "pdf_url": "https://www.fia.com/system/files/decision-document/2025_japanese_grand_prix_-_provisional_qualifying_classification.pdf",
+        "document_number": 35,
+        "title": "Provisional Qualifying Classification",
+        "pdf_issue": {
+          "raw_datetime": "2025-04-05T16:25:00",
+          "printed_timezone": null,
+          "interpretation_status": "unresolved_event_local_inference"
+        },
+        "registry_publication": {
+          "raw_datetime": "2025-04-05T09:29:00",
+          "printed_timezone": "CET",
+          "interpretation_status": "unresolved_CET_vs_CEST"
+        },
+        "availability_utc": null,
+        "verification_status": "Official PDF cover and registry publication row were read during research.",
+        "historical_bytes_verification": "No independent historical byte archive verified."
+      },
+      "pre_race_event": {
+        "scheduled_race_date": "2025-04-06",
+        "scheduled_race_local_time": "14:00",
+        "scheduled_race_gmt_time": "05:00",
+        "source_url": "https://www.formula1.com/en/latest/article/f1-announces-race-start-times-for-2025-season.490KLLD7T1AAM7wQl28tn6",
+        "source_publication_datetime": "2025-02-03T17:02:00Z",
+        "circuit_id_evidence_status": "Canonical mapping recorded; retain pre-cutoff official circuit map/timing footer or timetable for circuit identity proof.",
+        "qualifying_completed_at": null,
+        "qualifying_completed_status": "Potential upper bound from classification issue after timezone verification; not inferred from scheduled timetable end.",
+        "fia_timetable": null,
+        "timetable_lead": null
+      },
+      "final_race_label": {
+        "url": "https://www.fia.com/system/files/decision-document/2025_japanese_grand_prix_-_final_race_classification.pdf",
+        "verification_status": "Candidate URL pattern only; final label document and later amendments must be independently verified.",
+        "feature_use_allowed": false
+      },
+      "caveats": [],
+      "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/event/Japanese%20Grand%20Prix/season/season-2025-2071",
+      "qualifying_url": "https://www.fia.com/system/files/decision-document/2025_japanese_grand_prix_-_provisional_qualifying_classification.pdf",
+      "document_id": "35"
+    },
+    {
+      "season": 2025,
+      "round": 4,
+      "circuit_id": "bahrain",
+      "event_name": "Bahrain Grand Prix",
+      "research_priority": null,
+      "audit_status": "Excluded from certified Gold pending exact availability, event-contract and version audits.",
+      "qualifying": {
+        "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2025-2071/event/Bahrain%20Grand%20Prix",
+        "pdf_url": "https://www.fia.com/system/files/decision-document/2025_bahrain_grand_prix_-_provisional_qualifying_classification.pdf",
+        "document_number": 29,
+        "title": "Provisional Qualifying Classification",
+        "pdf_issue": {
+          "raw_datetime": "2025-04-12T20:36:00",
+          "printed_timezone": null,
+          "interpretation_status": "unresolved_event_local_inference"
+        },
+        "registry_publication": {
+          "raw_datetime": "2025-04-12T19:37:00",
+          "printed_timezone": "CET",
+          "interpretation_status": "unresolved_CET_vs_CEST"
+        },
+        "availability_utc": null,
+        "verification_status": "Official PDF cover and registry publication row were read during research.",
+        "historical_bytes_verification": "No independent historical byte archive verified."
+      },
+      "pre_race_event": {
+        "scheduled_race_date": "2025-04-13",
+        "scheduled_race_local_time": "18:00",
+        "scheduled_race_gmt_time": "15:00",
+        "source_url": "https://www.formula1.com/en/latest/article/f1-announces-race-start-times-for-2025-season.490KLLD7T1AAM7wQl28tn6",
+        "source_publication_datetime": "2025-02-03T17:02:00Z",
+        "circuit_id_evidence_status": "Canonical mapping recorded; retain pre-cutoff official circuit map/timing footer or timetable for circuit identity proof.",
+        "qualifying_completed_at": null,
+        "qualifying_completed_status": "Potential upper bound from classification issue after timezone verification; not inferred from scheduled timetable end.",
+        "fia_timetable": null,
+        "timetable_lead": null
+      },
+      "final_race_label": {
+        "url": "https://www.fia.com/system/files/decision-document/2025_bahrain_grand_prix_-_final_race_classification.pdf",
+        "verification_status": "Candidate URL pattern only; final label document and later amendments must be independently verified.",
+        "feature_use_allowed": false
+      },
+      "caveats": [
+        "Cover title is provisional qualifying classification but Enclosed incorrectly says Provisional Starting Grid.pdf; verify actual timing table."
+      ],
+      "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2025-2071/event/Bahrain%20Grand%20Prix",
+      "qualifying_url": "https://www.fia.com/system/files/decision-document/2025_bahrain_grand_prix_-_provisional_qualifying_classification.pdf",
+      "document_id": "29"
+    },
+    {
+      "season": 2025,
+      "round": 5,
+      "circuit_id": "jeddah",
+      "event_name": "Saudi Arabian Grand Prix",
+      "research_priority": 7,
+      "audit_status": "Excluded from certified Gold pending exact availability, event-contract and version audits.",
+      "qualifying": {
+        "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2025-2071/event/Saudi%20Arabian%20Grand%20Prix",
+        "pdf_url": "https://www.fia.com/system/files/decision-document/2025_saudi_arabian_grand_prix_-_provisional_qualifying_classification.pdf",
+        "document_number": 30,
+        "title": "Provisional Qualifying Classification",
+        "pdf_issue": {
+          "raw_datetime": "2025-04-19T21:30:00",
+          "printed_timezone": null,
+          "interpretation_status": "unresolved_event_local_inference"
+        },
+        "registry_publication": {
+          "raw_datetime": "2025-04-19T20:30:00",
+          "printed_timezone": "CET",
+          "interpretation_status": "unresolved_CET_vs_CEST"
+        },
+        "availability_utc": null,
+        "verification_status": "Official PDF cover and registry publication row were read during research.",
+        "historical_bytes_verification": "No independent historical byte archive verified."
+      },
+      "pre_race_event": {
+        "scheduled_race_date": "2025-04-20",
+        "scheduled_race_local_time": "20:00",
+        "scheduled_race_gmt_time": "17:00",
+        "source_url": "https://www.formula1.com/en/latest/article/f1-announces-race-start-times-for-2025-season.490KLLD7T1AAM7wQl28tn6",
+        "source_publication_datetime": "2025-02-03T17:02:00Z",
+        "circuit_id_evidence_status": "Canonical mapping recorded; retain pre-cutoff official circuit map/timing footer or timetable for circuit identity proof.",
+        "qualifying_completed_at": null,
+        "qualifying_completed_status": "Potential upper bound from classification issue after timezone verification; not inferred from scheduled timetable end.",
+        "fia_timetable": {
+          "url": "https://www.fia.com/system/files/decision-document/2025_jeddah_event_-_timetable_v5.pdf",
+          "document_number": 25,
+          "pdf_issue_raw_datetime": "2025-04-18T20:01:00",
+          "pdf_timezone": null,
+          "registry_index_url": "https://www.fia.com/documents/championship/event/Jeddah",
+          "registry_publication_raw_datetime": "2025-04-18T19:01:00",
+          "registry_timezone": "CET",
+          "scheduled_qualifying_start_local": "2025-04-19T20:00:00",
+          "scheduled_qualifying_end_local": "2025-04-19T21:00:00",
+          "scheduled_race_start_local": "2025-04-20T20:00:00",
+          "race_start_semantics": "Scheduled formation-lap start; footnote explicitly defines starred race times.",
+          "verification_status": "Official PDF cover and timetable read; publication proof remains incomplete where null.",
+          "caveats": [
+            "Published during the weekend but before F1 qualifying.",
+            "Index path has an incomplete championship filter; event and year must be validated in retained content."
+          ]
+        },
+        "timetable_lead": null
+      },
+      "final_race_label": {
+        "url": "https://www.fia.com/system/files/decision-document/2025_saudi_arabian_grand_prix_-_final_race_classification.pdf",
+        "verification_status": "Candidate URL pattern only; final label document and later amendments must be independently verified.",
+        "feature_use_allowed": false
+      },
+      "caveats": [],
+      "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2025-2071/event/Saudi%20Arabian%20Grand%20Prix",
+      "qualifying_url": "https://www.fia.com/system/files/decision-document/2025_saudi_arabian_grand_prix_-_provisional_qualifying_classification.pdf",
+      "document_id": "30"
+    },
+    {
+      "season": 2025,
+      "round": 7,
+      "circuit_id": "imola",
+      "event_name": "Emilia Romagna Grand Prix",
+      "research_priority": null,
+      "audit_status": "Excluded from certified Gold pending exact availability, event-contract and version audits.",
+      "qualifying": {
+        "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2025-2071/event/Emilia%20Romagna%20Grand%20Prix",
+        "pdf_url": "https://www.fia.com/system/files/decision-document/2025_emilia_romagna_grand_prix_-_provisional_qualifying_classification.pdf",
+        "document_number": 27,
+        "title": "Provisional Qualifying Classification",
+        "pdf_issue": {
+          "raw_datetime": "2025-05-17T17:50:00",
+          "printed_timezone": null,
+          "interpretation_status": "unresolved_event_local_inference"
+        },
+        "registry_publication": {
+          "raw_datetime": "2025-05-17T17:50:00",
+          "printed_timezone": "CET",
+          "interpretation_status": "unresolved_CET_vs_CEST"
+        },
+        "availability_utc": null,
+        "verification_status": "Official PDF cover and registry publication row were read during research.",
+        "historical_bytes_verification": "No independent historical byte archive verified."
+      },
+      "pre_race_event": {
+        "scheduled_race_date": "2025-05-18",
+        "scheduled_race_local_time": "15:00",
+        "scheduled_race_gmt_time": "13:00",
+        "source_url": "https://www.formula1.com/en/latest/article/f1-announces-race-start-times-for-2025-season.490KLLD7T1AAM7wQl28tn6",
+        "source_publication_datetime": "2025-02-03T17:02:00Z",
+        "circuit_id_evidence_status": "Canonical mapping recorded; retain pre-cutoff official circuit map/timing footer or timetable for circuit identity proof.",
+        "qualifying_completed_at": null,
+        "qualifying_completed_status": "Potential upper bound from classification issue after timezone verification; not inferred from scheduled timetable end.",
+        "fia_timetable": null,
+        "timetable_lead": null
+      },
+      "final_race_label": {
+        "url": "https://www.fia.com/system/files/decision-document/2025_emilia_romagna_grand_prix_-_final_race_classification.pdf",
+        "verification_status": "Candidate URL pattern only; final label document and later amendments must be independently verified.",
+        "feature_use_allowed": false
+      },
+      "caveats": [
+        "Qualifying includes NOT CLASSIFIED drivers with no numeric rank; preserve entrants and missing times."
+      ],
+      "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2025-2071/event/Emilia%20Romagna%20Grand%20Prix",
+      "qualifying_url": "https://www.fia.com/system/files/decision-document/2025_emilia_romagna_grand_prix_-_provisional_qualifying_classification.pdf",
+      "document_id": "27"
+    },
+    {
+      "season": 2025,
+      "round": 8,
+      "circuit_id": "monaco",
+      "event_name": "Monaco Grand Prix",
+      "research_priority": 6,
+      "audit_status": "Excluded from certified Gold pending exact availability, event-contract and version audits.",
+      "qualifying": {
+        "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2025-2071/event/Monaco%20Grand%20Prix",
+        "pdf_url": "https://www.fia.com/system/files/decision-document/2025_monaco_grand_prix_-_provisional_qualifying_classification.pdf",
+        "document_number": 34,
+        "title": "Provisional Qualifying Classification",
+        "pdf_issue": {
+          "raw_datetime": "2025-05-24T17:35:00",
+          "printed_timezone": null,
+          "interpretation_status": "unresolved_event_local_inference"
+        },
+        "registry_publication": {
+          "raw_datetime": "2025-05-24T17:40:00",
+          "printed_timezone": "CET",
+          "interpretation_status": "unresolved_CET_vs_CEST"
+        },
+        "availability_utc": null,
+        "verification_status": "Official PDF cover and registry publication row were read during research.",
+        "historical_bytes_verification": "No independent historical byte archive verified."
+      },
+      "pre_race_event": {
+        "scheduled_race_date": "2025-05-25",
+        "scheduled_race_local_time": "15:00",
+        "scheduled_race_gmt_time": "13:00",
+        "source_url": "https://www.formula1.com/en/latest/article/f1-announces-race-start-times-for-2025-season.490KLLD7T1AAM7wQl28tn6",
+        "source_publication_datetime": "2025-02-03T17:02:00Z",
+        "circuit_id_evidence_status": "Canonical mapping recorded; retain pre-cutoff official circuit map/timing footer or timetable for circuit identity proof.",
+        "qualifying_completed_at": null,
+        "qualifying_completed_status": "Potential upper bound from classification issue after timezone verification; not inferred from scheduled timetable end.",
+        "fia_timetable": {
+          "url": "https://www.fia.com/system/files/decision-document/2025_monaco_event_-_timetable_v3_-_monaco_2025.pdf",
+          "document_number": 20,
+          "pdf_issue_raw_datetime": "2025-05-23T14:33:00",
+          "pdf_timezone": null,
+          "registry_index_url": "https://www.fia.com/documents/championships/formula-2-championship-44/season/season-2025-2071/event/Monte-Carlo",
+          "registry_publication_raw_datetime": "2025-05-23T14:34:00",
+          "registry_timezone": "CET",
+          "scheduled_qualifying_start_local": "2025-05-24T16:00:00",
+          "scheduled_qualifying_end_local": "2025-05-24T17:00:00",
+          "scheduled_race_start_local": "2025-05-25T15:00:00",
+          "race_start_semantics": "Scheduled formation-lap start; footnote explicitly defines starred race times.",
+          "verification_status": "Official Doc20 cover, Version3 timetable and matching registry publication row verified.",
+          "caveats": [
+            "Friday issue precedes F1 qualifying.",
+            "F3 registry Doc24 is a separate cover/version and must not be assigned to F2 Doc20."
+          ]
+        },
+        "timetable_lead": null
+      },
+      "final_race_label": {
+        "url": "https://www.fia.com/system/files/decision-document/2025_monaco_grand_prix_-_final_race_classification.pdf",
+        "verification_status": "Candidate URL pattern only; final label document and later amendments must be independently verified.",
+        "feature_use_allowed": false
+      },
+      "caveats": [
+        "PDF issue and registry publication differ by five minutes."
+      ],
+      "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2025-2071/event/Monaco%20Grand%20Prix",
+      "qualifying_url": "https://www.fia.com/system/files/decision-document/2025_monaco_grand_prix_-_provisional_qualifying_classification.pdf",
+      "document_id": "34"
+    },
+    {
+      "season": 2025,
+      "round": 9,
+      "circuit_id": "catalunya",
+      "event_name": "Spanish Grand Prix",
+      "research_priority": 2,
+      "audit_status": "Excluded from certified Gold pending exact availability, event-contract and version audits.",
+      "qualifying": {
+        "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2025-2071/event/Spanish%20Grand%20Prix",
+        "pdf_url": "https://www.fia.com/system/files/decision-document/2025_spanish_grand_prix_-_provisional_qualifying_classification.pdf",
+        "document_number": 19,
+        "title": "Provisional Qualifying Classification",
+        "pdf_issue": {
+          "raw_datetime": "2025-05-31T17:25:00",
+          "printed_timezone": null,
+          "interpretation_status": "unresolved_event_local_inference"
+        },
+        "registry_publication": {
+          "raw_datetime": "2025-05-31T17:25:00",
+          "printed_timezone": "CET",
+          "interpretation_status": "unresolved_CET_vs_CEST"
+        },
+        "availability_utc": null,
+        "verification_status": "Official PDF cover and registry publication row were read during research.",
+        "historical_bytes_verification": "No independent historical byte archive verified."
+      },
+      "pre_race_event": {
+        "scheduled_race_date": "2025-06-01",
+        "scheduled_race_local_time": "15:00",
+        "scheduled_race_gmt_time": "13:00",
+        "source_url": "https://www.formula1.com/en/latest/article/f1-announces-race-start-times-for-2025-season.490KLLD7T1AAM7wQl28tn6",
+        "source_publication_datetime": "2025-02-03T17:02:00Z",
+        "circuit_id_evidence_status": "Canonical mapping recorded; retain pre-cutoff official circuit map/timing footer or timetable for circuit identity proof.",
+        "qualifying_completed_at": null,
+        "qualifying_completed_status": "Potential upper bound from classification issue after timezone verification; not inferred from scheduled timetable end.",
+        "fia_timetable": {
+          "url": "https://www.fia.com/system/files/decision-document/2025_barcelona_event_-_visa_-_f2_barcelona_2025.pdf",
+          "document_number": 4,
+          "pdf_issue_raw_datetime": "2025-05-29T15:24:00",
+          "pdf_timezone": null,
+          "registry_index_url": "https://www.fia.com/documents/championships/formula-2-championship-44/season/season-2025-2071/event/Barcelona",
+          "registry_publication_raw_datetime": "2025-05-29T15:24:00",
+          "registry_timezone": "CET",
+          "scheduled_qualifying_start_local": "2025-05-31T16:00:00",
+          "scheduled_qualifying_end_local": "2025-05-31T17:00:00",
+          "scheduled_race_start_local": "2025-06-01T15:00:00",
+          "race_start_semantics": "Scheduled formation-lap start; footnote explicitly defines starred race times.",
+          "verification_status": "Official Doc4 cover, enclosed Version2 timetable and matching registry row verified.",
+          "caveats": [
+            "Thursday publication before F1 sessions. PDF issue timezone and registry CET versus CEST still unresolved."
+          ]
+        },
+        "timetable_lead": null
+      },
+      "final_race_label": {
+        "url": "https://www.fia.com/system/files/decision-document/2025_spanish_grand_prix_-_final_race_classification.pdf",
+        "verification_status": "Candidate URL pattern only; final label document and later amendments must be independently verified.",
+        "feature_use_allowed": false
+      },
+      "caveats": [
+        "A later final qualifying Doc23 is printed 19:35 and listed 19:36 CET on 31 May; later state must be selected according to the actual cutoff."
+      ],
+      "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2025-2071/event/Spanish%20Grand%20Prix",
+      "qualifying_url": "https://www.fia.com/system/files/decision-document/2025_spanish_grand_prix_-_provisional_qualifying_classification.pdf",
+      "document_id": "19"
+    },
+    {
+      "season": 2025,
+      "round": 10,
+      "circuit_id": "villeneuve",
+      "event_name": "Canadian Grand Prix",
+      "research_priority": 4,
+      "audit_status": "Excluded from certified Gold pending exact availability, event-contract and version audits.",
+      "qualifying": {
+        "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2025-2071/event/Canadian%20Grand%20Prix",
+        "pdf_url": "https://www.fia.com/system/files/decision-document/2025_canadian_grand_prix_-_provisional_qualifying_classification.pdf",
+        "document_number": 35,
+        "title": "Provisional Qualifying Classification",
+        "pdf_issue": {
+          "raw_datetime": "2025-06-14T17:25:00",
+          "printed_timezone": null,
+          "interpretation_status": "unresolved_event_local_inference"
+        },
+        "registry_publication": {
+          "raw_datetime": "2025-06-14T23:26:00",
+          "printed_timezone": "CET",
+          "interpretation_status": "unresolved_CET_vs_CEST"
+        },
+        "availability_utc": null,
+        "verification_status": "Official PDF cover and registry publication row were read during research.",
+        "historical_bytes_verification": "No independent historical byte archive verified."
+      },
+      "pre_race_event": {
+        "scheduled_race_date": "2025-06-15",
+        "scheduled_race_local_time": "14:00",
+        "scheduled_race_gmt_time": "18:00",
+        "source_url": "https://www.formula1.com/en/latest/article/f1-announces-race-start-times-for-2025-season.490KLLD7T1AAM7wQl28tn6",
+        "source_publication_datetime": "2025-02-03T17:02:00Z",
+        "circuit_id_evidence_status": "Canonical mapping recorded; retain pre-cutoff official circuit map/timing footer or timetable for circuit identity proof.",
+        "qualifying_completed_at": null,
+        "qualifying_completed_status": "Potential upper bound from classification issue after timezone verification; not inferred from scheduled timetable end.",
+        "fia_timetable": null,
+        "timetable_lead": null
+      },
+      "final_race_label": {
+        "url": "https://www.fia.com/system/files/decision-document/2025_canadian_grand_prix_-_final_race_classification.pdf",
+        "verification_status": "Candidate URL pattern only; final label document and later amendments must be independently verified.",
+        "feature_use_allowed": false
+      },
+      "caveats": [],
+      "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2025-2071/event/Canadian%20Grand%20Prix",
+      "qualifying_url": "https://www.fia.com/system/files/decision-document/2025_canadian_grand_prix_-_provisional_qualifying_classification.pdf",
+      "document_id": "35"
+    },
+    {
+      "season": 2025,
+      "round": 11,
+      "circuit_id": "red_bull_ring",
+      "event_name": "Austrian Grand Prix",
+      "research_priority": null,
+      "audit_status": "Excluded from certified Gold pending exact availability, event-contract and version audits.",
+      "qualifying": {
+        "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2025-2071/event/Austrian%20Grand%20Prix",
+        "pdf_url": "https://www.fia.com/system/files/decision-document/2025_austrian_grand_prix_-_provisional_qualifying_classification.pdf",
+        "document_number": 24,
+        "title": "Provisional Qualifying Classification",
+        "pdf_issue": {
+          "raw_datetime": "2025-06-28T17:30:00",
+          "printed_timezone": null,
+          "interpretation_status": "unresolved_event_local_inference"
+        },
+        "registry_publication": {
+          "raw_datetime": "2025-06-28T17:32:00",
+          "printed_timezone": "CET",
+          "interpretation_status": "unresolved_CET_vs_CEST"
+        },
+        "availability_utc": null,
+        "verification_status": "Official PDF cover and registry publication row were read during research.",
+        "historical_bytes_verification": "No independent historical byte archive verified."
+      },
+      "pre_race_event": {
+        "scheduled_race_date": "2025-06-29",
+        "scheduled_race_local_time": "15:00",
+        "scheduled_race_gmt_time": "13:00",
+        "source_url": "https://www.formula1.com/en/latest/article/f1-announces-race-start-times-for-2025-season.490KLLD7T1AAM7wQl28tn6",
+        "source_publication_datetime": "2025-02-03T17:02:00Z",
+        "circuit_id_evidence_status": "Canonical mapping recorded; retain pre-cutoff official circuit map/timing footer or timetable for circuit identity proof.",
+        "qualifying_completed_at": null,
+        "qualifying_completed_status": "Potential upper bound from classification issue after timezone verification; not inferred from scheduled timetable end.",
+        "fia_timetable": null,
+        "timetable_lead": null
+      },
+      "final_race_label": {
+        "url": "https://www.fia.com/system/files/decision-document/2025_austrian_grand_prix_-_final_race_classification.pdf",
+        "verification_status": "Candidate URL pattern only; final label document and later amendments must be independently verified.",
+        "feature_use_allowed": false
+      },
+      "caveats": [
+        "Registry lists recalled Final Qualifying Doc29 at 18:35 CET on 28 June with no downloadable link.",
+        "Generic final qualifying URL currently serves later Doc31, printed and listed 20:30 on 28 June. Missing recalled bytes can block reconstruction of an intermediate cutoff."
+      ],
+      "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2025-2071/event/Austrian%20Grand%20Prix",
+      "qualifying_url": "https://www.fia.com/system/files/decision-document/2025_austrian_grand_prix_-_provisional_qualifying_classification.pdf",
+      "document_id": "24"
+    },
+    {
+      "season": 2025,
+      "round": 12,
+      "circuit_id": "silverstone",
+      "event_name": "British Grand Prix",
+      "research_priority": 3,
+      "audit_status": "Excluded from certified Gold pending exact availability, event-contract and version audits.",
+      "qualifying": {
+        "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2025-2071/event/British%20Grand%20Prix",
+        "pdf_url": "https://www.fia.com/system/files/decision-document/2025_british_grand_prix_-_provisional_qualifying_classification.pdf",
+        "document_number": 27,
+        "title": "Provisional Qualifying Classification",
+        "pdf_issue": {
+          "raw_datetime": "2025-07-05T16:28:00",
+          "printed_timezone": null,
+          "interpretation_status": "unresolved_event_local_inference"
+        },
+        "registry_publication": {
+          "raw_datetime": "2025-07-05T17:28:00",
+          "printed_timezone": "CET",
+          "interpretation_status": "unresolved_CET_vs_CEST"
+        },
+        "availability_utc": null,
+        "verification_status": "Official PDF cover and registry publication row were read during research.",
+        "historical_bytes_verification": "No independent historical byte archive verified."
+      },
+      "pre_race_event": {
+        "scheduled_race_date": "2025-07-06",
+        "scheduled_race_local_time": "15:00",
+        "scheduled_race_gmt_time": "14:00",
+        "source_url": "https://www.formula1.com/en/latest/article/f1-announces-race-start-times-for-2025-season.490KLLD7T1AAM7wQl28tn6",
+        "source_publication_datetime": "2025-02-03T17:02:00Z",
+        "circuit_id_evidence_status": "Canonical mapping recorded; retain pre-cutoff official circuit map/timing footer or timetable for circuit identity proof.",
+        "qualifying_completed_at": null,
+        "qualifying_completed_status": "Potential upper bound from classification issue after timezone verification; not inferred from scheduled timetable end.",
+        "fia_timetable": {
+          "url": "https://www.fia.com/system/files/decision-document/2025_silverstone_event_-_timetable_v4_-_silverstone_2025.pdf",
+          "document_number": 7,
+          "pdf_issue_raw_datetime": "2025-07-03T18:25:00",
+          "pdf_timezone": null,
+          "registry_index_url": "https://www.fia.com/documents/motorsport-safety-general/event/Silverstone/season/season-2025-2071",
+          "registry_publication_raw_datetime": "2025-07-03T19:26:00",
+          "registry_timezone": "CET",
+          "scheduled_qualifying_start_local": "2025-07-05T15:00:00",
+          "scheduled_qualifying_end_local": "2025-07-05T16:00:00",
+          "scheduled_race_start_local": "2025-07-06T15:00:00",
+          "race_start_semantics": "Scheduled formation-lap start; footnote explicitly defines starred race times.",
+          "verification_status": "Official F3 Doc7 cover, Version4 timetable and matching registry publication row verified.",
+          "caveats": [
+            "Thursday issue precedes F1 sessions.",
+            "Registry path appears to ignore championship filtering; retain and validate F3 Doc7, event and year.",
+            "Later Version5 published Friday; inspect it for changes to required schedule fields."
+          ]
+        },
+        "timetable_lead": null
+      },
+      "final_race_label": {
+        "url": "https://www.fia.com/system/files/decision-document/2025_british_grand_prix_-_final_race_classification.pdf",
+        "verification_status": "Candidate URL pattern only; final label document and later amendments must be independently verified.",
+        "feature_use_allowed": false
+      },
+      "caveats": [
+        "Final qualifying Doc29 is printed 18:45 on 5 July and listed 19:45 CET; original provisional and later final versions must remain separate.",
+        "Entry-list text extraction can merge footnotes into car numbers, e.g. 22 plus superscript 1 becomes 221; reconcile with qualifying car numbers."
+      ],
+      "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2025-2071/event/British%20Grand%20Prix",
+      "qualifying_url": "https://www.fia.com/system/files/decision-document/2025_british_grand_prix_-_provisional_qualifying_classification.pdf",
+      "document_id": "27"
+    },
+    {
+      "season": 2025,
+      "round": 13,
+      "circuit_id": "spa",
+      "event_name": "Belgian Grand Prix",
+      "research_priority": null,
+      "audit_status": "Excluded from certified Gold pending exact availability, event-contract and version audits.",
+      "qualifying": {
+        "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/event/Belgian%20Grand%20Prix/season/season-2025-2071",
+        "pdf_url": "https://www.fia.com/system/files/decision-document/2025_belgian_grand_prix_-_provisional_qualifying_classification.pdf",
+        "document_number": 46,
+        "title": "Provisional Qualifying Classification",
+        "pdf_issue": {
+          "raw_datetime": "2025-07-26T17:17:00",
+          "printed_timezone": null,
+          "interpretation_status": "unresolved_event_local_inference"
+        },
+        "registry_publication": {
+          "raw_datetime": "2025-07-26T17:31:00",
+          "printed_timezone": "CET",
+          "interpretation_status": "unresolved_CET_vs_CEST"
+        },
+        "availability_utc": null,
+        "verification_status": "Official PDF cover and registry publication row were read during research.",
+        "historical_bytes_verification": "No independent historical byte archive verified."
+      },
+      "pre_race_event": {
+        "scheduled_race_date": "2025-07-27",
+        "scheduled_race_local_time": "15:00",
+        "scheduled_race_gmt_time": "13:00",
+        "source_url": "https://www.formula1.com/en/latest/article/f1-announces-race-start-times-for-2025-season.490KLLD7T1AAM7wQl28tn6",
+        "source_publication_datetime": "2025-02-03T17:02:00Z",
+        "circuit_id_evidence_status": "Canonical mapping recorded; retain pre-cutoff official circuit map/timing footer or timetable for circuit identity proof.",
+        "qualifying_completed_at": null,
+        "qualifying_completed_status": "Potential upper bound from classification issue after timezone verification; not inferred from scheduled timetable end.",
+        "fia_timetable": null,
+        "timetable_lead": null
+      },
+      "final_race_label": {
+        "url": "https://www.fia.com/system/files/decision-document/2025_belgian_grand_prix_-_final_race_classification.pdf",
+        "verification_status": "Candidate URL pattern only; final label document and later amendments must be independently verified.",
+        "feature_use_allowed": false
+      },
+      "caveats": [
+        "PDF issue and registry publication differ by fourteen minutes.",
+        "Sprint weekend: use the main Grand Prix qualifying document, not sprint qualifying."
+      ],
+      "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/event/Belgian%20Grand%20Prix/season/season-2025-2071",
+      "qualifying_url": "https://www.fia.com/system/files/decision-document/2025_belgian_grand_prix_-_provisional_qualifying_classification.pdf",
+      "document_id": "46"
+    },
+    {
+      "season": 2025,
+      "round": 14,
+      "circuit_id": "hungaroring",
+      "event_name": "Hungarian Grand Prix",
+      "research_priority": 1,
+      "audit_status": "Excluded from certified Gold pending exact availability, event-contract and version audits.",
+      "qualifying": {
+        "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2025-2071/event/Hungarian%20Grand%20Prix",
+        "pdf_url": "https://www.fia.com/system/files/decision-document/2025_hungarian_grand_prix_-_provisional_qualifying_classification.pdf",
+        "document_number": 22,
+        "title": "Provisional Qualifying Classification",
+        "pdf_issue": {
+          "raw_datetime": "2025-08-02T17:17:00",
+          "printed_timezone": null,
+          "interpretation_status": "unresolved_event_local_inference"
+        },
+        "registry_publication": {
+          "raw_datetime": "2025-08-02T17:17:00",
+          "printed_timezone": "CET",
+          "interpretation_status": "unresolved_CET_vs_CEST"
+        },
+        "availability_utc": null,
+        "verification_status": "Official PDF cover and registry publication row were read during research.",
+        "historical_bytes_verification": "No independent historical byte archive verified."
+      },
+      "pre_race_event": {
+        "scheduled_race_date": "2025-08-03",
+        "scheduled_race_local_time": "15:00",
+        "scheduled_race_gmt_time": "13:00",
+        "source_url": "https://www.formula1.com/en/latest/article/f1-announces-race-start-times-for-2025-season.490KLLD7T1AAM7wQl28tn6",
+        "source_publication_datetime": "2025-02-03T17:02:00Z",
+        "circuit_id_evidence_status": "Canonical mapping recorded; retain pre-cutoff official circuit map/timing footer or timetable for circuit identity proof.",
+        "qualifying_completed_at": null,
+        "qualifying_completed_status": "Potential upper bound from classification issue after timezone verification; not inferred from scheduled timetable end.",
+        "fia_timetable": {
+          "url": "https://www.fia.com/system/files/decision-document/2025_budapest_event_-_timetable_v3_-_updated.pdf",
+          "document_number": 69,
+          "pdf_issue_raw_datetime": "2025-08-02T17:36:00",
+          "pdf_timezone": null,
+          "registry_index_url": "https://www.fia.com/documents/championships/formula-2-championship-44/season/season-2025-2071/event/Budapest",
+          "registry_publication_raw_datetime": "2025-08-02T17:36:00",
+          "registry_timezone": "CET",
+          "scheduled_qualifying_start_local": null,
+          "scheduled_qualifying_end_local": null,
+          "scheduled_race_start_local": "2025-08-03T15:00:00",
+          "race_start_semantics": "Scheduled formation-lap start; footnote explicitly defines starred race times.",
+          "verification_status": "Official PDF cover and timetable read; publication proof remains incomplete where null.",
+          "caveats": [
+            "This update covers Sunday only and was issued after provisional F1 qualifying classification.",
+            "It cannot supply a pre-weekend timetable or prove qualifying completion; seek its earlier VISA/timetable versions."
+          ]
+        },
+        "timetable_lead": null,
+        "preweekend_fia_visa": {
+          "url": "https://www.fia.com/system/files/decision-document/2025_budapest_event_-_visa_-_f3_budapest_2025.pdf",
+          "document_number": 1,
+          "pdf_issue_raw_datetime": "2025-07-31T11:37:00",
+          "pdf_timezone": null,
+          "registry_publication_raw_datetime": null,
+          "verification_status": "Official F3 Doc1 cover and enclosed Version2 timetable verified; matching F3 registry publication not verified.",
+          "scheduled_qualifying_start_local": "2025-08-02T16:00:00",
+          "scheduled_qualifying_end_local": "2025-08-02T17:00:00",
+          "scheduled_race_start_local": "2025-08-03T15:00:00",
+          "circuit_name": "Hungaroring Circuit, Mogyorod, Hungary",
+          "caveats": [
+            "Do not assign F2 Doc1 publication09:43 CET to F3 Doc1 issue11:37.",
+            "F2 counterpart exists on its official registry but direct PDF retrieval was403; fetch by retained registry link before audit."
+          ]
+        }
+      },
+      "final_race_label": {
+        "url": "https://www.fia.com/system/files/decision-document/2025_hungarian_grand_prix_-_final_race_classification.pdf",
+        "verification_status": "Candidate URL pattern only; final label document and later amendments must be independently verified.",
+        "feature_use_allowed": false
+      },
+      "caveats": [],
+      "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2025-2071/event/Hungarian%20Grand%20Prix",
+      "qualifying_url": "https://www.fia.com/system/files/decision-document/2025_hungarian_grand_prix_-_provisional_qualifying_classification.pdf",
+      "document_id": "22"
+    },
+    {
+      "season": 2025,
+      "round": 15,
+      "circuit_id": "zandvoort",
+      "event_name": "Dutch Grand Prix",
+      "research_priority": 5,
+      "audit_status": "Excluded from certified Gold pending exact availability, event-contract and version audits.",
+      "qualifying": {
+        "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2025-2071/event/Dutch%20Grand%20Prix",
+        "pdf_url": "https://www.fia.com/system/files/decision-document/2025_dutch_grand_prix_-_provisional_qualifying_classification.pdf",
+        "document_number": 28,
+        "title": "Provisional Qualifying Classification",
+        "pdf_issue": {
+          "raw_datetime": "2025-08-30T16:16:00",
+          "printed_timezone": null,
+          "interpretation_status": "unresolved_event_local_inference"
+        },
+        "registry_publication": {
+          "raw_datetime": "2025-08-30T16:17:00",
+          "printed_timezone": "CET",
+          "interpretation_status": "unresolved_CET_vs_CEST"
+        },
+        "availability_utc": null,
+        "verification_status": "Official PDF cover and registry publication row were read during research.",
+        "historical_bytes_verification": "No independent historical byte archive verified."
+      },
+      "pre_race_event": {
+        "scheduled_race_date": "2025-08-31",
+        "scheduled_race_local_time": "15:00",
+        "scheduled_race_gmt_time": "13:00",
+        "source_url": "https://www.formula1.com/en/latest/article/f1-announces-race-start-times-for-2025-season.490KLLD7T1AAM7wQl28tn6",
+        "source_publication_datetime": "2025-02-03T17:02:00Z",
+        "circuit_id_evidence_status": "Canonical mapping recorded; retain pre-cutoff official circuit map/timing footer or timetable for circuit identity proof.",
+        "qualifying_completed_at": null,
+        "qualifying_completed_status": "Potential upper bound from classification issue after timezone verification; not inferred from scheduled timetable end.",
+        "fia_timetable": null,
+        "timetable_lead": {
+          "url": "https://www.fia.com/sites/default/files/media_kit_-_2025_dutch_grand_prix.pdf",
+          "status": "Official media kit includes event timetable; original release metadata not verified."
+        }
+      },
+      "final_race_label": {
+        "url": "https://www.fia.com/system/files/decision-document/2025_dutch_grand_prix_-_final_race_classification.pdf",
+        "verification_status": "Candidate URL pattern only; final label document and later amendments must be independently verified.",
+        "feature_use_allowed": false
+      },
+      "caveats": [
+        "Qualifying includes NOT CLASSIFIED entrants; do not drop roster members because rank is absent.",
+        "Post-race Dutch classification review must be retained only as a label update, never a pre-race feature."
+      ],
+      "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2025-2071/event/Dutch%20Grand%20Prix",
+      "qualifying_url": "https://www.fia.com/system/files/decision-document/2025_dutch_grand_prix_-_provisional_qualifying_classification.pdf",
+      "document_id": "28"
+    },
+    {
+      "season": 2025,
+      "round": 16,
+      "circuit_id": "monza",
+      "event_name": "Italian Grand Prix",
+      "research_priority": null,
+      "audit_status": "Excluded from certified Gold pending exact availability, event-contract and version audits.",
+      "qualifying": {
+        "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2025-2071/event/Italian%20Grand%20Prix",
+        "pdf_url": "https://www.fia.com/system/files/decision-document/2025_italian_grand_prix_-_provisional_qualifying_classification.pdf",
+        "document_number": 23,
+        "title": "Provisional Qualifying Classification",
+        "pdf_issue": {
+          "raw_datetime": "2025-09-06T17:20:00",
+          "printed_timezone": null,
+          "interpretation_status": "unresolved_event_local_inference"
+        },
+        "registry_publication": {
+          "raw_datetime": "2025-09-06T17:21:00",
+          "printed_timezone": "CET",
+          "interpretation_status": "unresolved_CET_vs_CEST"
+        },
+        "availability_utc": null,
+        "verification_status": "Official PDF cover and registry publication row were read during research.",
+        "historical_bytes_verification": "No independent historical byte archive verified."
+      },
+      "pre_race_event": {
+        "scheduled_race_date": "2025-09-07",
+        "scheduled_race_local_time": "15:00",
+        "scheduled_race_gmt_time": "13:00",
+        "source_url": "https://www.formula1.com/en/latest/article/f1-announces-race-start-times-for-2025-season.490KLLD7T1AAM7wQl28tn6",
+        "source_publication_datetime": "2025-02-03T17:02:00Z",
+        "circuit_id_evidence_status": "Canonical mapping recorded; retain pre-cutoff official circuit map/timing footer or timetable for circuit identity proof.",
+        "qualifying_completed_at": null,
+        "qualifying_completed_status": "Potential upper bound from classification issue after timezone verification; not inferred from scheduled timetable end.",
+        "fia_timetable": null,
+        "timetable_lead": null
+      },
+      "final_race_label": {
+        "url": "https://www.fia.com/system/files/decision-document/2025_italian_grand_prix_-_final_race_classification.pdf",
+        "verification_status": "Candidate URL pattern only; final label document and later amendments must be independently verified.",
+        "feature_use_allowed": false
+      },
+      "caveats": [
+        "Registry lists recalled Final Qualifying Doc27 at 19:40 CET on 6 September with no downloadable link.",
+        "Generic final qualifying URL currently serves later Doc29, printed 19:52 and listed 19:54 CET. Missing recalled bytes can block intermediate-cutoff reconstruction."
+      ],
+      "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2025-2071/event/Italian%20Grand%20Prix",
+      "qualifying_url": "https://www.fia.com/system/files/decision-document/2025_italian_grand_prix_-_provisional_qualifying_classification.pdf",
+      "document_id": "23"
+    },
+    {
+      "season": 2025,
+      "round": 18,
+      "circuit_id": "marina_bay",
+      "event_name": "Singapore Grand Prix",
+      "research_priority": null,
+      "audit_status": "Excluded from certified Gold pending exact availability, event-contract and version audits.",
+      "qualifying": {
+        "index_url": "https://www.fia.com/documents/season/season-2025-2071/championships/fia-formula-one-world-championship-14/event/Singapore%20Grand%20Prix",
+        "pdf_url": "https://www.fia.com/system/files/decision-document/2025_singapore_grand_prix_-_provisional_qualifying_classification.pdf",
+        "document_number": 30,
+        "title": "Provisional Qualifying Classification",
+        "pdf_issue": {
+          "raw_datetime": "2025-10-04T22:25:00",
+          "printed_timezone": null,
+          "interpretation_status": "unresolved_event_local_inference"
+        },
+        "registry_publication": {
+          "raw_datetime": "2025-10-04T16:27:00",
+          "printed_timezone": "CET",
+          "interpretation_status": "unresolved_CET_vs_CEST"
+        },
+        "availability_utc": null,
+        "verification_status": "Official PDF cover and registry publication row were read during research.",
+        "historical_bytes_verification": "No independent historical byte archive verified."
+      },
+      "pre_race_event": {
+        "scheduled_race_date": "2025-10-05",
+        "scheduled_race_local_time": "20:00",
+        "scheduled_race_gmt_time": "12:00",
+        "source_url": "https://www.formula1.com/en/latest/article/f1-announces-race-start-times-for-2025-season.490KLLD7T1AAM7wQl28tn6",
+        "source_publication_datetime": "2025-02-03T17:02:00Z",
+        "circuit_id_evidence_status": "Canonical mapping recorded; retain pre-cutoff official circuit map/timing footer or timetable for circuit identity proof.",
+        "qualifying_completed_at": null,
+        "qualifying_completed_status": "Potential upper bound from classification issue after timezone verification; not inferred from scheduled timetable end.",
+        "fia_timetable": null,
+        "timetable_lead": null
+      },
+      "final_race_label": {
+        "url": "https://www.fia.com/system/files/decision-document/2025_singapore_grand_prix_-_final_race_classification.pdf",
+        "verification_status": "Candidate URL pattern only; final label document and later amendments must be independently verified.",
+        "feature_use_allowed": false
+      },
+      "caveats": [
+        "Later final qualifying issued 5 October 01:10 includes disqualified Albon and Sainz; do not replace the earlier provisional state before the ruling was available."
+      ],
+      "index_url": "https://www.fia.com/documents/season/season-2025-2071/championships/fia-formula-one-world-championship-14/event/Singapore%20Grand%20Prix",
+      "qualifying_url": "https://www.fia.com/system/files/decision-document/2025_singapore_grand_prix_-_provisional_qualifying_classification.pdf",
+      "document_id": "30"
+    },
+    {
+      "season": 2025,
+      "round": 20,
+      "circuit_id": "rodriguez",
+      "event_name": "Mexico City Grand Prix",
+      "research_priority": null,
+      "audit_status": "Excluded from certified Gold pending exact availability, event-contract and version audits.",
+      "qualifying": {
+        "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2025-2071/event/Mexico%20City%20Grand%20Prix",
+        "pdf_url": "https://www.fia.com/system/files/decision-document/2025_mexico_city_grand_prix_-_provisional_qualifying_classification.pdf",
+        "document_number": 22,
+        "title": "Provisional Qualifying Classification",
+        "pdf_issue": {
+          "raw_datetime": "2025-10-25T16:17:00",
+          "printed_timezone": null,
+          "interpretation_status": "unresolved_event_local_inference"
+        },
+        "registry_publication": {
+          "raw_datetime": "2025-10-26T00:17:00",
+          "printed_timezone": "CET",
+          "interpretation_status": "unresolved_CET_vs_CEST"
+        },
+        "availability_utc": null,
+        "verification_status": "Official PDF cover and registry publication row were read during research.",
+        "historical_bytes_verification": "No independent historical byte archive verified."
+      },
+      "pre_race_event": {
+        "scheduled_race_date": "2025-10-26",
+        "scheduled_race_local_time": "14:00",
+        "scheduled_race_gmt_time": "20:00",
+        "source_url": "https://www.formula1.com/en/latest/article/f1-announces-race-start-times-for-2025-season.490KLLD7T1AAM7wQl28tn6",
+        "source_publication_datetime": "2025-02-03T17:02:00Z",
+        "circuit_id_evidence_status": "Canonical mapping recorded; retain pre-cutoff official circuit map/timing footer or timetable for circuit identity proof.",
+        "qualifying_completed_at": null,
+        "qualifying_completed_status": "Potential upper bound from classification issue after timezone verification; not inferred from scheduled timetable end.",
+        "fia_timetable": null,
+        "timetable_lead": null
+      },
+      "final_race_label": {
+        "url": "https://www.fia.com/system/files/decision-document/2025_mexico_city_grand_prix_-_final_race_classification.pdf",
+        "verification_status": "Candidate URL pattern only; final label document and later amendments must be independently verified.",
+        "feature_use_allowed": false
+      },
+      "caveats": [],
+      "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2025-2071/event/Mexico%20City%20Grand%20Prix",
+      "qualifying_url": "https://www.fia.com/system/files/decision-document/2025_mexico_city_grand_prix_-_provisional_qualifying_classification.pdf",
+      "document_id": "22"
+    },
+    {
+      "season": 2025,
+      "round": 24,
+      "circuit_id": "yas_marina",
+      "event_name": "Abu Dhabi Grand Prix",
+      "research_priority": 8,
+      "audit_status": "Excluded from certified Gold pending exact availability, event-contract and version audits.",
+      "qualifying": {
+        "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2025-2071/event/Abu%20Dhabi%20Grand%20Prix",
+        "pdf_url": "https://www.fia.com/system/files/decision-document/2025_abu_dhabi_grand_prix_-_provisional_qualifying_classification.pdf",
+        "document_number": 33,
+        "title": "Provisional Qualifying Classification",
+        "pdf_issue": {
+          "raw_datetime": "2025-12-06T19:15:00",
+          "printed_timezone": null,
+          "interpretation_status": "unresolved_event_local_inference"
+        },
+        "registry_publication": {
+          "raw_datetime": "2025-12-06T16:15:00",
+          "printed_timezone": "CET",
+          "interpretation_status": "unresolved_CET_vs_CEST"
+        },
+        "availability_utc": null,
+        "verification_status": "Official PDF cover and registry publication row were read during research.",
+        "historical_bytes_verification": "No independent historical byte archive verified."
+      },
+      "pre_race_event": {
+        "scheduled_race_date": "2025-12-07",
+        "scheduled_race_local_time": "17:00",
+        "scheduled_race_gmt_time": "13:00",
+        "source_url": "https://www.formula1.com/en/latest/article/f1-announces-race-start-times-for-2025-season.490KLLD7T1AAM7wQl28tn6",
+        "source_publication_datetime": "2025-02-03T17:02:00Z",
+        "circuit_id_evidence_status": "Canonical mapping recorded; retain pre-cutoff official circuit map/timing footer or timetable for circuit identity proof.",
+        "qualifying_completed_at": null,
+        "qualifying_completed_status": "Potential upper bound from classification issue after timezone verification; not inferred from scheduled timetable end.",
+        "fia_timetable": {
+          "url": "https://www.fia.com/system/files/decision-document/2025_yas_marina_event_-_timetable_v4.pdf",
+          "document_number": 16,
+          "pdf_issue_raw_datetime": "2025-12-05T15:00:00",
+          "pdf_timezone": null,
+          "registry_index_url": "https://www.fia.com/documents/list/event/Yas%20Marina",
+          "registry_publication_raw_datetime": "2025-12-05T12:00:00",
+          "registry_timezone": "CET",
+          "scheduled_qualifying_start_local": "2025-12-06T18:00:00",
+          "scheduled_qualifying_end_local": "2025-12-06T19:00:00",
+          "scheduled_race_start_local": "2025-12-07T17:00:00",
+          "race_start_semantics": "Scheduled formation-lap start; footnote explicitly defines starred race times.",
+          "verification_status": "Official PDF cover and timetable read; publication proof remains incomplete where null.",
+          "caveats": [
+            "Cover title says V4 but the enclosed timetable says Version3; retain both titles.",
+            "Friday issue precedes qualifying, but timetable version chain requires reconciliation.",
+            "Index path has an incomplete filter; validate season and event from content."
+          ]
+        },
+        "timetable_lead": null
+      },
+      "final_race_label": {
+        "url": "https://www.fia.com/system/files/decision-document/2025_abu_dhabi_grand_prix_-_final_race_classification.pdf",
+        "verification_status": "Candidate URL pattern only; final label document and later amendments must be independently verified.",
+        "feature_use_allowed": false
+      },
+      "caveats": [
+        "Qualifying table includes an additional Q1 percent column; parse by column identity rather than fixed token offsets."
+      ],
+      "index_url": "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2025-2071/event/Abu%20Dhabi%20Grand%20Prix",
+      "qualifying_url": "https://www.fia.com/system/files/decision-document/2025_abu_dhabi_grand_prix_-_provisional_qualifying_classification.pdf",
+      "document_id": "33"
+    }
+  ]
+}

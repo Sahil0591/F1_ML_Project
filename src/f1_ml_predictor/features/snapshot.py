@@ -541,6 +541,21 @@ def build_snapshot(
             }
             for value in used
         ]
+        feature_evidence = {
+            name: {
+                "missing": row[name] is None,
+                "tier": overall_tier.value if row[name] is not None else None,
+                "inputs": evidence_inputs if row[name] is not None else [],
+            }
+            for name in NUMERIC_FEATURES
+        }
+        if all(row[name] is None for name in NUMERIC_FEATURES):
+            # Published roster and qualifying context still bound a driver with no time.
+            feature_evidence["__context__"] = {
+                "missing": True,
+                "tier": overall_tier.value,
+                "inputs": evidence_inputs,
+            }
         row.update(
             {
                 "benchmark_tier": overall_tier.value,
@@ -550,14 +565,7 @@ def build_snapshot(
                 "pit_lane_start": start_type == "pit_lane" if start_type != "unknown" else None,
                 "grid_status": grid_status,
                 "feature_evidence": json.dumps(
-                    {
-                        name: {
-                            "missing": row[name] is None,
-                            "tier": overall_tier.value if row[name] is not None else None,
-                            "inputs": evidence_inputs if row[name] is not None else [],
-                        }
-                        for name in NUMERIC_FEATURES
-                    },
+                    feature_evidence,
                     sort_keys=True,
                 ),
             }

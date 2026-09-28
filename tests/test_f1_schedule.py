@@ -1,0 +1,227 @@
+import json
+from datetime import UTC, datetime
+
+import pytest
+
+from f1_ml_predictor.trust.f1_schedule import (
+    ARTICLE_URLS,
+    SCHEDULE_URLS,
+    ScheduleValidationError,
+    validate_f1_schedule,
+)
+
+_HEADLINES = {
+    2025: "F1 announces race start times for 2025 season",
+    2026: "Official Grand Prix start times for 2026 F1 season confirmed",
+}
+_HEADERS = {
+    2025: ["RACE", "DATE", "LOCAL START TIME", "(GMT)"],
+    2026: [
+        "Venue, race date",
+        "Sprint (local time)",
+        "Qualifying (local time)",
+        "Race (local time)",
+    ],
+}
+_STAMP = {2025: "2025-02-03T17:02:27.315Z", 2026: "2025-09-16T09:07:24.791Z"}
+_VISIBLE = {2025: "Feb 03, 2025 5:02pm UTC", 2026: "Sep 16, 2025 9:07am UTC"}
+# Values transcribed from the two reviewed official tables, including UTC day rollover.
+_CASES = [
+    (
+        2025,
+        1,
+        "albert_park",
+        "Australian Grand Prix",
+        ["Australia", "March 16", "15:00", "04:00"],
+        "2025-03-16T04:00:00Z",
+    ),
+    (
+        2025,
+        2,
+        "shanghai",
+        "Chinese Grand Prix",
+        ["China", "March 23", "15:00", "07:00"],
+        "2025-03-23T07:00:00Z",
+    ),
+    (
+        2025,
+        21,
+        "interlagos",
+        "São Paulo Grand Prix",
+        ["Sao Paulo", "November 9", "14:00", "17:00"],
+        "2025-11-09T17:00:00Z",
+    ),
+    (
+        2025,
+        22,
+        "vegas",
+        "Las Vegas Grand Prix",
+        ["Las Vegas", "November 22", "20:00", "04:00"],
+        "2025-11-23T04:00:00Z",
+    ),
+    (
+        2025,
+        23,
+        "losail",
+        "Qatar Grand Prix",
+        ["Qatar", "November 30", "19:00", "16:00"],
+        "2025-11-30T16:00:00Z",
+    ),
+    (
+        2025,
+        24,
+        "yas_marina",
+        "Abu Dhabi Grand Prix",
+        ["Abu Dhabi", "December 7", "17:00", "13:00"],
+        "2025-12-07T13:00:00Z",
+    ),
+    (
+        2026,
+        1,
+        "albert_park",
+        "Australian Grand Prix",
+        ["Australia, Mar 8", "-", "1600", "1500"],
+        "2026-03-08T04:00:00Z",
+    ),
+    (
+        2026,
+        2,
+        "shanghai",
+        "Chinese Grand Prix",
+        ["China, Mar 15", "1100", "1500", "1500"],
+        "2026-03-15T07:00:00Z",
+    ),
+    (
+        2026,
+        3,
+        "suzuka",
+        "Japanese Grand Prix",
+        ["Japan, Mar 29", "-", "1500", "1400"],
+        "2026-03-29T05:00:00Z",
+    ),
+]
+
+
+def _dt(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _html(season: int, rows: list[list[str]], modified: str | None = None) -> str:
+    article = {
+        "@type": "NewsArticle",
+        "url": ARTICLE_URLS[season],
+        "datePublished": _STAMP[season],
+        "dateModified": modified or _STAMP[season],
+        "headline": _HEADLINES[season],
+    }
+    table = "".join(
+        "<tr>" + "".join(f"<td><span>{cell}</span></td>" for cell in row) + "</tr>"
+        for row in [_HEADERS[season], *rows]
+    )
+    return (
+        f"<h1>{_HEADLINES[season]}</h1><time>{_VISIBLE[season]}</time>"
+        f'<script type="application/ld+json">{json.dumps(article)}</script>'
+        f"<table>{table}</table>"
+        '<script>{"unrelatedStoryUpdatedAt":"2026-09-28T12:00:00Z"}</script>'
+    )
+
+
+def _claims(case: tuple) -> dict:
+    season, round_number, circuit, event, _, race_start = case
+    return {
+        "season": season,
+        "round_number": round_number,
+        "circuit_id": circuit,
+        "event_name": event,
+        "claimed_publication": _dt(_STAMP[season]).replace(second=0, microsecond=0),
+        "claimed_race_start": _dt(race_start),
+        "source_url": SCHEDULE_URLS[season],
+        "prediction_timestamp": _dt(race_start).replace(day=1),
+    }
+
+
+@pytest.mark.parametrize("case", _CASES)
+def test_reviewed_rows_match_utc_schedule(case: tuple) -> None:
+    schedule = validate_f1_schedule(_html(case[0], [case[4]]), **_claims(case))
+    assert schedule.race_start == _dt(case[5])
+    assert schedule.source_row == tuple(case[4])
+    assert schedule.publication_at == _dt(_STAMP[case[0]])
+    assert schedule.available_by == schedule.publication_at.replace(
+        second=0, microsecond=0
+    ).replace(minute=schedule.publication_at.minute + 1)
+    assert schedule.publication_precision_seconds == 60
+
+
+@pytest.mark.parametrize("change", ["clock", "date", "visible", "publication", "heading", "schema"])
+def test_changed_source_claims_are_rejected(change: str) -> None:
+    case = _CASES[5]
+    html = _html(2025, [case[4]])
+    replacements = {
+        "clock": ("13:00", "14:00"),
+        "date": ("December 7", "December 8"),
+        "visible": ("5:02pm UTC", "5:03pm UTC"),
+        "publication": ("2025-02-03T17:02:27.315Z", "2025-02-04T17:02:27.315Z"),
+        "heading": (_HEADLINES[2025], "Race start times for 2024"),
+        "schema": ("LOCAL START TIME", "CURRENT START TIME"),
+    }
+    before, after = replacements[change]
+    with pytest.raises(ScheduleValidationError):
+        validate_f1_schedule(html.replace(before, after), **_claims(case))
+
+
+def test_duplicate_event_rows_are_rejected_even_when_identical() -> None:
+    case = _CASES[5]
+    with pytest.raises(ScheduleValidationError, match="duplicated"):
+        validate_f1_schedule(_html(2025, [case[4], case[4]]), **_claims(case))
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("circuit_id", "bahrain"),
+        ("event_name", "Bahrain Grand Prix"),
+        ("round_number", 23),
+        ("source_url", "https://example.com/schedule"),
+        ("claimed_race_start", _dt("2025-12-07T14:00:00Z")),
+        ("claimed_publication", datetime(2025, 2, 3, 17, 2)),
+    ],
+)
+def test_unreviewed_or_conflicting_claims_are_rejected(field: str, value: object) -> None:
+    case = _CASES[5]
+    claims = _claims(case)
+    claims[field] = value
+    with pytest.raises(ScheduleValidationError):
+        validate_f1_schedule(_html(2025, [case[4]]), **claims)
+
+
+def test_article_modified_after_cutoff_is_rejected() -> None:
+    case = _CASES[5]
+    with pytest.raises(ScheduleValidationError, match="not known"):
+        validate_f1_schedule(
+            _html(2025, [case[4]], modified="2025-12-08T10:00:00Z"), **_claims(case)
+        )
+
+
+def test_modified_article_before_cutoff_uses_modification_availability() -> None:
+    case = _CASES[5]
+    result = validate_f1_schedule(
+        _html(2025, [case[4]], modified="2025-12-01T00:00:00Z"),
+        **{**_claims(case), "prediction_timestamp": _dt("2025-12-06T15:17:00Z")},
+    )
+    assert result.available_by == _dt("2025-12-01T00:01:00Z")
+
+
+def test_minute_resolution_requires_end_of_publication_minute() -> None:
+    case = _CASES[5]
+    claims = {**_claims(case), "prediction_timestamp": _dt("2025-02-03T17:02:59Z")}
+    with pytest.raises(ScheduleValidationError, match="not known"):
+        validate_f1_schedule(_html(2025, [case[4]]), **claims)
+
+
+def test_canonical_single_id_alias_is_supported_for_2026() -> None:
+    case = _CASES[8]
+    schedule = validate_f1_schedule(
+        _html(2026, [case[4]]), **{**_claims(case), "source_url": ARTICLE_URLS[2026]}
+    )
+    assert schedule.timezone_basis == "Asia/Tokyo"
+    assert schedule.race_start.tzinfo == UTC

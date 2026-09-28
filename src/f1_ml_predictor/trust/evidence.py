@@ -4,7 +4,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Any
 
@@ -46,10 +46,20 @@ class AvailabilityEvidence:
     archive_version: str | None = None
     reconstruction_method: str | None = None
     audited: bool = False
+    publication_precision_seconds: int = 0
 
     def __post_init__(self) -> None:
         if not isinstance(self.kind, EvidenceClass) or not isinstance(self.audited, bool):
             raise ValueError("invalid evidence class or audit flag")
+        if type(
+            self.publication_precision_seconds
+        ) is not int or self.publication_precision_seconds not in {0, 60}:
+            raise ValueError("publication precision must be exact or one minute")
+        if (
+            self.publication_precision_seconds
+            and self.kind != EvidenceClass.SOURCE_PUBLISHED_TIMESTAMP
+        ):
+            raise ValueError("publication precision applies only to direct publication timestamps")
         if not isinstance(self.reference, str) or not self.reference.strip():
             raise ValueError("evidence reference is required")
         for name in ("available_at", "captured_at", "source_published_at"):
@@ -67,8 +77,12 @@ class AvailabilityEvidence:
             if self.captured_at is None or self.available_at != self.captured_at:
                 raise ValueError("captured-live availability must equal capture time")
         elif self.kind == EvidenceClass.SOURCE_PUBLISHED_TIMESTAMP:
-            if self.source_published_at is None or self.available_at != self.source_published_at:
-                raise ValueError("source publication timestamp must equal availability")
+            if self.source_published_at is None or self.available_at != (
+                self.source_published_at + timedelta(seconds=self.publication_precision_seconds)
+            ):
+                raise ValueError(
+                    "source publication timestamp plus explicit precision must equal availability"
+                )
         elif self.kind == EvidenceClass.VERSIONED_ARCHIVE:
             if not self.archive_version or not self.archive_version.strip():
                 raise ValueError("archive version identity is required")
@@ -114,6 +128,7 @@ class AvailabilityEvidence:
             "archive_version": self.archive_version,
             "reconstruction_method": self.reconstruction_method,
             "audited": self.audited,
+            "publication_precision_seconds": self.publication_precision_seconds,
             "tier": self.tier.value,
         }
 
@@ -133,6 +148,7 @@ def evidence_from_dict(value: dict[str, Any]) -> AvailabilityEvidence:
         value.get("archive_version"),
         value.get("reconstruction_method"),
         value.get("audited", False),
+        value.get("publication_precision_seconds", 0),
     )
 
 

@@ -5,14 +5,14 @@ from typing import Any
 import numpy as np
 
 
-def race_distribution(
+def _sample_orders(
     position_scores: list[float],
     dnf_probability: list[float],
     *,
     temperature: float = 1.0,
     draws: int = 4096,
     seed: int = 42,
-) -> list[dict[str, Any]]:
+) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]]:
     """Sample PL orders, then place sampled retirements after sampled finishers.
 
     Finish means a total modeled order, including trailing retirements. It does
@@ -37,6 +37,40 @@ def race_distribution(
     pl_order = np.argsort(-utility, axis=1, kind="stable")
     statuses = np.take_along_axis(retired, pl_order, axis=1)
     order = np.take_along_axis(pl_order, np.argsort(statuses, axis=1, kind="stable"), axis=1)
+    return order, retired
+
+
+def sample_race_orders(
+    position_scores: list[float],
+    dnf_probability: list[float],
+    *,
+    temperature: float = 1.0,
+    draws: int = 4096,
+    seed: int = 42,
+) -> list[tuple[int, ...]]:
+    """Expose whole joint orders for downstream simulation; indices follow input order.
+
+    Orders alone do not establish FIA classification or eligibility for points.
+    """
+    order, _ = _sample_orders(
+        position_scores, dnf_probability, temperature=temperature, draws=draws, seed=seed
+    )
+    return [tuple(int(index) for index in row) for row in order]
+
+
+def race_distribution(
+    position_scores: list[float],
+    dnf_probability: list[float],
+    *,
+    temperature: float = 1.0,
+    draws: int = 4096,
+    seed: int = 42,
+) -> list[dict[str, Any]]:
+    """Derive coherent marginals from the same joint sampler used by simulation."""
+    order, retired = _sample_orders(
+        position_scores, dnf_probability, temperature=temperature, draws=draws, seed=seed
+    )
+    count = len(position_scores)
     positions = np.argsort(order, axis=1)
     rows = []
     for driver in range(count):

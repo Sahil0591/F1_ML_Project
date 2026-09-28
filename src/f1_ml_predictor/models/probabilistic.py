@@ -16,7 +16,6 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 from sklearn.impute import SimpleImputer
-from sklearn.linear_model import LogisticRegression
 from threadpoolctl import threadpool_limits
 
 from f1_ml_predictor.benchmarks.builder import BENCHMARK_FEATURE_COLUMNS, file_sha256
@@ -31,12 +30,13 @@ from f1_ml_predictor.models.backtest import (
     run_backtest,
 )
 from f1_ml_predictor.models.boosting import BACKENDS, estimator
+from f1_ml_predictor.models.calibration import calibrated_probabilities, fit_binary_calibrator
 from f1_ml_predictor.models.distributions import race_distribution
 from f1_ml_predictor.models.hardware import choose_device, library_versions
 from f1_ml_predictor.time import require_known_by, require_utc
 from f1_ml_predictor.trust.evidence import BenchmarkTier
 
-MODEL_VERSION = "joint-boosting-v1"
+MODEL_VERSION = "joint-boosting-v2"
 _PREDICTION_SCHEMA = pa.schema(
     [
         pa.field("event_id", pa.string()),
@@ -63,9 +63,17 @@ _PREDICTION_SCHEMA = pa.schema(
 )
 
 
-def _logit(values: Any) -> Any:
-    probability = np.clip(values, 1e-6, 1 - 1e-6)
-    return np.log(probability / (1 - probability)).reshape(-1, 1)
+def _estimator_configuration(model: Any) -> dict[str, Any]:
+    """Preserve a backend's explicit NaN missing-value sentinel in strict JSON."""
+    parameters = model.get_params()
+    encoded = {
+        key: {"type": "float", "value": "NaN"}
+        if isinstance(value, float) and math.isnan(value)
+        else value
+        for key, value in parameters.items()
+    }
+    json.dumps(encoded, allow_nan=False)
+    return encoded
 
 
 @dataclass
@@ -90,8 +98,13 @@ class RaceModel:
                 positive = list(self.dnf_model.classes_).index(1)
                 dnf = self.dnf_model.predict_proba(matrix)[:, positive]
             if self.calibrator is not None:
-                positive = list(self.calibrator.classes_).index(1)
-                dnf = self.calibrator.predict_proba(_logit(dnf))[:, positive]
+                dnf = np.asarray(
+                    calibrated_probabilities(
+                        self.calibrator,
+                        dnf.tolist(),
+                        self.metadata.get("calibration_method", "sigmoid"),
+                    )
+                )
         return position, dnf
 
     def predict(self, rows: list[dict[str, Any]], *, draws: int = 4096) -> list[dict[str, Any]]:
@@ -149,18 +162,22 @@ def calibration_split(
     rows: list[dict[str, Any]],
     fold: RollingFold,
     min_fit_events: int,
+    calibration_event_count: int = 1,
 ) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    if type(calibration_event_count) is not int or calibration_event_count < 1:
+        raise ValueError("calibration event count must be a positive integer")
     groups: dict[str, list[int]] = defaultdict(list)
     for index in fold.train_indices:
         groups[rows[index]["event_id"]].append(index)
     if len(groups) < min_fit_events + 1:
         return (), ()
     ordered = sorted(groups, key=lambda event: rows[groups[event][0]]["prediction_timestamp"])
-    calibration = tuple(groups[ordered[-1]])
+    count = min(calibration_event_count, len(ordered) - min_fit_events)
+    calibration = tuple(index for event in ordered[-count:] for index in groups[event])
     calibration_cutoff = rows[calibration[0]]["prediction_timestamp"]
     eligible = [
         event
-        for event in ordered[:-1]
+        for event in ordered[:-count]
         if all(
             rows[index]["label_available_at"] <= calibration_cutoff
             and rows[index]["prediction_timestamp"] < calibration_cutoff
@@ -181,8 +198,12 @@ def fit_race_model(
     seed: int = 42,
     device: str = "cpu",
     hardware: dict[str, Any] | None = None,
+    calibration_method: str = "sigmoid",
+    calibration_event_count: int = 1,
 ) -> RaceModel | None:
-    train, calibration = calibration_split(rows, fold, min_fit_events)
+    if calibration_method not in {"sigmoid", "isotonic", "identity"}:
+        raise ValueError("unsupported calibration method")
+    train, calibration = calibration_split(rows, fold, min_fit_events, calibration_event_count)
     if not train:
         return None
     position_train = tuple(i for i in train if rows[i].get("label_position") is not None)
@@ -246,47 +267,68 @@ def fit_race_model(
         "cutoff_kind": fold.cutoff_kind,
         "fit_seconds": time.perf_counter() - start,
         "dnf_training_labels": len(known_dnf),
-        "dnf_training_status": "fitted" if dnf_model is not None else "smoothed_prior",
+        "dnf_training_status": "fitted"
+        if dnf_model is not None
+        else ("smoothed_prior" if known_dnf else "insufficient_data_prior"),
+        "dnf_prior": prior,
         "reproducibility": "seeded CPU with one thread"
         if chosen == "cpu"
         else "seeded GPU; floating-point summation may vary",
-        "configuration": position_model.get_params(),
+        "configuration": _estimator_configuration(position_model),
         "feature_columns": list(BENCHMARK_FEATURE_COLUMNS),
+        "feature_schema_version": "benchmark-feature-v2",
+        "calibration_method": calibration_method,
+        "calibration_event_count_requested": calibration_event_count,
     }
     model = RaceModel(
         backend, chosen, seed, imputer, position_model, dnf_model, prior, None, 1.0, metadata
     )
     calibration_rows = [rows[i] for i in calibration]
     _, raw_dnf = model.scores(calibration_rows)
-    known = [i for i, row in enumerate(calibration_rows) if row.get("label_dnf") is not None]
-    metadata["dnf_calibration_status"] = "insufficient_classes_identity"
-    if len({calibration_rows[i]["label_dnf"] for i in known}) == 2:
-        sigmoid = LogisticRegression(l1_ratio=0.0, C=1.0, random_state=seed, max_iter=500)
-        with threadpool_limits(limits=1):
-            sigmoid.fit(
-                _logit(raw_dnf[known]),
-                np.asarray([int(calibration_rows[i]["label_dnf"]) for i in known]),
-            )
-        model.calibrator = sigmoid
-        metadata["dnf_calibration_status"] = "heldout_sigmoid"
-    losses = []
-    ordered_calibration = sorted(calibration_rows, key=lambda row: row["driver_id"])
-    position, calibrated_dnf = model.scores(ordered_calibration)
-    winner_index = next(i for i, row in enumerate(ordered_calibration) if row["label_winner"])
-    for temperature in (0.5, 1.0, 2.0, 4.0):
-        probabilities = race_distribution(
-            (position * len(calibration_rows)).tolist(),
-            calibrated_dnf.tolist(),
-            temperature=temperature,
-            draws=2048,
-            seed=seed,
+    model.calibrator, calibration_metadata = fit_binary_calibrator(
+        raw_dnf.tolist(),
+        [row.get("label_dnf") for row in calibration_rows],
+        method=calibration_method,
+        seed=seed,
+    )
+    metadata["dnf_calibration"] = calibration_metadata
+    metadata["dnf_calibration_status"] = (
+        f"heldout_{calibration_method}"
+        if model.calibrator is not None
+        else (
+            "identity_requested"
+            if calibration_method == "identity"
+            else "insufficient_samples_identity"
         )
-        probability = probabilities[winner_index]["winner_probability"]
-        losses.append((float(-math.log(max(probability, 1e-15))), temperature))
+    )
+    losses = []
+    groups: dict[tuple[str, Any, str], list[dict[str, Any]]] = defaultdict(list)
+    for row in calibration_rows:
+        groups[_cohort(row)].append(row)
+    for temperature in (0.5, 1.0, 2.0, 4.0):
+        event_losses = []
+        for group in groups.values():
+            ordered_calibration = sorted(group, key=lambda row: row["driver_id"])
+            position, calibrated_dnf = model.scores(ordered_calibration)
+            winner_index = next(
+                i for i, row in enumerate(ordered_calibration) if row["label_winner"]
+            )
+            probabilities = race_distribution(
+                (position * len(group)).tolist(),
+                calibrated_dnf.tolist(),
+                temperature=temperature,
+                draws=2048,
+                seed=seed,
+            )
+            probability = probabilities[winner_index]["winner_probability"]
+            event_losses.append(float(-math.log(max(probability, 1e-15))))
+        losses.append((sum(event_losses) / len(event_losses), temperature))
     _, model.temperature = min(losses)
     metadata["temperature"] = model.temperature
     metadata["temperature_validation_losses"] = losses
-    metadata["calibration_policy"] = "latest earlier complete event; fit labels known at its cutoff"
+    metadata["calibration_policy"] = (
+        "earlier complete events; fit labels known at earliest calibration cutoff"
+    )
     return model
 
 
@@ -338,12 +380,35 @@ def _baseline_metrics(rows: list[dict[str, Any]], model: str) -> dict[str, Any]:
     }
 
 
-def select_candidate(comparisons: dict[str, Any], minimum_events: int = 5) -> dict[str, Any]:
+def select_candidate(
+    comparisons: dict[str, Any],
+    minimum_events: int = 8,
+    *,
+    tier: BenchmarkTier = BenchmarkTier.DEVELOPMENT,
+    eligible_events: int = 0,
+) -> dict[str, Any]:
     """Select a provisional config only after paired coverage and regression checks."""
+    if type(minimum_events) is not int or minimum_events < 8:
+        raise ValueError("model selection requires at least eight eligible Gold races")
+    if (
+        not isinstance(tier, BenchmarkTier)
+        or type(eligible_events) is not int
+        or eligible_events < 0
+    ):
+        raise ValueError("model selection needs an explicit tier and integer event count")
+    if tier != BenchmarkTier.GOLD or eligible_events < minimum_events:
+        return {
+            "status": "deferred",
+            "selected_backend": None,
+            "reason": "requires at least eight eligible Gold races for this cutoff",
+            "minimum_gold_events": minimum_events,
+            "eligible_gold_events": eligible_events if tier == BenchmarkTier.GOLD else 0,
+        }
     eligible = []
     for backend, comparison in comparisons.items():
         metrics = comparison["metrics"]
-        if metrics["winner"].get("n", 0) >= minimum_events and not comparison["regressions"]:
+        independent = len(set(comparison.get("paired_event_ids", [])))
+        if independent >= minimum_events and not comparison["regressions"]:
             if all(task.get("status") == "evaluated" for task in metrics.values()):
                 eligible.append((metrics["winner"]["log_loss"], backend))
     if not eligible:
@@ -351,6 +416,12 @@ def select_candidate(comparisons: dict[str, Any], minimum_events: int = 5) -> di
             "status": "deferred",
             "selected_backend": None,
             "reason": "insufficient paired events or documented baseline regressions",
+            "minimum_gold_events": minimum_events,
+            "eligible_gold_events": eligible_events,
+            "paired_events_by_backend": {
+                backend: len(set(comparison.get("paired_event_ids", [])))
+                for backend, comparison in comparisons.items()
+            },
         }
     return {
         "status": "provisional",
@@ -428,11 +499,17 @@ def run_probabilistic_backtest(
     device: str = "cpu",
     hardware: dict[str, Any] | None = None,
     model_dir: Path | None = None,
+    calibration_method: str = "sigmoid",
+    calibration_event_count: int = 1,
 ) -> dict[str, Any]:
     if not backends or len(set(backends)) != len(backends) or set(backends) - set(BACKENDS):
         raise ValueError("choose distinct supported boosting backends")
     if device not in {"cpu", "auto", "cuda"}:
         raise ValueError("invalid device")
+    if calibration_method not in {"sigmoid", "isotonic", "identity"}:
+        raise ValueError("unsupported calibration method")
+    if type(calibration_event_count) is not int or calibration_event_count < 1:
+        raise ValueError("calibration event count must be a positive integer")
     if (
         isinstance(min_train_events, bool)
         or not isinstance(min_train_events, int)
@@ -465,6 +542,8 @@ def run_probabilistic_backtest(
                 seed=seed,
                 device=device,
                 hardware=hardware,
+                calibration_method=calibration_method,
+                calibration_event_count=calibration_event_count,
             )
             if model is None:
                 reports.append(
@@ -578,17 +657,34 @@ def run_probabilistic_backtest(
                 "baselines": baselines,
                 "regressions": regressions,
                 "paired_cohorts": len(common),
+                "paired_event_ids": sorted({cohort[0] for cohort in common}),
             }
         comparisons[kind] = kind_comparisons
-        selections[kind] = select_candidate(kind_comparisons)
+        eligible_events = len({row["event_id"] for row in rows if row["cutoff_kind"] == kind})
+        selections[kind] = select_candidate(
+            kind_comparisons, tier=tier, eligible_events=eligible_events
+        )
     return {
         "status": "evaluated" if predictions else "insufficient_data",
         "tier": tier.value,
-        "primary_accuracy_claim_allowed": bool(predictions) and tier == BenchmarkTier.GOLD,
+        "primary_accuracy_claim_allowed": bool(predictions)
+        and tier == BenchmarkTier.GOLD
+        and any(
+            len({row["event_id"] for row in predictions if row["cutoff_kind"] == kind}) >= 8
+            for kind in selections
+        ),
         "model_version": MODEL_VERSION,
         "seed": seed,
         "draws": draws,
         "libraries": versions,
+        "observation_counts": {
+            "eligible_driver_rows": len(rows),
+            "eligible_events_by_cutoff": {
+                kind: len({row["event_id"] for row in rows if row["cutoff_kind"] == kind})
+                for kind in sorted({row["cutoff_kind"] for row in rows})
+            },
+            "known_dnf_labels": sum(row["label_dnf"] is not None for row in rows),
+        },
         "hardware": hardware,
         "requested_device": device,
         "feature_columns": list(BENCHMARK_FEATURE_COLUMNS),
@@ -610,7 +706,8 @@ def run_probabilistic_backtest(
         ),
         "limitations": (
             "independent DNF omits shared incidents; composition and finite sampling can "
-            "change marginal calibration; evaluate final marginals on outer folds"
+            "change marginal calibration; evaluate final marginals on outer folds; "
+            "DNF uses an unvalidated Beta(1,1) prior when no audited labels exist"
         ),
     }
 

@@ -1,9 +1,10 @@
 # Probabilistic Race Models
 
 Phase 8 implements bounded comparisons of scikit-learn histogram boosting,
-XGBoost, LightGBM, and CatBoost. Real-world selection remains deferred: the local
-benchmark has no registered audited feature/label joins. Test fixtures verify
-software behavior and cannot establish model quality.
+XGBoost, LightGBM, and CatBoost. Real-world selection requires sufficient eligible
+Gold coverage and independent paired folds. Test fixtures verify software
+behavior and cannot establish model quality. Historical Core and prospective
+registries follow the [Gold workflow](GOLD_WORKFLOW.md).
 
 ## Commands and optional dependencies
 
@@ -33,9 +34,10 @@ training race is eligible only when every driver's label is known by the relevan
 cutoff. All drivers remain together. Different cutoffs for the same event never
 appear on opposing sides of a fold.
 
-The latest eligible earlier event is the calibration race. Fit events must be
-strictly earlier, with complete labels available by that calibration race's
-prediction timestamp. Calibration labels must be available by the outer test
+The latest eligible earlier events form the calibration window, selected by
+`--calibration-events` (default one) while preserving minimum fit history.
+Fit events must be strictly earlier, with complete labels available by the
+earliest calibration prediction timestamp. Calibration labels must be available by the outer test
 cutoff. Median imputation fits only on the fit events and remains frozen for
 calibration and test prediction. There is no refit on the calibration race.
 
@@ -45,10 +47,16 @@ uses only observed Boolean DNF targets. With insufficient training classes,
 DNF uses a smoothed prior from known labels, with its status and label count
 recorded. With insufficient calibration classes, calibration stays identity.
 Unknown DNS/DSQ DNF labels remain excluded from DNF fitting and scoring.
+With zero known DNF targets, the Beta(1,1) prior is 0.5 and is explicitly marked
+`insufficient_data_prior`. This is an unvalidated simulation assumption, not an
+audited retirement estimate; it cannot satisfy DNF evaluation or model selection.
 
-Heldout sigmoid calibration maps raw DNF logits to probabilities. Four fixed
-race-order temperatures (0.5, 1, 2, 4) are compared on the calibration race's
-winner log loss using common seeded simulation draws. This is a small controlled
+`--calibration` chooses sigmoid, isotonic, or identity DNF calibration. Sigmoid
+requires ten known labels and two in each class. Isotonic requires 100 known
+labels, ten in each class, and three distinct scores. Insufficient history skips
+calibration with counts and a reason. Four fixed race-order temperatures
+(0.5, 1, 2, 4) are compared on mean calibration-race winner log loss using common
+seeded simulation draws. This is a small controlled
 calibration comparison. A single calibration race is noisy and can overfit;
 final marginal calibration is measured on outer test events.
 
@@ -92,8 +100,9 @@ categorical log loss, Brier score, top-1/top-3 accuracy, marginal calibration bi
 podium and DNF log loss/Brier/calibration, expected-position MAE, ranked probability
 score, and pairwise ranking accuracy among observed positions.
 
-Selection is separate for each named cutoff. It requires at least five paired
-outer events, evaluated metrics for every task, and no recorded regression
+Selection is separate for each named cutoff. It requires at least eight eligible
+Gold races and eight distinct paired outer events, evaluated metrics for every
+task, and no recorded regression
 against either baseline in winner log loss/Brier/top-N accuracy, podium/DNF log
 loss/Brier, or position MAE. Missing comparison metrics also block selection.
 Among passing candidates, lowest winner log loss wins. This strict default can
@@ -119,6 +128,13 @@ model-source hashes, git commit, library versions, seed, draw count, fit/calibra
 events and row indices, label-availability maxima, model parameters, calibration
 losses/status, elapsed fit time, and actual CPU/GPU device and fallback reason.
 Source hashes identify code even for a run made before its commit.
+An estimator's NaN missing-value parameter is serialized as the explicit typed
+marker `{"type": "float", "value": "NaN"}`. Metrics still require finite strict
+JSON values; this encoding applies only to backend configuration.
+
+The first eight-race Gold Core evaluation and observation counts are recorded in
+[Gold workflow](GOLD_WORKFLOW.md). Four CPU backends completed the same five paired
+test races. Selection remains deferred, with no validated championship model.
 
 ## GPU detection and measured policy
 
@@ -148,11 +164,11 @@ timings, not race accuracy or a representative F1 validation dataset.
 | LightGBM | 0.705 s | Unsupported build | CPU |
 | CatBoost | 2.158 s | 1.161 s | GPU usable; about 46% faster at this workload |
 
-At 8,000 rows, measured improvements were approximately 8% for XGBoost and 12%
-for CatBoost, below the policy threshold. `--device auto` requires a report captured
+The latest 8,000-row refresh measured approximately 5% improvement for XGBoost
+and slower CatBoost GPU fits, below the policy threshold. `--device auto` requires a report captured
 within 24 hours with matching installed library versions, at least the benchmark's
 row count, and measured GPU fit time at least 15% below CPU. Otherwise it uses CPU.
-The final local report uses the 32,000-row workload. Refresh probes after hardware,
+The latest local report uses the 8,000-row workload. Refresh probes after hardware,
 driver, or library changes. `--device cuda` requests GPU only after a successful
 probe, and unsupported devices or actual GPU fit failures fall back to CPU with
 explicit reasons. Every fitted fold records the device actually used.
