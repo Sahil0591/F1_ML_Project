@@ -130,9 +130,9 @@ def ingest_openf1_session(
         paths.normalized
         / "session_summaries"
         / event.partition()
-        / f"openf1-{session_key}-{digest}.parquet"
+        / f"openf1-{session_key}-{digest}-v2.parquet"
     )
-    written = write_partition(table, output, digest, "1")
+    written = write_partition(table, output, digest, "2")
     return EnrichmentReport(table.num_rows, output, written, len(all_laps) - len(laps))
 
 
@@ -153,10 +153,10 @@ def ingest_fastf1_session(paths: StoragePaths, event: EventId, code: str) -> Enr
         paths.normalized
         / "session_summaries"
         / event.partition()
-        / f"fastf1-{code}-{record.sha256}.parquet"
+        / f"fastf1-{code}-{record.sha256}-v2.parquet"
     )
     return EnrichmentReport(
-        table.num_rows, output, write_partition(table, output, record.sha256, "1")
+        table.num_rows, output, write_partition(table, output, record.sha256, "2")
     )
 
 
@@ -180,9 +180,9 @@ def persist_forecast(
     available_at = snapshot.available_at if snapshot.run_initialized_at else record.retrieved_at
     stored = replace(snapshot, captured_at=record.retrieved_at, available_at=available_at)
     table = normalize_forecast(event, stored)
-    output = paths.normalized / "forecasts" / event.partition() / f"{record.sha256}.parquet"
+    output = paths.normalized / "forecasts" / event.partition() / f"{record.sha256}-v2.parquet"
     return EnrichmentReport(
-        table.num_rows, output, write_partition(table, output, record.sha256, "1")
+        table.num_rows, output, write_partition(table, output, record.sha256, "2")
     )
 
 

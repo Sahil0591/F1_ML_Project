@@ -13,6 +13,7 @@ from f1_ml_predictor.time import require_utc
 FORECAST_SCHEMA = pa.schema(
     [
         pa.field("event_id", pa.string(), nullable=False),
+        pa.field("weather_kind", pa.string(), nullable=False),
         pa.field("valid_at", pa.timestamp("us", tz="UTC"), nullable=False),
         pa.field("available_at", pa.timestamp("us", tz="UTC"), nullable=False),
         pa.field("captured_at", pa.timestamp("us", tz="UTC"), nullable=False),
@@ -59,6 +60,7 @@ def normalize_forecast(event: EventId, snapshot: ForecastSnapshot) -> pa.Table:
         seen.add(valid_at)
         row: dict[str, Any] = {
             "event_id": event.partition(),
+            "weather_kind": "forecast",
             "valid_at": valid_at,
             "available_at": snapshot.available_at,
             "captured_at": snapshot.captured_at,

@@ -45,6 +45,8 @@ def summarize_laps(
             raise ValueError(f"No canonical driver ID mapping for FastF1 number {number!r}")
         if record.get("IsAccurate") is not True or record.get("Deleted") is not False:
             continue
+        if record.get("FastF1Generated") is True:
+            continue
         if not _missing(record.get("PitInTime")) or not _missing(record.get("PitOutTime")):
             continue
         lap_time = record.get("LapTime")

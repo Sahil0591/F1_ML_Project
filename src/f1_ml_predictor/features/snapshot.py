@@ -12,8 +12,12 @@ import pyarrow as pa
 from f1_ml_predictor.features.contracts import FeatureInputs, PublishedTable, ResultVersion
 from f1_ml_predictor.identifiers import EntityId, EntityKind, EventId
 from f1_ml_predictor.time import require_known_by, require_utc
+from f1_ml_predictor.trust.arbitration import arbitrate_sessions
+from f1_ml_predictor.trust.cutoffs import CutoffKind, PredictionCutoff
+from f1_ml_predictor.trust.evidence import BenchmarkTier, EvidenceClass, weakest_tier
+from f1_ml_predictor.trust.outcomes import DNF_TAXONOMY_VERSION, audited_dnf
 
-FEATURE_VERSION = "1"
+FEATURE_VERSION = "2"
 NUMERIC_FEATURES = (
     "qualifying_position",
     "qualifying_last_session_seconds",
@@ -35,7 +39,7 @@ NUMERIC_FEATURES = (
     "circuit_length_km",
     "is_street_circuit",
 )
-FEATURE_SCHEMA = pa.schema(
+LEGACY_FEATURE_SCHEMA = pa.schema(
     [
         pa.field("event_id", pa.string(), nullable=False),
         pa.field("driver_id", pa.string(), nullable=False),
@@ -50,6 +54,27 @@ FEATURE_SCHEMA = pa.schema(
         pa.field("provenance", pa.string(), nullable=False),
         *[pa.field(name, pa.float64()) for name in NUMERIC_FEATURES],
         *[pa.field(f"{name}_missing", pa.bool_(), nullable=False) for name in NUMERIC_FEATURES],
+    ]
+)
+CONSERVATIVE_ALIASES = {
+    "practice_observed_best_lap_seconds": "practice_best_seconds",
+    "practice_summary_mean_lap_seconds": "practice_median_seconds",
+    "practice_summary_mean_tyre_age": "tyre_age_mean",
+    "practice_observed_compound_count": "tyre_compound_count",
+    "constructor_recent_classification_mean": "constructor_recent_finish_mean",
+}
+FEATURE_SCHEMA = pa.schema(
+    [
+        *LEGACY_FEATURE_SCHEMA,
+        pa.field("benchmark_tier", pa.string(), nullable=False),
+        pa.field("cutoff_kind", pa.string(), nullable=False),
+        pa.field("qualifying_status", pa.string(), nullable=False),
+        pa.field("start_type", pa.string(), nullable=False),
+        pa.field("pit_lane_start", pa.bool_()),
+        pa.field("grid_status", pa.string(), nullable=False),
+        pa.field("feature_evidence", pa.string(), nullable=False),
+        *[pa.field(name, pa.float64()) for name in CONSERVATIVE_ALIASES],
+        *[pa.field(f"{name}_missing", pa.bool_(), nullable=False) for name in CONSERVATIVE_ALIASES],
     ]
 )
 
@@ -125,76 +150,106 @@ def build_snapshot(
     *,
     form_window: int = 5,
     session_source: str = "fastf1",
+    cutoff_kind: CutoffKind = CutoffKind.POST_QUALIFYING,
+    pre_race_minutes: int = 60,
+    certified_only: bool = False,
 ) -> pa.Table:
     require_utc(prediction_timestamp, "prediction_timestamp")
     spec = inputs.event
     require_known_by(spec.available_at, prediction_timestamp)
-    if not spec.qualifying_completed_at <= prediction_timestamp < spec.race_start:
-        raise ValueError("cutoff must be after qualifying and before race start")
+    decision = (
+        spec.qualifying_completed_at
+        if spec.qualifying_status == "completed"
+        else spec.qualifying_cancelled_at
+    )
+    assert decision is not None
+    PredictionCutoff(cutoff_kind, prediction_timestamp, pre_race_minutes).validate(
+        spec.race_start, decision
+    )
+    excluded = []
+    if certified_only:
+        if spec.tier == BenchmarkTier.DEVELOPMENT:
+            raise ValueError("event lacks certified availability evidence")
+
+    def optional(value: PublishedTable | None) -> PublishedTable | None:
+        if certified_only and value is not None and value.tier == BenchmarkTier.DEVELOPMENT:
+            excluded.append(
+                {"reference": value.evidence_reference, "reason": "development_evidence"}
+            )
+            return None
+        return value
+
     if isinstance(form_window, bool) or not isinstance(form_window, int) or form_window < 1:
         raise ValueError("form_window must be a positive integer")
     if session_source not in {"fastf1", "openf1"}:
         raise ValueError("session_source must be fastf1 or openf1")
     roster = _latest(inputs.rosters, prediction_timestamp)
     qualifying = _latest(inputs.qualifying, prediction_timestamp)
-    if roster is None or qualifying is None:
+    if roster is None or (qualifying is None and spec.qualifying_status != "cancelled"):
         raise ValueError("published roster and qualifying are required by the cutoff")
-    assert qualifying.available_at is not None
-    require_known_by(spec.qualifying_completed_at, qualifying.available_at)
+    if spec.qualifying_status == "cancelled" and qualifying is not None:
+        if qualifying.table.num_rows:
+            raise ValueError("cancelled qualifying cannot fabricate classification positions")
+        qualifying = optional(qualifying)
+    if certified_only and any(
+        value.tier == BenchmarkTier.DEVELOPMENT
+        for value in (roster, qualifying)
+        if value is not None
+    ):
+        raise ValueError("latest required publication lacks certified availability evidence")
+    if qualifying is not None:
+        assert qualifying.available_at is not None
+        require_known_by(decision, qualifying.available_at)
     event_id = spec.event.partition()
     entrants = _by_driver(_rows(roster, event_id))
     if not entrants:
         raise ValueError("roster must contain drivers")
-    q_rows = _by_driver(_rows(qualifying, event_id))
-    if not q_rows:
+    q_rows = _by_driver(_rows(qualifying, event_id)) if qualifying is not None else {}
+    if not q_rows and spec.qualifying_status != "cancelled":
         raise ValueError("qualifying publication must contain drivers")
+    if q_rows and spec.qualifying_status == "cancelled":
+        raise ValueError("cancelled qualifying cannot fabricate classification positions")
     if set(q_rows) - set(entrants):
         raise ValueError("qualifying contains a driver absent from the roster")
-    used = [roster, qualifying]
+    used = [roster] + ([qualifying] if qualifying is not None else [])
     history = _history(inputs, prediction_timestamp)
+    history = [version for version in history if optional(version.publication) is not None]
     historical_rows = [
         (version, _rows(version.publication, version.event.partition())) for version in history
     ]
     used.extend(version.publication for version in history)
 
-    # Select one source per session to avoid averaging incompatible quality filters.
-    sessions: dict[str, PublishedTable] = {}
-    for publication in inputs.sessions:
-        if not _known(publication, prediction_timestamp):
-            continue
-        records = _rows(publication, event_id)
-        codes = {row.get("session_code") for row in records}
-        if not codes <= {"FP1", "FP2", "FP3", "Q"}:
-            raise ValueError("race sessions cannot enter pre-race features")
-        sources = {row.get("source") for row in records}
-        if sources != {session_source} or not records:
-            continue
-        if len(codes) != 1:
-            raise ValueError("session publication must contain one session")
-        code = next(iter(codes))
-        assert isinstance(code, str) and publication.available_at is not None
-        previous = sessions.get(code)
-        if previous is None:
-            sessions[code] = publication
-            continue
-        assert previous.available_at is not None
-        if publication.available_at > previous.available_at:
-            sessions[code] = publication
-        elif publication.available_at == previous.available_at:
-            raise ValueError("ambiguous session versions")
-    used.extend(sessions.values())
+    sessions, arbitration = arbitrate_sessions(
+        inputs.sessions, event_id, prediction_timestamp, session_source
+    )
+    disagreement = any(report["disagreement"] for report in arbitration)
+    if certified_only:
+        quarantined = {report["session"] for report in arbitration if report["disagreement"]}
+        sessions = [
+            publication
+            for publication in sessions
+            if publication.table["session_code"][0].as_py() not in quarantined
+        ]
+        for publication in sessions:
+            optional(publication)
+        sessions = [value for value in sessions if value.tier != BenchmarkTier.DEVELOPMENT]
+    used.extend(sessions)
     session_rows = [
         row
-        for publication in sessions.values()
+        for publication in sessions
         for row in _rows(publication, event_id)
         if row["session_code"] != "Q"
     ]
 
-    weather = _latest(inputs.forecasts, prediction_timestamp)
+    weather = optional(_latest(inputs.forecasts, prediction_timestamp))
     weather_row = None
     if weather is not None:
         candidates = []
         for row in _rows(weather, event_id):
+            if row.get("weather_kind") not in {None, "forecast"} or (
+                certified_only and row.get("weather_kind") != "forecast"
+            ):
+                raise ValueError("certified weather must explicitly be a forecast")
             if "valid_at" not in row or "captured_at" not in row:
                 raise ValueError("weather input must be a forecast, not observed weather")
             require_utc(row["valid_at"], "valid_at")
@@ -220,7 +275,7 @@ def build_snapshot(
             used.append(weather)
 
     standings_rows: dict[str, dict[str, Any]] = {}
-    if _known(inputs.standings, prediction_timestamp):
+    if _known(inputs.standings, prediction_timestamp) and optional(inputs.standings) is not None:
         assert inputs.standings is not None
         rows = inputs.standings.table.to_pylist()
         if any(
@@ -235,7 +290,7 @@ def build_snapshot(
         standings_rows = _by_driver(rows)
         used.append(inputs.standings)
     circuit_row = None
-    if _known(inputs.circuit, prediction_timestamp):
+    if _known(inputs.circuit, prediction_timestamp) and optional(inputs.circuit) is not None:
         assert inputs.circuit is not None
         rows = inputs.circuit.table.to_pylist()
         if len(rows) != 1 or rows[0].get("circuit_id") != spec.circuit_id:
@@ -270,7 +325,13 @@ def build_snapshot(
             "event_id": spec.event.partition(),
             "circuit_id": spec.circuit_id,
             "race_start": spec.race_start.isoformat(),
-            "qualifying_completed_at": spec.qualifying_completed_at.isoformat(),
+            "qualifying_completed_at": spec.qualifying_completed_at.isoformat()
+            if spec.qualifying_completed_at
+            else None,
+            "qualifying_cancelled_at": spec.qualifying_cancelled_at.isoformat()
+            if spec.qualifying_cancelled_at
+            else None,
+            "qualifying_status": spec.qualifying_status,
             "history": [
                 {
                     "event_id": version.event.partition(),
@@ -281,6 +342,11 @@ def build_snapshot(
             ],
             "inputs": sorted(records, key=lambda record: json.dumps(record, sort_keys=True)),
             "session_source_policy": session_source,
+            "arbitration": arbitration,
+            "excluded_optional": sorted(excluded, key=lambda item: item["reference"]),
+            "event_evidence": spec.evidence.to_dict()
+            if spec.evidence
+            else {"class": EvidenceClass.CURRENT_STATE_ONLY.value, "tier": "Development"},
         },
         sort_keys=True,
         separators=(",", ":"),
@@ -304,11 +370,44 @@ def build_snapshot(
             for row in rows
             if row.get("constructor_id") == constructor
         ]
-        dnfs = [row.get("dnf") for row in driver_history if row.get("dnf") is not None]
+        dnfs = []
+        unverified_dnf = False
+        for historic in driver_history:
+            if (
+                historic.get("final_audited") is True
+                and historic.get("audit_reference")
+                and historic.get("taxonomy_version") == DNF_TAXONOMY_VERSION
+            ):
+                audited = audited_dnf(historic["dnf_category"])
+                if historic.get("dnf") != audited:
+                    raise ValueError("reliability label contradicts audited DNF taxonomy")
+                if audited is not None:
+                    dnfs.append(audited)
+            elif historic.get("dnf") is not None and not certified_only:
+                dnfs.append(historic["dnf"])
+                unverified_dnf = True
         if any(not isinstance(value, bool) for value in dnfs):
             raise ValueError("DNF labels must be explicit audited booleans or missing")
         dnf_values = [value for value in dnfs if isinstance(value, bool)]
         q_position = _number(q.get("position"), "qualifying position", positive=True)
+        start_type = entrant.get(
+            "start_type", "grid" if entrant.get("grid_position") else "unknown"
+        )
+        if start_type not in {"grid", "pit_lane", "unknown"}:
+            raise ValueError("unsupported start type")
+        grid_status = entrant.get("grid_status", "unknown")
+        if grid_status not in {"provisional", "final", "unknown"}:
+            raise ValueError("unsupported grid status")
+        if cutoff_kind == CutoffKind.PROVISIONAL_GRID and grid_status == "unknown":
+            raise ValueError("provisional-grid cutoff requires a published grid status")
+        grid = entrant.get("grid_position")
+        if start_type == "pit_lane" and grid not in {None, 0}:
+            raise ValueError("pit-lane starts cannot have a grid ordinal")
+        grid_position = (
+            _number(grid, "published grid", positive=True)
+            if grid not in {None, 0} and start_type != "pit_lane"
+            else None
+        )
         teammates = [
             _number(row.get("position"), "teammate position", positive=True)
             for other, row in q_rows.items()
@@ -334,13 +433,23 @@ def build_snapshot(
             "feature_version": FEATURE_VERSION,
             "history_count": len(driver_history),
             "form_window": form_window,
-            "session_source": session_source if practice else None,
+            "session_source": next(
+                (
+                    publication.table["source"][0].as_py()
+                    for publication in sessions
+                    if any(
+                        value["driver_id"] == driver and value["session_code"] != "Q"
+                        for value in publication.table.to_pylist()
+                    )
+                ),
+                None,
+            ),
             "provenance": provenance,
             "qualifying_position": q_position,
             "qualifying_last_session_seconds": next(
                 (value for value in q_times if value is not None), None
             ),
-            "grid_position": _number(entrant.get("grid_position"), "published grid", positive=True),
+            "grid_position": grid_position,
             "teammate_qualifying_position_delta": q_position - teammate_position
             if q_position is not None and teammate_position is not None
             else None,
@@ -405,5 +514,55 @@ def build_snapshot(
             raise ValueError("precipitation_probability must be between 0 and 100")
         for name in NUMERIC_FEATURES:
             row[f"{name}_missing"] = row[name] is None
+        overall_tier = weakest_tier([spec.tier, *[value.tier for value in used]])
+        if (disagreement and not certified_only) or unverified_dnf:
+            overall_tier = BenchmarkTier.DEVELOPMENT
+        evidence_inputs = [
+            {
+                "reference": spec.evidence_reference,
+                "evidence": spec.evidence.to_dict()
+                if spec.evidence
+                else {
+                    "class": "current_state_only",
+                    "tier": "Development",
+                    "available_at": spec.available_at.isoformat(),
+                },
+            }
+        ] + [
+            {
+                "reference": value.evidence_reference,
+                "evidence": value.evidence.to_dict()
+                if value.evidence
+                else {
+                    "class": "current_state_only",
+                    "tier": "Development",
+                    "available_at": value.available_at.isoformat() if value.available_at else None,
+                },
+            }
+            for value in used
+        ]
+        row.update(
+            {
+                "benchmark_tier": overall_tier.value,
+                "cutoff_kind": cutoff_kind.value,
+                "qualifying_status": spec.qualifying_status,
+                "start_type": start_type,
+                "pit_lane_start": start_type == "pit_lane" if start_type != "unknown" else None,
+                "grid_status": grid_status,
+                "feature_evidence": json.dumps(
+                    {
+                        name: {
+                            "missing": row[name] is None,
+                            "tier": overall_tier.value if row[name] is not None else None,
+                            "inputs": evidence_inputs if row[name] is not None else [],
+                        }
+                        for name in NUMERIC_FEATURES
+                    },
+                    sort_keys=True,
+                ),
+            }
+        )
+        for modern, legacy in CONSERVATIVE_ALIASES.items():
+            row[modern], row[f"{modern}_missing"] = row[legacy], row[f"{legacy}_missing"]
         output.append(row)
     return pa.Table.from_pylist(output, schema=FEATURE_SCHEMA)

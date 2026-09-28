@@ -17,6 +17,7 @@ SUMMARY_SCHEMA = pa.schema(
         pa.field("driver_id", pa.string(), nullable=False),
         pa.field("session_code", pa.string(), nullable=False),
         pa.field("source", pa.string(), nullable=False),
+        pa.field("quality_policy", pa.string(), nullable=False),
         pa.field("compound", pa.string()),
         pa.field("lap_count", pa.int32(), nullable=False),
         pa.field("median_lap_seconds", pa.float64(), nullable=False),
@@ -58,7 +59,12 @@ def normalize_summaries(rows: list[dict[str, Any]], source: str) -> pa.Table:
             or age < 0
         ):
             raise ValueError("tyre age must be finite and nonnegative or missing")
-        normalized.append({**row, "source": source})
+        policy = (
+            "accurate_undeleted_nonpit_generated_flag_filter"
+            if source == "fastf1"
+            else "positive_quicklap_nonpit_deleted_flag_unavailable"
+        )
+        normalized.append({**row, "source": source, "quality_policy": policy})
     return pa.Table.from_pylist(normalized, schema=SUMMARY_SCHEMA)
 
 

@@ -1,6 +1,7 @@
 # Pre-Race Feature Dictionary
 
-Feature version: `1`. Snapshot: after qualifying and before race start.
+Feature version: `2`. Version 1 snapshots remain readable as Development data.
+Snapshots use explicit post-qualifying, provisional-grid, or pre-race cutoffs.
 
 ## Input and availability contract
 
@@ -14,8 +15,9 @@ backdated by the wrapper.
 Publication evidence is an explicit curator trust boundary. A timestamp or evidence
 string cannot prove historical release by itself. Verify the exact source version
 before constructing a known publication. The builder never invents historical
-availability for retrospective API downloads. Qualifying cancellation and
-pit-lane-start encoding are not yet supported.
+availability for retrospective API downloads. Published qualifying cancellation
+leaves classification missing; explicit pit-lane starts have no numeric grid ordinal.
+See [data trust](DATA_TRUST.md) for evidence classes and certification policy.
 
 The latest known complete version is selected at the cutoff. Equal-time ambiguity
 is rejected. Prior results must precede the target event identifier and have
@@ -56,10 +58,19 @@ FastF1 or OpenF1 when practice features exist. Do not average their summaries: t
 quality filters differ. Detailed telemetry and tyre-degradation models remain
 deferred until value and availability justify them.
 
+Version 2 adds `benchmark_tier`, `cutoff_kind`, `qualifying_status`, `start_type`,
+`pit_lane_start`, `grid_status`, and per-feature `feature_evidence`. Each nonmissing
+numeric feature carries a conservative superset of used input evidence, including
+event metadata. Modern aliases avoid overstating what summaries measure:
+`practice_observed_best_lap_seconds`, `practice_summary_mean_lap_seconds`,
+`practice_summary_mean_tyre_age`, `practice_observed_compound_count`, and
+`constructor_recent_classification_mean`. Their older columns remain for compatibility,
+but should not be interpreted as race pace or degradation estimates.
+
 ## Manifest and CLI
 
 Run `python -m f1_ml_predictor build-snapshot <manifest.json> --root <workspace>`.
-JSON requires `version: 1`, `prediction_timestamp`, an `event` object, arrays `rosters`
+JSON accepts `version: 1` or `2`, `prediction_timestamp`, an `event` object, arrays `rosters`
 and `qualifying`, and optional `history`, `sessions`, `forecasts`, `standings`, `circuit`.
 Each publication declares its kind, exact file SHA-256, workspace-relative Parquet
 path, availability, and evidence reference. Paths cannot escape the root. Files are
@@ -82,6 +93,10 @@ Kinds: `roster`, `qualifying`, `race_results`, `session_summary`, `forecast`, `s
 `qualifying_completed_at`, `available_at`, `evidence_reference`. History items have
 `season`, `round`, `race_completed_at`, and `publication`. Timestamps are ISO UTC
 strings. Outputs are immutable content-addressed Parquet under `data/features`.
+Version 2 publications/event metadata may add an `evidence` object with fields from
+`AvailabilityEvidence.to_dict()`. Absent evidence stays Development. Add
+`--certified-only` to reject uncertified required inputs and omit optional ones;
+`--cutoff-kind` and `--pre-race-minutes` select the named window.
 
 ## Validation Gate
 

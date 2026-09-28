@@ -16,6 +16,7 @@ from f1_ml_predictor.features.contracts import (
 )
 from f1_ml_predictor.identifiers import EventId
 from f1_ml_predictor.time import require_utc
+from f1_ml_predictor.trust.evidence import evidence_from_dict
 
 
 def _timestamp(value: Any) -> datetime:
@@ -29,8 +30,12 @@ def _timestamp(value: Any) -> datetime:
 def load_feature_request(manifest_path: Path, root: Path) -> tuple[FeatureInputs, datetime]:
     with manifest_path.open(encoding="utf-8") as handle:
         manifest = json.load(handle)
-    if not isinstance(manifest, dict) or manifest.get("version") != 1:
-        raise ValueError("feature manifest must be a version 1 object")
+    if (
+        not isinstance(manifest, dict)
+        or type(manifest.get("version")) is not int
+        or manifest["version"] not in {1, 2}
+    ):
+        raise ValueError("feature manifest must be a version 1 or 2 object")
     root = root.resolve()
 
     def publication(value: dict[str, Any], kind: str) -> PublishedTable:
@@ -55,6 +60,7 @@ def load_feature_request(manifest_path: Path, root: Path) -> tuple[FeatureInputs
             table,
             _timestamp(available) if available is not None else None,
             value["evidence_reference"],
+            evidence_from_dict(value["evidence"]) if value.get("evidence") else None,
         )
 
     raw_event = manifest["event"]
@@ -62,9 +68,16 @@ def load_feature_request(manifest_path: Path, root: Path) -> tuple[FeatureInputs
         EventId(raw_event["season"], raw_event["round"]),
         raw_event["circuit_id"],
         _timestamp(raw_event["race_start"]),
-        _timestamp(raw_event["qualifying_completed_at"]),
+        _timestamp(raw_event["qualifying_completed_at"])
+        if raw_event.get("qualifying_completed_at")
+        else None,
         _timestamp(raw_event["available_at"]),
         raw_event["evidence_reference"],
+        evidence_from_dict(raw_event["evidence"]) if raw_event.get("evidence") else None,
+        raw_event.get("qualifying_status", "completed"),
+        _timestamp(raw_event["qualifying_cancelled_at"])
+        if raw_event.get("qualifying_cancelled_at")
+        else None,
     )
     inputs = FeatureInputs(
         event=event,

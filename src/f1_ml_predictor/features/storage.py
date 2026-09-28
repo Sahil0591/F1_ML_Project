@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pyarrow as pa
 
-from f1_ml_predictor.features.snapshot import FEATURE_SCHEMA, FEATURE_VERSION
+from f1_ml_predictor.features.snapshot import FEATURE_SCHEMA, LEGACY_FEATURE_SCHEMA
 from f1_ml_predictor.identifiers import EntityId, EntityKind, EventId
 from f1_ml_predictor.ingestion.parquet import write_partition
 from f1_ml_predictor.paths import StoragePaths
@@ -15,7 +15,13 @@ from f1_ml_predictor.time import require_known_by
 
 
 def persist_snapshot(paths: StoragePaths, table: pa.Table) -> Path:
-    if not table.schema.remove_metadata().equals(FEATURE_SCHEMA) or not table.num_rows:
+    if (
+        not any(
+            table.schema.remove_metadata().equals(schema)
+            for schema in (FEATURE_SCHEMA, LEGACY_FEATURE_SCHEMA)
+        )
+        or not table.num_rows
+    ):
         raise ValueError("nonempty feature table with the current schema is required")
     rows = table.to_pylist()
     events = {row["event_id"] for row in rows}
@@ -24,7 +30,7 @@ def persist_snapshot(paths: StoragePaths, table: pa.Table) -> Path:
         raise ValueError("feature snapshot must contain one event and cutoff")
     for row in rows:
         require_known_by(row["feature_timestamp"], row["prediction_timestamp"])
-        if row["feature_version"] != FEATURE_VERSION:
+        if row["feature_version"] not in {"1", "2"}:
             raise ValueError("unsupported feature version")
         EntityId(EntityKind.DRIVER, row["driver_id"])
         EntityId(EntityKind.CONSTRUCTOR, row["constructor_id"])
@@ -37,7 +43,7 @@ def persist_snapshot(paths: StoragePaths, table: pa.Table) -> Path:
     if event.partition() != event_text:
         raise ValueError("noncanonical event identifier")
     rows.sort(key=lambda row: row["driver_id"])
-    table = pa.Table.from_pylist(rows, schema=FEATURE_SCHEMA)
+    table = pa.Table.from_pylist(rows, schema=table.schema.remove_metadata())
     cutoff: datetime = next(iter(cutoffs))
     digest = hashlib.sha256(
         json.dumps(
@@ -49,5 +55,5 @@ def persist_snapshot(paths: StoragePaths, table: pa.Table) -> Path:
         / event.partition()
         / f"{cutoff.strftime('%Y%m%dT%H%M%S%fZ')}-{digest}.parquet"
     )
-    write_partition(table, path, digest, FEATURE_VERSION)
+    write_partition(table, path, digest, rows[0]["feature_version"])
     return path

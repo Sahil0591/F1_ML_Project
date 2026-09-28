@@ -21,6 +21,9 @@ from f1_ml_predictor.paths import StoragePaths
 from f1_ml_predictor.sources.jolpica import JolpicaClient
 from f1_ml_predictor.sources.open_meteo import OpenMeteoClient
 from f1_ml_predictor.sources.openf1 import OpenF1Client
+from f1_ml_predictor.trust.collector import collect_weekend
+from f1_ml_predictor.trust.cutoffs import CutoffKind
+from f1_ml_predictor.trust.prospective import verify_bundle
 
 
 def main() -> None:
@@ -53,16 +56,38 @@ def main() -> None:
     features.add_argument("manifest", type=Path)
     features.add_argument("--form-window", type=int, default=5)
     features.add_argument("--session-source", choices=["fastf1", "openf1"], default="fastf1")
-    for command in (ingest, openf1, fastf1, forecast, features):
+    features.add_argument(
+        "--cutoff-kind", choices=list(CutoffKind), default=CutoffKind.POST_QUALIFYING
+    )
+    features.add_argument("--pre-race-minutes", type=int, default=60)
+    features.add_argument("--certified-only", action="store_true")
+    capture = subcommands.add_parser("capture-weekend", help="Freeze fresh prospective API inputs")
+    capture.add_argument("plan", type=Path)
+    verify = subcommands.add_parser("verify-capture", help="Verify an immutable prospective bundle")
+    verify.add_argument("bundle", type=Path)
+    for command in (ingest, openf1, fastf1, forecast, features, capture):
         command.add_argument("--root", type=Path, default=Path.cwd())
     args = parser.parse_args()
     paths = StoragePaths(getattr(args, "root", Path.cwd()))
     report: IngestReport | EnrichmentReport
     try:
+        if args.command == "capture-weekend":
+            print(f"path: {collect_weekend(args.plan, paths.root)}")
+            return
+        if args.command == "verify-capture":
+            manifest = verify_bundle(args.bundle)
+            print(f"verified: {manifest['manifest_sha256']}")
+            return
         if args.command == "build-snapshot":
             inputs, cutoff = load_feature_request(args.manifest, paths.root)
             table = build_snapshot(
-                inputs, cutoff, form_window=args.form_window, session_source=args.session_source
+                inputs,
+                cutoff,
+                form_window=args.form_window,
+                session_source=args.session_source,
+                cutoff_kind=CutoffKind(args.cutoff_kind),
+                pre_race_minutes=args.pre_race_minutes,
+                certified_only=args.certified_only,
             )
             print(f"rows: {table.num_rows}")
             print(f"path: {persist_snapshot(paths, table)}")

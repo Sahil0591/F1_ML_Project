@@ -65,6 +65,18 @@ backdate present-day downloads. Real training/backtests await verified historica
 snapshots or a prospective archive; offline fixture tests are not model-performance
 evidence.
 
+## Data Trust and Prospective Collection
+
+Evidence classes and Gold/Silver/Development certification now propagate into
+feature snapshots. Audited DNF categories, provider arbitration, explicit cutoffs,
+pit-lane starts and cancelled qualifying preserve provenance and missingness.
+See [data trust](docs/DATA_TRUST.md) for the audit contract and capture-plan format.
+
+`capture-weekend <plan.json>` freezes fresh pre-race API payloads;
+`verify-capture <bundle>` checks their integrity. No scheduler is armed and no past
+race is relabelled as a live capture. Benchmarks and baseline evaluation follow;
+historical evidence coverage remains the gate for primary accuracy claims.
+
 ## Graphify
 
 Graphify is configured through a git post-commit hook. After each commit, the hook updates the local knowledge graph outputs in `graphify-out/`.
