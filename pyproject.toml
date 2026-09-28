@@ -11,6 +11,7 @@ requires-python = ">=3.11"
 dependencies = [
     "httpx>=0.27,<1",
     "pyarrow>=17,<27",
+    "scikit-learn>=1.8,<2",
     "tzdata>=2024.1; sys_platform == 'win32'",
 ]
 
@@ -39,3 +40,8 @@ strict = true
 [[tool.mypy.overrides]]
 module = ["pyarrow", "pyarrow.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["sklearn", "sklearn.*", "threadpoolctl", "threadpoolctl.*"]
+ignore_missing_imports = true
+disable_error_code = ["import-untyped"]

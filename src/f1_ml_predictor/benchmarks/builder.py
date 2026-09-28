@@ -30,6 +30,10 @@ _BENCHMARK_FEATURES = tuple(
     next((modern for modern, legacy in _LEGACY_FOR_ALIAS.items() if legacy == name), name)
     for name in NUMERIC_FEATURES
 )
+BENCHMARK_FEATURE_COLUMNS = (
+    *_BENCHMARK_FEATURES,
+    *(f"{name}_missing" for name in _BENCHMARK_FEATURES),
+)
 
 
 def _canonical_json(value: Any) -> bytes:
@@ -270,6 +274,7 @@ def _benchmark_schema() -> pa.Schema:
         pa.field("constructor_id", pa.string(), nullable=False),
         pa.field("circuit_id", pa.string(), nullable=False),
         pa.field("prediction_timestamp", pa.timestamp("us", tz="UTC"), nullable=False),
+        pa.field("feature_timestamp", pa.timestamp("us", tz="UTC"), nullable=False),
         pa.field("benchmark_tier", pa.string(), nullable=False),
         pa.field("cutoff_kind", pa.string(), nullable=False),
         pa.field("qualifying_status", pa.string(), nullable=False),
@@ -314,6 +319,7 @@ def _assemble_rows(
             "constructor_id": feature["constructor_id"],
             "circuit_id": feature["circuit_id"],
             "prediction_timestamp": cutoff,
+            "feature_timestamp": feature["feature_timestamp"],
             "benchmark_tier": tier.value,
             "cutoff_kind": cutoff_kind,
             "qualifying_status": feature.get("qualifying_status", "unknown"),
@@ -466,7 +472,7 @@ def build_benchmarks(root: Path, output: Path, catalog_path: Path | None = None)
         "catalog_sha256": file_sha256(catalog_path)
         if catalog_path
         else hashlib.sha256(_canonical_json(races)).hexdigest(),
-        "feature_columns": list(_BENCHMARK_FEATURES),
+        "feature_columns": list(BENCHMARK_FEATURE_COLUMNS),
         "context_columns": [
             "cutoff_kind",
             "qualifying_status",

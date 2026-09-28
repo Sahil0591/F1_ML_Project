@@ -87,6 +87,16 @@ Development datasets plus `manifest.json` and `coverage.json` under
 zero included and 24 excluded races: no feature snapshots or final audited outcome
 files are registered. The builder does not upgrade retrospective rows to fill them.
 
+## Baseline Backtests
+
+Run `backtest --tier Gold` after building benchmarks. The evaluator creates rolling
+race/cutoff cohorts, fits imputation and logistic/regression pipelines within each
+training fold, and gates training rows on audited label publication time. It writes
+metrics under `models/backtests` and out-of-fold predictions under
+`data/predictions/backtests`. Empty or undersized tiers return `insufficient_data`
+without accuracy metrics. Silver and Development results remain exploratory;
+fixture checks are not performance claims.
+
 ## Graphify
 
 Graphify is configured through a git post-commit hook. After each commit, the hook updates the local knowledge graph outputs in `graphify-out/`.

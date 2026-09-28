@@ -1,6 +1,6 @@
 # F1 ML Predictor Project Plan
 
-Status: Phases 1 through 6 complete; Phase 7 baseline modelling and chronological backtesting are in progress. Updated 2026-09-28.
+Status: Phases 1 through 7 complete; Phase 8 stronger probabilistic race models is next. Updated 2026-09-28.
 
 ## Product and prediction contract
 
@@ -130,6 +130,22 @@ Verification: 271 offline tests passed. Ruff lint and format checks passed; stri
 The benchmark builder reads workspace-contained Parquet files after verifying catalog SHA-256 values. It validates feature schemas, per-row evidence tier and cutoff bounds, exact field completeness, final audited label taxonomy, one winner per race, and label publication after prediction time. It writes deterministic Gold, Silver, and Development Parquet datasets, a machine-readable hash manifest, and coverage for each race/cutoff with evidence quality, missing feature counts, and exclusion reasons. Label columns are prefixed and listed separately from predictive feature columns. Legacy feature schemas remain Development.
 
 Verification: the full suite passed 275 offline tests, including four benchmark builder tests for all tiers, deterministic reruns, hash tampering, incomplete field joins, early labels, and local race discovery. Ruff lint and format checks passed; strict mypy passed for 35 source files. The local scan found 24 normalized 2025 races. There are zero registered feature snapshots and zero final audited outcome files, so all three datasets are valid typed empty Parquet files and all 24 race windows are excluded with explicit reasons. No historical evidence or outcome labels were synthesized.
+
+## Phase 7 implementation
+
+Scikit-learn 1.9.1 documentation was reviewed before integration: `LogisticRegression`, `SimpleImputer`, `Pipeline`, log loss, Brier score, and calibration APIs. The official `TimeSeriesSplit` documentation describes equally spaced observations, which does not fit driver rows grouped into Formula 1 race events. The evaluator instead forms complete race/cutoff cohorts and custom chronological rolling origins.
+
+Every training row must come from an earlier event and have `label_available_at <= test_prediction_timestamp`. All drivers in a race/cutoff remain together. Imputation and scaling fit within each training fold. Heuristics cover winner, podium, DNF, and grid-based finishing order. Logistic baselines cover winner, podium, and observed DNF labels; Ridge regression supplies a finishing-order baseline. Winner probabilities sum to one and podium marginals are projected to exactly `min(3, field_size)` while bounded in [0, 1]. Missing DNF targets remain excluded. Insufficient classes or event counts produce explicit statuses.
+
+Official references: [LogisticRegression](https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LogisticRegression.html), [SimpleImputer](https://scikit-learn.org/stable/modules/generated/sklearn.impute.SimpleImputer.html), [Pipeline](https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.Pipeline.html), [TimeSeriesSplit](https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.TimeSeriesSplit.html), [log loss](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.log_loss.html), [Brier score](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.brier_score_loss.html), and [calibration curve](https://scikit-learn.org/stable/modules/generated/sklearn.calibration.calibration_curve.html).
+
+## Phase 7 result
+
+The `backtest` command evaluates each evidence tier independently. It groups every driver's rows by event, prediction timestamp, and cutoff kind; test events never appear in their training sets. Training rows require final label availability no later than the test prediction time. Numeric imputation and scaling fit only on each chronological training fold. Deterministic seed and estimator settings, benchmark dataset/manifest hashes, fold membership, skipped cohorts, metrics, and out-of-fold prediction Parquet are recorded under ignored model/prediction paths.
+
+Heuristic and logistic baselines produce winner, podium, and DNF probabilities. Winner probabilities are normalized per event; podium marginals are bounded and sum to the available podium places. A grid-based ordering heuristic and Ridge finish-position baseline report MAE. Evaluation includes log loss, Brier score, calibration bins, winner top-1/top-3 accuracy, and finish MAE. Unknown DNS/DSQ DNF labels stay out of DNF fitting and scoring. Empty classes and undersized histories produce `insufficient_data` task or cohort results.
+
+Verification: 280 offline tests passed. Ruff lint and format checks passed; strict mypy passed for 37 source files. Rolling-fold tests verify grouped races and delayed-label gating; deterministic model smoke tests verify probability coherence and Development claim labelling. The real CLI flow built current benchmarks and returned `insufficient_data` for Gold with zero prediction rows and no accuracy metrics. Local coverage still has 24 excluded races and no registered final audited labels or feature snapshots. Fixture results are test evidence only, not real-world accuracy.
 
 ## Orchestration
 

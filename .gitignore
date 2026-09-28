@@ -24,7 +24,7 @@ data/features/
 data/benchmarks/
 data/predictions/
 data/cache/
-models/
+/models/
 artifacts/
 
 # OS/editor

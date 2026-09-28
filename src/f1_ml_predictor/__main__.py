@@ -18,12 +18,14 @@ from f1_ml_predictor.ingestion.enrichment import (
     persist_forecast,
 )
 from f1_ml_predictor.ingestion.jolpica import IngestReport, JolpicaSeasonIngestor
+from f1_ml_predictor.models.backtest import run_backtest_files
 from f1_ml_predictor.paths import StoragePaths
 from f1_ml_predictor.sources.jolpica import JolpicaClient
 from f1_ml_predictor.sources.open_meteo import OpenMeteoClient
 from f1_ml_predictor.sources.openf1 import OpenF1Client
 from f1_ml_predictor.trust.collector import collect_weekend
 from f1_ml_predictor.trust.cutoffs import CutoffKind
+from f1_ml_predictor.trust.evidence import BenchmarkTier
 from f1_ml_predictor.trust.prospective import verify_bundle
 
 
@@ -73,6 +75,13 @@ def main() -> None:
     for command in (ingest, openf1, fastf1, forecast, features, capture):
         command.add_argument("--root", type=Path, default=Path.cwd())
     benchmarks.add_argument("--root", type=Path, default=Path.cwd())
+    backtest = subcommands.add_parser(
+        "backtest", help="Run a tier-labelled chronological baseline evaluation"
+    )
+    backtest.add_argument("--tier", choices=[tier.value for tier in BenchmarkTier], default="Gold")
+    backtest.add_argument("--min-train-events", type=int, default=2)
+    backtest.add_argument("--seed", type=int, default=42)
+    backtest.add_argument("--root", type=Path, default=Path.cwd())
     args = parser.parse_args()
     paths = StoragePaths(getattr(args, "root", Path.cwd()))
     report: IngestReport | EnrichmentReport
@@ -89,6 +98,20 @@ def main() -> None:
             print(f"included_races: {benchmark_report['included_races']}")
             print(f"excluded_races: {benchmark_report['excluded_races']}")
             print(f"path: {paths.benchmarks}")
+            return
+        if args.command == "backtest":
+            tier = BenchmarkTier(args.tier)
+            result = run_backtest_files(
+                paths.benchmarks / f"{tier.value.lower()}.parquet",
+                tier,
+                paths.models / "backtests" / f"{tier.value.lower()}.json",
+                paths.root / "data" / "predictions" / "backtests" / f"{tier.value.lower()}.parquet",
+                min_train_events=args.min_train_events,
+                seed=args.seed,
+            )
+            print(f"status: {result['status']}")
+            print(f"prediction_rows: {result['prediction_rows']}")
+            print(f"metrics: {paths.models / 'backtests' / f'{tier.value.lower()}.json'}")
             return
         if args.command == "build-snapshot":
             inputs, cutoff = load_feature_request(args.manifest, paths.root)
