@@ -66,8 +66,9 @@ four visually reviewed, exact-SHA-bound Q1 transcriptions in the shortlist;
 they cannot apply to another PDF or overwrite a parsed value. That event was
 not needed after the initial coverage target was reached.
 
-The expanded audit reached 25 eligible races on 2026-09-29: 506 driver-race
-observations from 24 unique drivers, with zero audited DNF labels. The Dutch
+The expanded audit first reached 25 eligible races on 2026-09-29: 506 driver-race
+observations from 24 unique drivers, with zero audited DNF labels in that
+original outcome version. The Dutch
 Grand Prix has a later right-of-review decision whose retained exact document
 says the served penalty cannot be remedied by amending the final classification.
 Its identity and conclusion are checked again during replay. The 2025 Spanish
@@ -106,9 +107,10 @@ The benchmark report records each inclusion or exclusion.
 Final labels may be published after the predictive cutoff. Their own availability
 still controls when subsequent training folds can use them. Unknown retirement
 causes remain unknown under `audited-dnf-v1`.
-The [DNF evidence audit](DNF_AUDIT_STATUS.md) finds 492 unknown, eight DNS and
-six DSQ statuses across 506 driver-race observations. None support a binary DNF
-label under the existing taxonomy.
+The original 25-race cause-oriented taxonomy contained 492 unknown, eight DNS
+and six DSQ statuses across 506 observations. A later separate
+[binary DNF audit](DNF_AUDIT_STATUS.md) cross-checks final outcomes without
+changing the frozen source attachments.
 
 ## Prospective collection
 
@@ -183,12 +185,31 @@ benchmark remain frozen. The rolling benchmark is keyed by its source Gold hash.
 .\.venv\Scripts\python.exe -m f1_ml_predictor compare-models --tier Gold --benchmark-dir data/benchmarks/gold_core_rolling_v1/SOURCE_GOLD_SHA256 --device auto
 ```
 
-On the current 25-race Gold cohort, rolling finish means are present for 299,
+On the original 25-race Gold cohort, rolling finish means are present for 299,
 219 and 60 driver-race observations at 3, 5 and 10 races respectively. Rolling
 DNF rates are missing for all 506 observations because no DNF target has an
 audited taxonomy category. The versioned model inputs include the rolling
 values, missingness flags and audited history counts. The paired test cohort
 contains 22 distinct races after earlier fit and calibration history.
+
+The current bounded 2026 catalog in `docs/HISTORICAL_2026_CANDIDATES.json`
+audited six additional candidates. Azerbaijan, Hungary, Belgium and Great
+Britain passed; Italy and the Netherlands require review of later documents.
+Gold now includes 29 races, 594 driver-race observations and 24 unique drivers.
+The separate `binary-dnf-v1` outcome catalog has 547 known labels, including 67
+DNFs, with 47 unknown or excluded binary states. It retains exact OpenF1 and
+Jolpica response hashes alongside the FIA final sources. The current rolling
+comparison has 26 paired test races, 534 driver rows, 494 known DNF labels in
+those test rows and no selected model. See [DNF audit](DNF_AUDIT_STATUS.md) and
+[regression audit](BASELINE_REGRESSION_AUDIT.md).
+
+```powershell
+.\.venv\Scripts\python.exe scripts/prepare-2026-gold-candidates.py
+.\.venv\Scripts\python.exe -m f1_ml_predictor audit-winter docs/HISTORICAL_2026_CANDIDATES.json --minimum-races 29 --reuse-retained
+.\.venv\Scripts\python.exe scripts/collect-binary-dnf-evidence.py
+.\.venv\Scripts\python.exe scripts/build-binary-dnf-benchmark.py
+.\.venv\Scripts\python.exe -m f1_ml_predictor build-gold-rolling --benchmark-dir data/benchmarks/gold_core_binary_dnf_v1/4a809a21c40d5f65c86d1bd6bc420471119a33578228fa597379c0725e604a89/benchmark --catalog data/benchmarks/gold_core_binary_dnf_v1/4a809a21c40d5f65c86d1bd6bc420471119a33578228fa597379c0725e604a89/catalog.json
+```
 
 The [frozen protocol](EVALUATION_PROTOCOL_V1.md) requires 15 distinct paired Gold
 test races for preliminary comparison and 25 for provisional selection, with

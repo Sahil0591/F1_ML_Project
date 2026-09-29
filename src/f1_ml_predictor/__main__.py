@@ -112,6 +112,8 @@ def main() -> None:
         "build-gold-rolling", help="Freeze audited prior-race rolling features"
     )
     rolling.add_argument("--root", type=Path, default=Path.cwd())
+    rolling.add_argument("--benchmark-dir", type=Path)
+    rolling.add_argument("--catalog", type=Path)
     winter = subcommands.add_parser("audit-winter", help="Audit a bounded direct-publication pool")
     winter.add_argument("catalog", type=Path)
     winter.add_argument("--root", type=Path, default=Path.cwd())
@@ -180,7 +182,11 @@ def main() -> None:
             print(json.dumps(reconstruct_gold_core(args.manifest, paths.root), indent=2))
             return
         if args.command == "build-gold-rolling":
-            print(json.dumps(build_gold_rolling(paths.root), indent=2))
+            print(
+                json.dumps(
+                    build_gold_rolling(paths.root, args.benchmark_dir, args.catalog), indent=2
+                )
+            )
             return
         if args.command == "audit-winter":
             print(

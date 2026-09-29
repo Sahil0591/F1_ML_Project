@@ -47,7 +47,9 @@ def _event(event_id: str) -> tuple[int, int]:
     return int(parts[0][7:]), int(parts[1][6:])
 
 
-def build_gold_rolling(root: Path) -> dict[str, Any]:
+def build_gold_rolling(
+    root: Path, benchmark_dir: Path | None = None, catalog_path: Path | None = None
+) -> dict[str, Any]:
     """Freeze within-season, contiguous prior-race windows from exact Gold labels.
 
     A missing prior round or a label unavailable at cutoff invalidates its entire
@@ -56,14 +58,16 @@ def build_gold_rolling(root: Path) -> dict[str, Any]:
     root = root.resolve()
     lock = root / "data/features/gold_rolling_v1/.build.lock"
     with advisory_lock(lock):
-        return _build_gold_rolling_locked(root)
+        return _build_gold_rolling_locked(root, benchmark_dir, catalog_path)
 
 
-def _build_gold_rolling_locked(root: Path) -> dict[str, Any]:
-    benchmark = root / "data/benchmarks/gold_core"
+def _build_gold_rolling_locked(
+    root: Path, benchmark_dir: Path | None = None, catalog_path: Path | None = None
+) -> dict[str, Any]:
+    benchmark = benchmark_dir or root / "data/benchmarks/gold_core"
     manifest_path = benchmark / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    registry_path = root / "data/benchmarks/gold_core_registry.json"
+    registry_path = catalog_path or root / "data/benchmarks/gold_core_registry.json"
     if file_sha256(registry_path) != manifest["catalog_sha256"]:
         raise ValueError("Gold registry changed since the benchmark was built")
     source = benchmark / manifest["datasets"]["Gold"]["path"]

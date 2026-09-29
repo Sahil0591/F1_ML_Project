@@ -1,6 +1,6 @@
 # F1 ML Predictor Project Plan
 
-Status: Phases 1 through 7 complete; Phase 8 infrastructure and first eight-race Gold Core evaluation completed. Historical Gold coverage has expanded to 25 races, 506 driver-race observations and 24 unique drivers. Audited rolling features have a separate versioned benchmark; the four-backend comparison has 22 identical paired test races. The Windows prospective task remains disabled after terminal popups; a windowless replacement is prepared and requires a local Windows credential for signed-out network access. Manual collection remains available. Independent Phase 9 simulation infrastructure is delivered. The versioned evaluation protocol requires 15 paired Gold test races for preliminary comparison and 25 for selection. Real-world model selection, validated championship forecasts and model explanations remain gated by zero audited DNF labels, baseline regressions and the 25 paired-race floor. Updated 2026-09-29.
+Status: Phases 1 through 7 complete; Phase 8 infrastructure and Gold Core evaluation continue. Historical Gold coverage is 29 races, 594 driver-race observations and 24 unique drivers. The frozen four-backend comparison has 26 identical paired test races. A separate retrospective binary DNF audit has 547 known labels, including 67 DNFs; DNS, DSQ and disagreements stay unknown. The Windows prospective task remains disabled after terminal popups; a windowless replacement is prepared and requires a local Windows credential for signed-out network access. Manual collection remains available. Independent Phase 9 simulation infrastructure is delivered. The versioned evaluation protocol's 25 paired-race floor is met, but material baseline regressions remain, so the selected model is `no_selection`. Validated championship forecasts and model explanations remain gated by race model selection and independent confirmation. Updated 2026-09-30.
 
 ## Product and prediction contract
 
@@ -282,9 +282,23 @@ task runner writes local JSONL logs; the existing interactive task stays disable
 The replacement task has been previewed with a startup trigger and wake setting.
 Windows credential entry and a scheduled network tick remain to activate it.
 
-Remaining work includes additional audited DNF evidence, at least 25 independent
-paired test races for provisional model selection, baseline improvement, and
-credential-backed unattended collection verification.
+The next audit admitted 2026 Azerbaijan, Hungary, Belgium and Great Britain
+under the unchanged Gold policy, reaching 29 races, 594 driver-race observations
+and 24 unique drivers. Italy and the Netherlands remain excluded pending later
+document review. A separate binary DNF outcome version has 547 known labels:
+67 retired and 480 finished; DNS, DSQ and ambiguous cases remain unknown. The
+versioned rolling comparison evaluates 26 identical paired test races across
+the same four backends, including 494 known DNF test labels. The original
+25-race result above is retained as a historical result.
+
+Race-level paired diagnostics, two controlled feature ablations and calibration
+bins identify podium tail failures, sparse early fitting windows and extensive
+optional-feature missingness. They do not change the frozen selection protocol.
+Every backend still has a recorded baseline regression, so `no_selection`
+remains the explicit decision. See the [current Gold regression audit](BASELINE_REGRESSION_AUDIT.md)
+and [binary DNF audit](DNF_AUDIT_STATUS.md). Continue future Gold collection,
+podium tail and calibration investigation, and credential-backed unattended
+collection verification. Do not issue validated WDC or WCC forecasts.
 
 ## Phase 9 simulation infrastructure result
 
