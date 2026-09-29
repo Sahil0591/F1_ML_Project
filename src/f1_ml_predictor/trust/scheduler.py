@@ -273,6 +273,28 @@ def _tick(
             raise ValueError("schedule response is incomplete")
         schedule = normalize_schedule(races, season)
         state["schedule_observation"] = observation
+        monitoring_since = datetime.fromisoformat(state["monitor_started_at"])
+        for row in schedule.to_pylist():
+            race_start = row["race_start_utc"]
+            if race_start is None or race_start > observed:
+                continue
+            identity = EventId(row["season"], row["round"])
+            name = identity.partition()
+            if name in state["events"] or race_start <= monitoring_since:
+                continue
+            state["events"][name] = {
+                "season": identity.season,
+                "round": identity.round,
+                "race_name": row["race_name"],
+                "race_start": race_start.isoformat(),
+                "captures": [],
+                "status": "missed",
+                "missed_reason": "race_passed_while_monitoring_without_capture",
+                "detected_at": observed.isoformat(),
+            }
+        state["missed_event_ids"] = sorted(
+            name for name, entry in state["events"].items() if entry["status"] == "missed"
+        )
         upcoming = [
             row
             for row in schedule.to_pylist()
@@ -419,6 +441,7 @@ def scheduler_tick(
         raise ValueError("automatic collection only supports the current or next season")
     with _lock(root):
         state = scheduler_status(root)
+        state.setdefault("monitor_started_at", state.get("last_tick_at", clock.isoformat()))
         due = state.get("next_check_at")
         if due is not None and clock < datetime.fromisoformat(due) and not new_capture:
             return state
@@ -440,6 +463,12 @@ def scheduler_tick(
         except (ValueError, SourceError, OSError, KeyError, TypeError, OverflowError) as exc:
             state["status"] = "error"
             state["error"] = str(exc)
+            failures = state.get("consecutive_failures", 0) + 1
+            state["consecutive_failures"] = failures
+            retry = min(60 * 2 ** min(failures - 1, 4), 900)
+            state["next_check_at"] = (clock + timedelta(seconds=retry)).isoformat()
+        else:
+            state["consecutive_failures"] = 0
         _collect_pending_labels(root, state, http_client=http_client, now=now)
         _save(root, state)
         return state

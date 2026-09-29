@@ -1,6 +1,6 @@
 # F1 ML Predictor Project Plan
 
-Status: Phases 1 through 7 complete; Phase 8 infrastructure and first eight-race Gold Core evaluation completed. Historical Gold coverage has expanded to 25 races, 506 driver-race observations and 24 unique drivers. Audited rolling features have a separate versioned benchmark; the four-backend comparison has 22 identical paired test races. The Windows prospective task is disabled after terminal popups; manual collection remains available. Independent Phase 9 simulation infrastructure is delivered. The versioned evaluation protocol requires 15 paired Gold test races for preliminary comparison and 25 for selection. Real-world model selection, validated championship forecasts and model explanations remain gated by zero audited DNF labels, baseline regressions and the 25 paired-race floor. Updated 2026-09-29.
+Status: Phases 1 through 7 complete; Phase 8 infrastructure and first eight-race Gold Core evaluation completed. Historical Gold coverage has expanded to 25 races, 506 driver-race observations and 24 unique drivers. Audited rolling features have a separate versioned benchmark; the four-backend comparison has 22 identical paired test races. The Windows prospective task remains disabled after terminal popups; a windowless replacement is prepared and requires a local Windows credential for signed-out network access. Manual collection remains available. Independent Phase 9 simulation infrastructure is delivered. The versioned evaluation protocol requires 15 paired Gold test races for preliminary comparison and 25 for selection. Real-world model selection, validated championship forecasts and model explanations remain gated by zero audited DNF labels, baseline regressions and the 25 paired-race floor. Updated 2026-09-29.
 
 ## Product and prediction contract
 
@@ -274,9 +274,17 @@ paired race-level uncertainty is reported against both baselines. CPU was used
 for the real cohort under the measured-benefit hardware policy. See
 [Gold workflow](GOLD_WORKFLOW.md) for commands and source limitations.
 
+The retained FIA finals provide 492 unknown, eight DNS and six DSQ statuses.
+None support a binary DNF label under the existing taxonomy. See the
+[DNF evidence audit](DNF_AUDIT_STATUS.md). The collector now records missed
+races discovered after an outage and bounds retry backoff. A windowless Python
+task runner writes local JSONL logs; the existing interactive task stays disabled.
+The replacement task has been previewed with a startup trigger and wake setting.
+Windows credential entry and a scheduled network tick remain to activate it.
+
 Remaining work includes additional audited DNF evidence, at least 25 independent
-paired test races for provisional model selection, baseline improvement, and an
-unattended prospective collector that does not open an interactive terminal.
+paired test races for provisional model selection, baseline improvement, and
+credential-backed unattended collection verification.
 
 ## Phase 9 simulation infrastructure result
 

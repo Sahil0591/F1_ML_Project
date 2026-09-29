@@ -106,6 +106,9 @@ The benchmark report records each inclusion or exclusion.
 Final labels may be published after the predictive cutoff. Their own availability
 still controls when subsequent training folds can use them. Unknown retirement
 causes remain unknown under `audited-dnf-v1`.
+The [DNF evidence audit](DNF_AUDIT_STATUS.md) finds 492 unknown, eight DNS and
+six DSQ statuses across 506 driver-race observations. None support a binary DNF
+label under the existing taxonomy.
 
 ## Prospective collection
 
@@ -127,10 +130,14 @@ Label attachments and registry updates are separate from predictive bundles.
 Full eligibility requires exact final audited outcomes and a complete roster.
 
 `scripts/collect-next-race.ps1` writes daily logs under the ignored raw directory.
-`scripts/install-collector-task.ps1` installs one limited-user Windows task named
-`f1_ml_predictor_prospective`, every five minutes for one year. It runs with a
-hidden window while the user is logged in and the computer is awake. It does not
-wake the laptop. Renew the task after one year. Overlapping runs are suppressed.
+`scripts/install-collector-task.ps1` prepares one limited-user Windows task named
+`f1_ml_predictor_prospective`, every five minutes for one year plus a startup
+trigger. It uses `pythonw.exe` without a console, starts when available, and
+requests wake to run. Windows needs a password-backed task logon for network
+access while signed out ([S4U has no network access](https://learn.microsoft.com/en-us/windows/win32/api/taskschd/nf-taskschd-itaskfolder-registertask));
+the installer obtains the credential through the local
+Windows prompt and does not print it. Preview the action before installation.
+Renew the periodic trigger after one year. Overlapping runs are suppressed.
 The scheduler also uses an OS-released advisory lock. A killed process cannot
 leave a permanent sentinel lock. Provider errors stay visible in status and
 logs, and error ticks return a failing exit code.
@@ -148,16 +155,18 @@ Audited outcomes can later be linked without altering features:
 .\.venv\Scripts\python.exe -m f1_ml_predictor register-collected-outcomes data/normalized/outcomes.parquet --sha256 EXPECTED_SHA256
 ```
 
-Install the recurring task with process-local execution policy:
+Preview and install the recurring task with process-local execution policy:
 
 ```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install-collector-task.ps1 -Preview
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install-collector-task.ps1
 ```
 
-The task was registered and its first scheduled tick exited successfully on
-2026-09-29 local time. It was then disabled because its interactive PowerShell
-process caused terminal popups. Use the manual command above until an unattended
-collector has been validated and configured.
+The original task was disabled on 2026-09-29 because its interactive PowerShell
+process caused terminal popups. The replacement has been previewed, and its
+windowless runner completed one network tick with a local JSONL log. It remains
+uninstalled pending the local Windows credential. Use the manual command above
+until its scheduled network tick is verified.
 
 ## Evaluation gate
 

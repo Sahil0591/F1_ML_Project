@@ -281,6 +281,39 @@ def test_failure_is_persistent_and_next_tick_can_retry(tmp_path: Path, clock: Cl
     assert "error" not in success
 
 
+def test_unseen_race_during_outage_is_marked_missed_without_backfill(
+    tmp_path: Path, clock: Clock
+) -> None:
+    missed = race(clock, offset=timedelta(days=2))
+    with httpx.Client(transport=httpx.MockTransport(lambda _: httpx.Response(400))) as client:
+        first = tick(tmp_path, clock, client)
+    assert first["status"] == "error"
+    clock.advance(days=3)
+    upcoming = race(clock, offset=timedelta(days=3), round_=2)
+    with mock_client(upcoming, schedule=[missed, upcoming]) as client:
+        recovered = tick(tmp_path, clock, client)
+    missed_id = f"season={clock.current.year}/round=01"
+    assert recovered["events"][missed_id]["status"] == "missed"
+    assert recovered["events"][missed_id]["captures"] == []
+    assert recovered["missed_event_ids"] == [missed_id]
+    assert not list(tmp_path.rglob("manifest.json"))
+
+
+def test_error_retry_backoff_is_bounded_and_resets(tmp_path: Path, clock: Clock) -> None:
+    with httpx.Client(transport=httpx.MockTransport(lambda _: httpx.Response(400))) as client:
+        first = tick(tmp_path, clock, client)
+        assert first["consecutive_failures"] == 1
+        assert datetime.fromisoformat(first["next_check_at"]) == clock.now() + timedelta(minutes=1)
+        clock.advance(seconds=61)
+        second = tick(tmp_path, clock, client)
+        assert second["consecutive_failures"] == 2
+        assert datetime.fromisoformat(second["next_check_at"]) == clock.now() + timedelta(minutes=2)
+    clock.advance(minutes=2)
+    with mock_client(race(clock)) as client:
+        success = tick(tmp_path, clock, client)
+    assert success["consecutive_failures"] == 0
+
+
 def test_orphan_capture_is_recovered_without_another_capture(tmp_path: Path, clock: Clock) -> None:
     raw = race(clock)
     with mock_client(raw) as client:
