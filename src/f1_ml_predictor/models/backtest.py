@@ -21,6 +21,11 @@ from sklearn.preprocessing import StandardScaler
 from threadpoolctl import threadpool_limits
 
 from f1_ml_predictor.benchmarks.builder import BENCHMARK_FEATURE_COLUMNS, file_sha256
+from f1_ml_predictor.models.protocol import (
+    PRELIMINARY_PAIRED_EVENTS,
+    PROTOCOL,
+    PROTOCOL_SHA256,
+)
 from f1_ml_predictor.time import require_known_by, require_utc
 from f1_ml_predictor.trust.evidence import BenchmarkTier
 
@@ -515,7 +520,19 @@ def run_backtest(
     return {
         "status": "evaluated",
         "tier": tier.value,
-        "primary_accuracy_claim_allowed": tier == BenchmarkTier.GOLD,
+        "evaluation_protocol": PROTOCOL,
+        "evaluation_protocol_sha256": PROTOCOL_SHA256,
+        "primary_accuracy_claim_allowed": tier == BenchmarkTier.GOLD
+        and any(
+            len({row["event_id"] for row in prediction_rows if row["cutoff_kind"] == kind})
+            >= PRELIMINARY_PAIRED_EVENTS
+            for kind in {row["cutoff_kind"] for row in prediction_rows}
+        ),
+        "observation_counts": {
+            "driver_race_observations": len(prediction_rows),
+            "unique_drivers": len({row["driver_id"] for row in prediction_rows}),
+            "evaluated_events": len({row["event_id"] for row in prediction_rows}),
+        },
         "seed": seed,
         "scikit_learn_version": sklearn.__version__,
         "estimators": {

@@ -154,7 +154,7 @@ def test_rolling_backtest_is_deterministic_and_probabilities_are_coherent() -> N
     first = run_backtest(table, BenchmarkTier.GOLD, min_train_events=2, seed=17)
     second = run_backtest(table, BenchmarkTier.GOLD, min_train_events=2, seed=17)
     assert first["status"] == "evaluated"
-    assert first["primary_accuracy_claim_allowed"] is True
+    assert first["primary_accuracy_claim_allowed"] is False
     assert len(first["folds"]) == 4
     assert first["predictions"] == second["predictions"]
     assert first["metrics"] == second["metrics"]

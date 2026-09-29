@@ -1,6 +1,6 @@
 # F1 ML Predictor Project Plan
 
-Status: Phases 1 through 7 complete; Phase 8 infrastructure extended and first eight-race Gold Core evaluation completed. Prospective collection is scheduled. Independent Phase 9 simulation infrastructure is delivered. Real-world model selection, validated championship forecasts and model explanations remain gated with five paired test races and no audited DNF labels. Updated 2026-09-29.
+Status: Phases 1 through 7 complete; Phase 8 infrastructure and first eight-race Gold Core evaluation completed. The Windows prospective task is disabled after terminal popups; manual collection remains available. Independent Phase 9 simulation infrastructure is delivered. The versioned evaluation protocol requires 15 paired Gold test races for preliminary comparison and 25 for selection. Real-world model selection, validated championship forecasts and model explanations remain gated with five paired test races and no audited DNF labels. Updated 2026-09-29.
 
 ## Product and prediction contract
 
@@ -57,18 +57,18 @@ Commit subjects describe the delivered engineering capability. Commit bodies exp
 | 5. Data trust and as-of certification | Extend 4, do not rebuild it. Add explicit evidence classes, tier policy, per-feature provenance, named cutoffs, immutable prospective collection, audited outcomes, provider arbitration, cancelled qualifying and pit-lane schemas. | Offline tests reject quality upgrades, backdated live captures, late revisions, ambiguous provider data, weather-init-as-release, invalid start states, and unsafe snapshot overwrite. Legacy features stay usable but Development-labelled. | Risk: confusing publication claims with verified value versions. Output: certification contracts, audit metadata, capture CLI, conservative feature vocabulary. |
 | 6. Evidence-tiered benchmarks | Depends on 5. Build Gold, Silver, and Development datasets with final audited outcome labels, machine-readable manifests, and race/feature coverage and exclusion reports. | Deterministic partitions and hashes; event-complete label joins; no label columns used as features; no tier promotion; empty Gold explicitly reported when unsupported. | Risk: sparse certified coverage and exploratory leakage. Output: three Parquet datasets, benchmark manifest, coverage report. |
 | 7. Baselines and chronological backtests | Depends on 6. Heuristic and logistic winner/podium/DNF baselines, position baseline, rolling event-grouped evaluation, calibration reports and manifests. | Training-only transforms, time-ordered folds, label availability at training time, deterministic seeds, model smoke tests, probability coherence, per-tier metrics and honest insufficient-data states. | Risk: small sample and imbalance. Output: baseline/evaluation infrastructure; primary accuracy claims only on Gold. |
-| 8. Stronger probabilistic race models | Software delivered. Add optional isotonic calibration and retain existing adapters, device policy, grouped folds and paired baselines. Audit historical Gold Core while capturing future races. | At least eight eligible Gold races for one cutoff before real selection; eight distinct paired test races and no baseline regressions before provisional selection. Calibration remains earlier-history only. | Risk: sparse direct evidence. Output: reproducible comparisons; selected model remains data-gated. |
+| 8. Stronger probabilistic race models | Software delivered. Retain existing adapters, device policy, grouped folds and paired baselines. Expand audited historical Gold Core and capture future races. | At least 15 distinct paired Gold test races for preliminary comparison and 25 for provisional selection, with no baseline regressions and all task metrics evaluated. Calibration remains earlier-history only. | Risk: sparse direct evidence. Output: reproducible comparisons; selected model remains data-gated. |
 | 9. Championship simulation and explanations | Simulation infrastructure delivered using the shared joint race sampler and explicit synthetic inputs. Validated real outputs and model explanations depend on Phase 8 Gold acceptance. | Whole-order sampling, fixed seeds, season/event scoring, explicit classification eligibility, constructor transfers, unresolved countback ties, serialization and provenance. | Risk: changing rules and compounded uncertainty. Output: engineering simulation infrastructure now; real probabilities and compatible explanations later. |
 | 10. Dashboard and operations | Depends on 7 for initial interface and 9 for full scope. Separate read-only API/UI for published predictions, evidence tier, uncertainty and freshness; scheduled bounded refresh. | API/UI integration, responsive workflows, stale/missing states, deployment/runbook, offline suite. | Risk: presenting exploratory or stale outputs as reliable. Output: dashboard and operational collection workflow. |
 
 ## Remaining roadmap policy
 
-Run two data tracks concurrently. First rank a bounded 12-to-20-race historical
-pool by direct publication/version evidence, audit strongest candidates first,
-and stop expanding when useful Gold evaluation coverage exists. Gold Core can
+Run two data tracks concurrently. Expand the historical candidate pool by direct
+publication/version evidence and audit strongest candidates first. Target at
+least 20 Gold Core races, preferably 25 to 40. Gold Core can
 omit unverifiable optional inputs. Gold Full can grow through richer prospective
-captures and is not a prerequisite for baseline evaluation. Target at least eight
-eligible Core races for the post-qualifying cohort without relaxing evidence
+captures and is not a prerequisite for baseline evaluation. Expand the initial
+eight Core races for the post-qualifying cohort without relaxing evidence
 requirements. Retain per-snapshot manifests, availability matrices, hashes,
 registry entries and explicit exclusion reasons. See [Gold workflow](GOLD_WORKFLOW.md).
 
@@ -174,8 +174,8 @@ driver label excludes its entire training race, preserving complete event groups
 One seeded joint simulation produces coherent winner, podium, DNF, and full finish
 distributions. Reports include calibration, ranking, position, and probability
 metrics on paired baseline/candidate cohorts, with explicit regression lists.
-Selection stays separate by cutoff kind and requires five paired events without
-baseline regressions. Any selection is provisional until future independent
+Selection stays separate by cutoff kind and requires 25 paired Gold test races
+without baseline regressions under the frozen protocol. Any selection is provisional until future independent
 confirmation. Model artifacts retain fit/calibration membership, parameters,
 hashes, code and library versions, and actual training devices. Dataset and
 coverage hashes are verified before fitting. See [modeling](MODELING.md).
@@ -230,11 +230,11 @@ windows and skip with explicit counts when unsupported. Missing qualifying value
 stay null, including an entered driver's all-missing numeric row; Gold requires
 exact event, roster and qualifying context rather than invented values.
 Model reports preserve the explicit unvalidated DNF prior and strict-JSON backend
-parameters. The eight-race selection floor cannot be reduced or bypassed by
+parameters. The current 25 paired-race selection floor cannot be reduced or bypassed by
 duplicate cutoffs, Silver, Development or fixture metrics.
 
-The limited-user Windows task `f1_ml_predictor_prospective` is installed and its
-first scheduled tick exited successfully. Five-minute ticks discover fresh
+The limited-user Windows task `f1_ml_predictor_prospective` is installed but
+disabled after it caused terminal popups. Manual ticks discover fresh
 schedules, freeze post-qualifying versions, normalize only frozen bytes, and later
 audit final FIA outcomes separately before benchmark eligibility. A crash releases
 the OS advisory lock; captured features cannot be overwritten or backfilled.
@@ -247,8 +247,9 @@ calibration leakage and Gold selection guards. An additional 35 Phase 9 fixtures
 passed during integration. Ruff lint/format and strict mypy passed. Source punctuation,
 diff/artifact and commit-message checks are required before the milestone commit.
 
-Remaining Phase 8 acceptance requires at least eight distinct paired Gold test
-races, auditable DNF targets and no required baseline regressions, followed by
+Remaining Phase 8 acceptance requires at least 15 distinct paired Gold test
+races for preliminary comparison and 25 for provisional model selection,
+auditable DNF targets and no required baseline regressions, followed by
 future independent confirmation. Real Phase 9 WDC/WCC claims remain gated on that
 validated race model. Phase 10 can later expose published reports with tier,
 sample-count and freshness states; it cannot present these diagnostics as

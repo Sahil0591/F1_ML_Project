@@ -19,6 +19,7 @@ from types import MappingProxyType
 from typing import Any
 
 from f1_ml_predictor.identifiers import EntityId, EntityKind, EventId
+from f1_ml_predictor.models.protocol import SELECTION_PAIRED_EVENTS
 from f1_ml_predictor.time import require_known_by, require_utc
 
 _SUPPORTED_SEASONS = frozenset(range(2019, 2027))
@@ -444,9 +445,12 @@ def simulate_championship(
     if validation is not None:
         require_known_by(validation.available_at, prediction_timestamp)
         if validation.model_validated:
-            if validation.evidence_tier != "Gold" or len(validation.independent_gold_events) < 8:
+            if (
+                validation.evidence_tier != "Gold"
+                or len(validation.independent_gold_events) < SELECTION_PAIRED_EVENTS
+            ):
                 raise ValueError(
-                    "validated championship scenarios require eight independent Gold races"
+                    "validated championship scenarios require 25 independent Gold races"
                 )
             if any(event.model_id != validation.model_id for event in ordered_events):
                 raise ValueError("Gold validation must bind every remaining event's model_id")

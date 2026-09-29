@@ -33,6 +33,13 @@ from f1_ml_predictor.models.boosting import BACKENDS, estimator
 from f1_ml_predictor.models.calibration import calibrated_probabilities, fit_binary_calibrator
 from f1_ml_predictor.models.distributions import race_distribution
 from f1_ml_predictor.models.hardware import choose_device, library_versions
+from f1_ml_predictor.models.protocol import (
+    PRELIMINARY_PAIRED_EVENTS,
+    PROTOCOL,
+    PROTOCOL_SHA256,
+    SELECTION_PAIRED_EVENTS,
+)
+from f1_ml_predictor.models.uncertainty import paired_loss_intervals
 from f1_ml_predictor.time import require_known_by, require_utc
 from f1_ml_predictor.trust.evidence import BenchmarkTier
 
@@ -382,14 +389,14 @@ def _baseline_metrics(rows: list[dict[str, Any]], model: str) -> dict[str, Any]:
 
 def select_candidate(
     comparisons: dict[str, Any],
-    minimum_events: int = 8,
+    minimum_events: int = SELECTION_PAIRED_EVENTS,
     *,
     tier: BenchmarkTier = BenchmarkTier.DEVELOPMENT,
     eligible_events: int = 0,
 ) -> dict[str, Any]:
     """Select a provisional config only after paired coverage and regression checks."""
-    if type(minimum_events) is not int or minimum_events < 8:
-        raise ValueError("model selection requires at least eight eligible Gold races")
+    if type(minimum_events) is not int or minimum_events < SELECTION_PAIRED_EVENTS:
+        raise ValueError("model selection requires at least 25 paired Gold races")
     if (
         not isinstance(tier, BenchmarkTier)
         or type(eligible_events) is not int
@@ -400,7 +407,7 @@ def select_candidate(
         return {
             "status": "deferred",
             "selected_backend": None,
-            "reason": "requires at least eight eligible Gold races for this cutoff",
+            "reason": "requires at least 25 eligible Gold races for this cutoff",
             "minimum_gold_events": minimum_events,
             "eligible_gold_events": eligible_events if tier == BenchmarkTier.GOLD else 0,
         }
@@ -655,9 +662,24 @@ def run_probabilistic_backtest(
             kind_comparisons[backend] = {
                 "metrics": metrics,
                 "baselines": baselines,
+                "paired_uncertainty": {
+                    name: paired_loss_intervals(
+                        [row for row in group if _cohort(row) in common],
+                        paired_baseline,
+                        name,
+                        seed=seed,
+                    )
+                    for name in ("heuristic", "logistic")
+                },
                 "regressions": regressions,
                 "paired_cohorts": len(common),
                 "paired_event_ids": sorted({cohort[0] for cohort in common}),
+                "paired_driver_race_observations": len(
+                    [row for row in group if _cohort(row) in common]
+                ),
+                "paired_unique_drivers": len(
+                    {row["driver_id"] for row in group if _cohort(row) in common}
+                ),
             }
         comparisons[kind] = kind_comparisons
         eligible_events = len({row["event_id"] for row in rows if row["cutoff_kind"] == kind})
@@ -667,11 +689,27 @@ def run_probabilistic_backtest(
     return {
         "status": "evaluated" if predictions else "insufficient_data",
         "tier": tier.value,
+        "evaluation_protocol": PROTOCOL,
+        "evaluation_protocol_sha256": PROTOCOL_SHA256,
+        "preliminary_comparison_allowed": tier == BenchmarkTier.GOLD
+        and any(
+            all(
+                len(set(item["paired_event_ids"])) >= PRELIMINARY_PAIRED_EVENTS
+                for item in comparison.values()
+            )
+            for comparison in comparisons.values()
+            if comparison
+        ),
         "primary_accuracy_claim_allowed": bool(predictions)
         and tier == BenchmarkTier.GOLD
         and any(
-            len({row["event_id"] for row in predictions if row["cutoff_kind"] == kind}) >= 8
-            for kind in selections
+            all(
+                len(set(item["paired_event_ids"])) >= PRELIMINARY_PAIRED_EVENTS
+                and all(task.get("status") == "evaluated" for task in item["metrics"].values())
+                for item in comparison.values()
+            )
+            for comparison in comparisons.values()
+            if comparison
         ),
         "model_version": MODEL_VERSION,
         "seed": seed,
@@ -679,6 +717,8 @@ def run_probabilistic_backtest(
         "libraries": versions,
         "observation_counts": {
             "eligible_driver_rows": len(rows),
+            "eligible_driver_race_observations": len(rows),
+            "unique_drivers": len({row["driver_id"] for row in rows}),
             "eligible_events_by_cutoff": {
                 kind: len({row["event_id"] for row in rows if row["cutoff_kind"] == kind})
                 for kind in sorted({row["cutoff_kind"] for row in rows})

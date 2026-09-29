@@ -145,14 +145,15 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install-collecto
 ```
 
 The task was registered and its first scheduled tick exited successfully on
-2026-09-29 local time. It is waiting for the discovered event's qualifying;
-there is no prospective race snapshot yet.
+2026-09-29 local time. It was then disabled because its interactive PowerShell
+process caused terminal popups. Use the manual command above until an unattended
+collector has been validated and configured.
 
 ## Evaluation gate
 
-At least eight eligible Gold races for one cutoff are needed to begin real model
-selection. Selection additionally requires eight distinct paired evaluated races
-and the existing baseline regression checks. Multiple timestamps for one event do
+The [frozen protocol](EVALUATION_PROTOCOL_V1.md) requires 15 distinct paired Gold
+test races for preliminary comparison and 25 for provisional selection, with
+the existing baseline regression checks. Multiple timestamps for one event do
 not increase this count. Development and Silver support engineering diagnostics
 only. All metrics report tier and sample count. No champion or championship claim
 is made from fixtures or an empty Gold benchmark.
@@ -174,7 +175,7 @@ GPU use retains the existing measured-benefit policy and CPU fallback.
 
 The initial audit certified eight post-qualifying events: 2025 China, Sao Paulo,
 Las Vegas, Qatar and Abu Dhabi; 2026 Australia, China and Japan. The benchmark has
-166 driver rows. Its Gold Parquet SHA256 is
+166 driver-race observations, with unique drivers counted separately. Its Gold Parquet SHA256 is
 `e016e7e2adeaa12a2754697d8d148ae5db562230058b822ed55eee5c66e07764`.
 Entered drivers without a qualifying time retain null features backed by exact
 roster, qualifying and event-context proofs. An empty row without those proofs

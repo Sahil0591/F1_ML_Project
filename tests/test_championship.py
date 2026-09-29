@@ -65,7 +65,8 @@ def evidence(**changes: object) -> ValidationEvidence:
             model_id="test_model",
             model_validated=True,
             evidence_tier="Gold",
-            independent_gold_events=tuple(EventId(2025, round_) for round_ in range(1, 9)),
+            independent_gold_events=tuple(EventId(2024, round_) for round_ in range(1, 25))
+            + (EventId(2025, 1),),
             available_at=CUTOFF,
             source_hash=HASH,
         ),
@@ -349,18 +350,18 @@ def test_missing_zero_point_driver_and_constructor_are_not_silently_invented() -
         )
 
 
-def test_fixture_status_cannot_be_promoted_by_flag_without_eight_gold_races() -> None:
+def test_fixture_status_cannot_be_promoted_by_flag_without_25_gold_races() -> None:
     for invalid in (
         evidence(evidence_tier="Silver"),
-        evidence(independent_gold_events=tuple(EventId(2025, n) for n in range(1, 8))),
+        evidence(independent_gold_events=tuple(EventId(2024, n) for n in range(1, 25))),
     ):
-        with pytest.raises(ValueError, match="eight independent Gold"):
+        with pytest.raises(ValueError, match="25 independent Gold"):
             simulate_championship(
                 standings(), [event()], prediction_timestamp=CUTOFF, validation=invalid
             )
     for invalid, message in (
         (event(model_id="other_model"), "model_id"),
-        (event(event_id=EventId(2025, 8)), "independent"),
+        (event(event_id=EventId(2025, 1)), "independent"),
         (event(eligibility_policy="all_entered_engineering_assumption"), "explicit modeled"),
     ):
         with pytest.raises(ValueError, match=message):
@@ -415,7 +416,7 @@ def test_hash_binds_classification_scoring_and_current_points() -> None:
 @pytest.mark.parametrize("future", [EventId(2026, 1), EventId(2025, 11), EventId(2025, 20)])
 def test_validation_rejects_future_races_even_when_claimed_available(future: EventId) -> None:
     claimed = evidence(
-        independent_gold_events=tuple(EventId(2025, n) for n in range(1, 8)) + (future,)
+        independent_gold_events=tuple(EventId(2024, n) for n in range(1, 25)) + (future,)
     )
     with pytest.raises(ValueError, match="future season or later round"):
         simulate_championship(
@@ -429,7 +430,9 @@ def test_preseason_forecast_cannot_use_next_season_validation_races() -> None:
         scheduled_at=datetime(2026, 6, 1, tzinfo=UTC),
         rules=rules(season=2026),
     )
-    claimed = evidence(independent_gold_events=tuple(EventId(2026, n) for n in range(1, 9)))
+    claimed = evidence(
+        independent_gold_events=tuple(EventId(2024, n) for n in range(1, 25)) + (EventId(2026, 1),)
+    )
     with pytest.raises(ValueError, match="future season"):
         simulate_championship(
             standings(season=2026),

@@ -100,8 +100,10 @@ categorical log loss, Brier score, top-1/top-3 accuracy, marginal calibration bi
 podium and DNF log loss/Brier/calibration, expected-position MAE, ranked probability
 score, and pairwise ranking accuracy among observed positions.
 
-Selection is separate for each named cutoff. It requires at least eight eligible
-Gold races and eight distinct paired outer events, evaluated metrics for every
+Selection is separate for each named cutoff. The frozen
+[Gold evaluation protocol](EVALUATION_PROTOCOL_V1.md) requires 15 distinct paired
+Gold test races for preliminary comparison and at least 25 eligible Gold races
+with 25 distinct paired outer test races for selection, evaluated metrics for every
 task, and no recorded regression
 against either baseline in winner log loss/Brier/top-N accuracy, podium/DNF log
 loss/Brier, or position MAE. Missing comparison metrics also block selection.

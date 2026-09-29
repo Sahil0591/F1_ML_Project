@@ -94,7 +94,7 @@ The result hash excludes its own `sha256` field. Declared source hashes identify
 upstream evidence; callers remain responsible for auditing those source files.
 
 The default status is `engineering_only`. A `ValidationEvidence` request with
-`model_validated=True` must have Gold evidence from at least eight distinct
+`model_validated=True` must have Gold evidence from at least 25 distinct
 independent races available by the cutoff, must bind every remaining event's
 model ID, and must use explicit classification eligibility. Insufficient or
 incompatible validation raises an error rather than promoting a fixture. The

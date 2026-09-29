@@ -283,9 +283,9 @@ def test_optional_libraries_are_not_required(monkeypatch):
     assert {row["backend"] for row in result["predictions"]} == {"hist"}
 
 
-def test_selection_requires_eight_gold_events_and_no_regressions():
+def test_selection_requires_25_paired_gold_events_and_no_regressions():
     metrics = {
-        task: {"status": "evaluated", "n": 8, "log_loss": 0.3}
+        task: {"status": "evaluated", "n": 25, "log_loss": 0.3}
         for task in (
             "winner",
             "podium",
@@ -297,31 +297,37 @@ def test_selection_requires_eight_gold_events_and_no_regressions():
         "hist": {
             "metrics": metrics,
             "regressions": [],
-            "paired_event_ids": [f"season=2025/round={i:02}" for i in range(1, 9)],
+            "paired_event_ids": [f"season=2025/round={i:02}" for i in range(1, 26)],
         }
     }
     assert select_candidate(comparison)["selected_backend"] is None
     assert (
-        select_candidate(comparison, tier=BenchmarkTier.SILVER, eligible_events=20)[
+        select_candidate(comparison, tier=BenchmarkTier.SILVER, eligible_events=30)[
             "selected_backend"
         ]
         is None
     )
     assert (
-        select_candidate(comparison, tier=BenchmarkTier.GOLD, eligible_events=7)["selected_backend"]
+        select_candidate(comparison, tier=BenchmarkTier.GOLD, eligible_events=24)[
+            "selected_backend"
+        ]
         is None
     )
     assert (
-        select_candidate(comparison, tier=BenchmarkTier.GOLD, eligible_events=8)["selected_backend"]
+        select_candidate(comparison, tier=BenchmarkTier.GOLD, eligible_events=25)[
+            "selected_backend"
+        ]
         == "hist"
     )
     comparison["hist"]["regressions"] = [{"task": "dnf"}]
     assert (
-        select_candidate(comparison, tier=BenchmarkTier.GOLD, eligible_events=8)["selected_backend"]
+        select_candidate(comparison, tier=BenchmarkTier.GOLD, eligible_events=25)[
+            "selected_backend"
+        ]
         is None
     )
-    with pytest.raises(ValueError, match="eight"):
-        select_candidate(comparison, minimum_events=7)
+    with pytest.raises(ValueError, match="25"):
+        select_candidate(comparison, minimum_events=24)
 
 
 def test_joint_order_export_matches_reported_marginals():
