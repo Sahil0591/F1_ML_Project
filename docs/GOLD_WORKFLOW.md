@@ -161,6 +161,26 @@ collector has been validated and configured.
 
 ## Evaluation gate
 
+`build-gold-rolling` verifies the frozen Gold benchmark, registry and exact
+audited outcome file hashes. It creates a separate versioned benchmark with
+same-season contiguous prior-race windows of 3, 5 and 10 rounds. A missing race
+or any label published after the target cutoff makes the whole window missing.
+Driver absences do not create results. The original feature snapshots and Gold
+benchmark remain frozen. The rolling benchmark is keyed by its source Gold hash.
+
+```powershell
+.\.venv\Scripts\python.exe -m f1_ml_predictor build-gold-rolling
+.\.venv\Scripts\python.exe -m f1_ml_predictor backtest --tier Gold --benchmark-dir data/benchmarks/gold_core_rolling_v1/SOURCE_GOLD_SHA256
+.\.venv\Scripts\python.exe -m f1_ml_predictor compare-models --tier Gold --benchmark-dir data/benchmarks/gold_core_rolling_v1/SOURCE_GOLD_SHA256 --device auto
+```
+
+On the current 25-race Gold cohort, rolling finish means are present for 299,
+219 and 60 driver-race observations at 3, 5 and 10 races respectively. Rolling
+DNF rates are missing for all 506 observations because no DNF target has an
+audited taxonomy category. The versioned model inputs include the rolling
+values, missingness flags and audited history counts. The paired test cohort
+contains 22 distinct races after earlier fit and calibration history.
+
 The [frozen protocol](EVALUATION_PROTOCOL_V1.md) requires 15 distinct paired Gold
 test races for preliminary comparison and 25 for provisional selection, with
 the existing baseline regression checks. Multiple timestamps for one event do

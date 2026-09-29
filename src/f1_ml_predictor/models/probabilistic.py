@@ -23,6 +23,7 @@ from f1_ml_predictor.models.backtest import (
     RollingFold,
     _binary_metrics,
     _cohort,
+    _feature_columns,
     _matrix,
     _position_metrics,
     _winner_metrics,
@@ -282,8 +283,10 @@ def fit_race_model(
         if chosen == "cpu"
         else "seeded GPU; floating-point summation may vary",
         "configuration": _estimator_configuration(position_model),
-        "feature_columns": list(BENCHMARK_FEATURE_COLUMNS),
-        "feature_schema_version": "benchmark-feature-v2",
+        "feature_columns": list(_feature_columns(rows)),
+        "feature_schema_version": "gold-rolling-v1"
+        if len(_feature_columns(rows)) > len(BENCHMARK_FEATURE_COLUMNS)
+        else "benchmark-feature-v2",
         "calibration_method": calibration_method,
         "calibration_event_count_requested": calibration_event_count,
     }
@@ -727,7 +730,7 @@ def run_probabilistic_backtest(
         },
         "hardware": hardware,
         "requested_device": device,
-        "feature_columns": list(BENCHMARK_FEATURE_COLUMNS),
+        "feature_columns": list(_feature_columns(rows)),
         "backends": availability,
         "folds": reports,
         "skipped_cohorts": skipped,
@@ -764,11 +767,16 @@ def run_probabilistic_files(
     record = manifest["datasets"][tier.value]
     if record["path"] != dataset_path.name or record["sha256"] != file_sha256(dataset_path):
         raise ValueError("benchmark dataset does not match its manifest")
-    if manifest["feature_columns"] != list(BENCHMARK_FEATURE_COLUMNS):
-        raise ValueError("benchmark predictor manifest mismatch")
     if manifest["coverage_sha256"] != file_sha256(dataset_path.parent / "coverage.json"):
         raise ValueError("benchmark coverage does not match its manifest")
     table = pq.read_table(dataset_path)
+    detected_features = _feature_columns(table.to_pylist())
+    if manifest["feature_columns"] != list(detected_features):
+        raise ValueError("benchmark predictor manifest mismatch")
+    if len(detected_features) > len(BENCHMARK_FEATURE_COLUMNS) and (
+        manifest.get("version") != 2 or manifest.get("rolling_version") != "gold-rolling-v1"
+    ):
+        raise ValueError("rolling predictors require a versioned benchmark manifest")
     if record["rows"] != table.num_rows:
         raise ValueError("benchmark row count mismatch")
     result = run_probabilistic_backtest(

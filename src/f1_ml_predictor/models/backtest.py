@@ -21,6 +21,7 @@ from sklearn.preprocessing import StandardScaler
 from threadpoolctl import threadpool_limits
 
 from f1_ml_predictor.benchmarks.builder import BENCHMARK_FEATURE_COLUMNS, file_sha256
+from f1_ml_predictor.benchmarks.rolling import ROLLING_FEATURE_COLUMNS
 from f1_ml_predictor.models.protocol import (
     PRELIMINARY_PAIRED_EVENTS,
     PROTOCOL,
@@ -126,12 +127,24 @@ def rolling_folds(
     return folds, skipped
 
 
+def _feature_columns(rows: list[dict[str, Any]]) -> tuple[str, ...]:
+    present = set(rows[0]) & set(ROLLING_FEATURE_COLUMNS) if rows else set()
+    if present and present != set(ROLLING_FEATURE_COLUMNS):
+        raise ValueError("rolling benchmark has an incomplete predictor schema")
+    return (
+        (*BENCHMARK_FEATURE_COLUMNS, *ROLLING_FEATURE_COLUMNS)
+        if present
+        else BENCHMARK_FEATURE_COLUMNS
+    )
+
+
 def _matrix(rows: list[dict[str, Any]], indices: tuple[int, ...]) -> np.ndarray[Any, Any]:
+    columns = _feature_columns(rows)
     return np.asarray(
         [
             [
                 float(rows[index][name]) if rows[index].get(name) is not None else np.nan
-                for name in BENCHMARK_FEATURE_COLUMNS
+                for name in columns
             ]
             for index in indices
         ],
@@ -380,7 +393,8 @@ def run_backtest(
             "metrics": {},
             "predictions": [],
         }
-    if not set(BENCHMARK_FEATURE_COLUMNS).issubset(table.column_names):
+    feature_columns = _feature_columns(rows)
+    if not set(feature_columns).issubset(table.column_names):
         raise ValueError("benchmark dataset is missing declared predictor columns")
     required_labels = {
         "label_winner",
@@ -393,7 +407,7 @@ def run_backtest(
         raise ValueError("benchmark dataset is missing outcome labels")
     if set(table["benchmark_tier"].to_pylist()) != {tier.value}:
         raise ValueError("benchmark dataset tier does not match the requested tier")
-    if any(name.startswith("label_") for name in BENCHMARK_FEATURE_COLUMNS):
+    if any(name.startswith("label_") for name in feature_columns):
         raise ValueError("target labels cannot be predictor columns")
     folds, skipped = rolling_folds(rows, min_train_events=min_train_events)
     prediction_rows: list[dict[str, Any]] = []
@@ -540,7 +554,7 @@ def run_backtest(
             "position": "Ridge(alpha=1.0)",
             "numeric_preprocessing": "fold-median imputation and standard scaling",
         },
-        "feature_columns": list(BENCHMARK_FEATURE_COLUMNS),
+        "feature_columns": list(feature_columns),
         "folds": fold_reports,
         "skipped_cohorts": skipped,
         "metrics": metrics,
@@ -558,8 +572,20 @@ def run_backtest_files(
     seed: int = 42,
 ) -> dict[str, Any]:
     table = pq.read_table(dataset_path)
-    result = run_backtest(table, tier, min_train_events=min_train_events, seed=seed)
     manifest_path = dataset_path.parent / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    record = manifest["datasets"][tier.value]
+    if record["path"] != dataset_path.name or record["sha256"] != file_sha256(dataset_path):
+        raise ValueError("benchmark dataset does not match its manifest")
+    if manifest["feature_columns"] != list(_feature_columns(table.to_pylist())):
+        raise ValueError("benchmark predictor manifest mismatch")
+    if manifest["coverage_sha256"] != file_sha256(dataset_path.parent / "coverage.json"):
+        raise ValueError("benchmark coverage does not match its manifest")
+    if len(manifest["feature_columns"]) > len(BENCHMARK_FEATURE_COLUMNS) and (
+        manifest.get("version") != 2 or manifest.get("rolling_version") != "gold-rolling-v1"
+    ):
+        raise ValueError("rolling predictors require a versioned benchmark manifest")
+    result = run_backtest(table, tier, min_train_events=min_train_events, seed=seed)
     result["benchmark_dataset_sha256"] = file_sha256(dataset_path)
     result["benchmark_manifest_sha256"] = file_sha256(manifest_path)
     report_path.parent.mkdir(parents=True, exist_ok=True)

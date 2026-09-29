@@ -6,7 +6,8 @@ from dataclasses import asdict
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-from f1_ml_predictor.benchmarks.builder import build_benchmarks
+from f1_ml_predictor.benchmarks.builder import build_benchmarks, file_sha256
+from f1_ml_predictor.benchmarks.rolling import build_gold_rolling
 from f1_ml_predictor.features.manifest import load_feature_request
 from f1_ml_predictor.features.snapshot import build_snapshot
 from f1_ml_predictor.features.storage import persist_snapshot
@@ -107,6 +108,10 @@ def main() -> None:
     )
     core.add_argument("manifest", type=Path)
     core.add_argument("--root", type=Path, default=Path.cwd())
+    rolling = subcommands.add_parser(
+        "build-gold-rolling", help="Freeze audited prior-race rolling features"
+    )
+    rolling.add_argument("--root", type=Path, default=Path.cwd())
     winter = subcommands.add_parser("audit-winter", help="Audit a bounded direct-publication pool")
     winter.add_argument("catalog", type=Path)
     winter.add_argument("--root", type=Path, default=Path.cwd())
@@ -174,6 +179,9 @@ def main() -> None:
         if args.command == "build-gold-core":
             print(json.dumps(reconstruct_gold_core(args.manifest, paths.root), indent=2))
             return
+        if args.command == "build-gold-rolling":
+            print(json.dumps(build_gold_rolling(paths.root), indent=2))
+            return
         if args.command == "audit-winter":
             print(
                 json.dumps(
@@ -219,18 +227,26 @@ def main() -> None:
             return
         if args.command == "compare-models":
             tier = BenchmarkTier(args.tier)
+            benchmark_dir = args.benchmark_dir or paths.benchmarks
+            cohort = (
+                Path("dataset-" + file_sha256(benchmark_dir / "manifest.json")[:16])
+                if args.benchmark_dir is not None
+                else Path()
+            )
             hardware_path = paths.models / "experiments" / "hardware.json"
             hardware_report = (
                 json.loads(hardware_path.read_text(encoding="utf-8"))
                 if (args.device != "cpu" and hardware_path.exists())
                 else None
             )
-            report_path = paths.models / "experiments" / tier.value.lower() / "comparison.json"
+            report_path = (
+                paths.models / "experiments" / tier.value.lower() / cohort / "comparison.json"
+            )
             result = run_probabilistic_files(
-                (args.benchmark_dir or paths.benchmarks) / f"{tier.value.lower()}.parquet",
+                benchmark_dir / f"{tier.value.lower()}.parquet",
                 tier,
                 report_path,
-                paths.predictions / "probabilistic" / f"{tier.value.lower()}.parquet",
+                paths.predictions / "probabilistic" / cohort / f"{tier.value.lower()}.parquet",
                 backends=tuple(args.backends),
                 min_train_events=args.min_train_events,
                 seed=args.seed,
@@ -260,17 +276,23 @@ def main() -> None:
             return
         if args.command == "backtest":
             tier = BenchmarkTier(args.tier)
+            benchmark_dir = args.benchmark_dir or paths.benchmarks
+            cohort = (
+                Path("dataset-" + file_sha256(benchmark_dir / "manifest.json")[:16])
+                if args.benchmark_dir is not None
+                else Path()
+            )
             result = run_backtest_files(
-                (args.benchmark_dir or paths.benchmarks) / f"{tier.value.lower()}.parquet",
+                benchmark_dir / f"{tier.value.lower()}.parquet",
                 tier,
-                paths.models / "backtests" / f"{tier.value.lower()}.json",
-                paths.root / "data" / "predictions" / "backtests" / f"{tier.value.lower()}.parquet",
+                paths.models / "backtests" / cohort / f"{tier.value.lower()}.json",
+                paths.predictions / "backtests" / cohort / f"{tier.value.lower()}.parquet",
                 min_train_events=args.min_train_events,
                 seed=args.seed,
             )
             print(f"status: {result['status']}")
             print(f"prediction_rows: {result['prediction_rows']}")
-            print(f"metrics: {paths.models / 'backtests' / f'{tier.value.lower()}.json'}")
+            print(f"metrics: {paths.models / 'backtests' / cohort / f'{tier.value.lower()}.json'}")
             return
         if args.command == "build-snapshot":
             inputs, cutoff = load_feature_request(args.manifest, paths.root)

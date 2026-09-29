@@ -1,6 +1,6 @@
 # F1 ML Predictor Project Plan
 
-Status: Phases 1 through 7 complete; Phase 8 infrastructure and first eight-race Gold Core evaluation completed. Historical Gold coverage has expanded to 25 races, 506 driver-race observations and 24 unique drivers. The Windows prospective task is disabled after terminal popups; manual collection remains available. Independent Phase 9 simulation infrastructure is delivered. The versioned evaluation protocol requires 15 paired Gold test races for preliminary comparison and 25 for selection. Real-world model selection, validated championship forecasts and model explanations remain gated pending chronological evaluation on the expanded cohort, audited DNF labels and baseline checks. Updated 2026-09-29.
+Status: Phases 1 through 7 complete; Phase 8 infrastructure and first eight-race Gold Core evaluation completed. Historical Gold coverage has expanded to 25 races, 506 driver-race observations and 24 unique drivers. Audited rolling features have a separate versioned benchmark; the four-backend comparison has 22 identical paired test races. The Windows prospective task is disabled after terminal popups; manual collection remains available. Independent Phase 9 simulation infrastructure is delivered. The versioned evaluation protocol requires 15 paired Gold test races for preliminary comparison and 25 for selection. Real-world model selection, validated championship forecasts and model explanations remain gated by zero audited DNF labels, baseline regressions and the 25 paired-race floor. Updated 2026-09-29.
 
 ## Product and prediction contract
 
@@ -254,6 +254,29 @@ future independent confirmation. Real Phase 9 WDC/WCC claims remain gated on tha
 validated race model. Phase 10 can later expose published reports with tier,
 sample-count and freshness states; it cannot present these diagnostics as
 validated championship forecasts.
+
+## Expanded Gold and rolling evaluation result
+
+The expanded official-document audit includes 25 races and 506 driver-race
+observations from 24 unique drivers. Two unresolved 2025 rounds remain excluded.
+The immutable Gold benchmark and its source hashes remain available. A separate
+`gold-rolling-v1` benchmark derives 3, 5 and 10 race features only from complete
+same-season audited prior-round windows whose final labels were available by the
+target cutoff. Its feature values, missingness and source-outcome hashes are
+frozen separately. Finish means have 299, 219 and 60 populated driver-race rows;
+DNF rates have zero, reflecting the source labels rather than an imputed rate.
+
+The baseline evaluates 23 chronological test races. All four stronger backends
+evaluate the same 22 paired test races with 1,784 total prediction rows. The
+preliminary comparison gate is open, while the primary accuracy claim gate and
+model selection remain closed. Each backend has documented baseline regressions;
+paired race-level uncertainty is reported against both baselines. CPU was used
+for the real cohort under the measured-benefit hardware policy. See
+[Gold workflow](GOLD_WORKFLOW.md) for commands and source limitations.
+
+Remaining work includes additional audited DNF evidence, at least 25 independent
+paired test races for provisional model selection, baseline improvement, and an
+unattended prospective collector that does not open an interactive terminal.
 
 ## Phase 9 simulation infrastructure result
 
