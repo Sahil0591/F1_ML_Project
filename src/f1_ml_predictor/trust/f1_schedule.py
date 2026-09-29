@@ -1,8 +1,8 @@
-"""Validate the two reviewed F1 schedule articles against retained HTML.
+"""Validate reviewed F1 schedule articles against retained HTML.
 
 This extracts source claims. It does not independently prove an unchanged
-historical webpage or certify a benchmark. Only the reviewed winter cohort is
-supported; current calendar arbitration requires a separate revision source.
+historical webpage or certify a benchmark. Only explicitly mapped season/event
+identities are supported; calendar revisions need a separate source.
 """
 
 import hashlib
@@ -46,6 +46,23 @@ _VENUES = {
     "losail": ("Qatar", "Qatar Grand Prix", "Asia/Qatar"),
     "yas_marina": ("Abu Dhabi", "Abu Dhabi Grand Prix", "Asia/Dubai"),
     "suzuka": ("Japan", "Japanese Grand Prix", "Asia/Tokyo"),
+    "bahrain": ("Bahrain", "Bahrain Grand Prix", "Asia/Bahrain"),
+    "jeddah": ("Saudi Arabia", "Saudi Arabian Grand Prix", "Asia/Riyadh"),
+    "miami": ("Miami", "Miami Grand Prix", "America/New_York"),
+    "imola": ("Emilia-Romagna", "Emilia Romagna Grand Prix", "Europe/Rome"),
+    "monaco": ("Monaco", "Monaco Grand Prix", "Europe/Monaco"),
+    "catalunya": ("Spain", "Spanish Grand Prix", "Europe/Madrid"),
+    "villeneuve": ("Canada", "Canadian Grand Prix", "America/Toronto"),
+    "red_bull_ring": ("Austria", "Austrian Grand Prix", "Europe/Vienna"),
+    "silverstone": ("Great Britain", "British Grand Prix", "Europe/London"),
+    "spa": ("Belgium", "Belgian Grand Prix", "Europe/Brussels"),
+    "hungaroring": ("Hungary", "Hungarian Grand Prix", "Europe/Budapest"),
+    "zandvoort": ("Netherlands", "Dutch Grand Prix", "Europe/Amsterdam"),
+    "monza": ("Italy", "Italian Grand Prix", "Europe/Rome"),
+    "baku": ("Azerbaijan", "Azerbaijan Grand Prix", "Asia/Baku"),
+    "marina_bay": ("Singapore", "Singapore Grand Prix", "Asia/Singapore"),
+    "americas": ("United States", "United States Grand Prix", "America/Chicago"),
+    "rodriguez": ("Mexico City", "Mexico City Grand Prix", "America/Mexico_City"),
 }
 _ROUNDS = {
     (2025, "albert_park"): 1,
@@ -57,6 +74,24 @@ _ROUNDS = {
     (2026, "albert_park"): 1,
     (2026, "shanghai"): 2,
     (2026, "suzuka"): 3,
+    (2025, "suzuka"): 3,
+    (2025, "bahrain"): 4,
+    (2025, "jeddah"): 5,
+    (2025, "miami"): 6,
+    (2025, "imola"): 7,
+    (2025, "monaco"): 8,
+    (2025, "catalunya"): 9,
+    (2025, "villeneuve"): 10,
+    (2025, "red_bull_ring"): 11,
+    (2025, "silverstone"): 12,
+    (2025, "spa"): 13,
+    (2025, "hungaroring"): 14,
+    (2025, "zandvoort"): 15,
+    (2025, "monza"): 16,
+    (2025, "baku"): 17,
+    (2025, "marina_bay"): 18,
+    (2025, "americas"): 19,
+    (2025, "rodriguez"): 20,
 }
 _MONTHS = {
     name.lower(): index

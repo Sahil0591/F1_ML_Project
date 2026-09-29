@@ -416,6 +416,19 @@ def reconstruct_gold_core(request_path: Path, root: Path) -> dict[str, Any]:
             raise ValueError("audited labels require separate exact final document bindings")
         for target in target_bindings:
             document = _safe_file(root, target["path"], target["sha256"])
+            post_final_review = target.get("post_final_review")
+            if post_final_review is not None:
+                reviewed = post_final_review["decision_artifact"]
+                reviewed_document = _safe_file(root, reviewed["path"], reviewed["sha256"])
+                reviewed_pdf = inspect_pdf(reviewed_document)
+                reviewed_text = " ".join(reviewed_pdf["text"].lower().split())
+                if (
+                    post_final_review.get("conclusion") != "classification_cannot_be_amended"
+                    or reviewed_pdf["document_id"] != str(post_final_review["decision_document_id"])
+                    or "no power to remedy that served time penalty by amending the classifications"
+                    not in reviewed_text
+                ):
+                    raise ValueError("post-final review does not preserve the final classification")
             if (
                 target.get("event_id") != item["event_id"]
                 or target.get("status") != "final"

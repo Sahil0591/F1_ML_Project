@@ -111,6 +111,7 @@ def main() -> None:
     winter.add_argument("catalog", type=Path)
     winter.add_argument("--root", type=Path, default=Path.cwd())
     winter.add_argument("--reuse-retained", action="store_true")
+    winter.add_argument("--minimum-races", type=int, default=8)
     scheduled = subcommands.add_parser("collect-next-race", help="Run one bounded prospective tick")
     scheduled.add_argument("--season", type=int)
     scheduled.add_argument("--new-capture", action="store_true")
@@ -176,7 +177,12 @@ def main() -> None:
         if args.command == "audit-winter":
             print(
                 json.dumps(
-                    audit_winter_pool(args.catalog, paths.root, reuse_retained=args.reuse_retained),
+                    audit_winter_pool(
+                        args.catalog,
+                        paths.root,
+                        minimum_races=args.minimum_races,
+                        reuse_retained=args.reuse_retained,
+                    ),
                     indent=2,
                 )
             )

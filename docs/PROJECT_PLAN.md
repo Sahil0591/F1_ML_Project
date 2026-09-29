@@ -1,6 +1,6 @@
 # F1 ML Predictor Project Plan
 
-Status: Phases 1 through 7 complete; Phase 8 infrastructure and first eight-race Gold Core evaluation completed. The Windows prospective task is disabled after terminal popups; manual collection remains available. Independent Phase 9 simulation infrastructure is delivered. The versioned evaluation protocol requires 15 paired Gold test races for preliminary comparison and 25 for selection. Real-world model selection, validated championship forecasts and model explanations remain gated with five paired test races and no audited DNF labels. Updated 2026-09-29.
+Status: Phases 1 through 7 complete; Phase 8 infrastructure and first eight-race Gold Core evaluation completed. Historical Gold coverage has expanded to 25 races, 506 driver-race observations and 24 unique drivers. The Windows prospective task is disabled after terminal popups; manual collection remains available. Independent Phase 9 simulation infrastructure is delivered. The versioned evaluation protocol requires 15 paired Gold test races for preliminary comparison and 25 for selection. Real-world model selection, validated championship forecasts and model explanations remain gated pending chronological evaluation on the expanded cohort, audited DNF labels and baseline checks. Updated 2026-09-29.
 
 ## Product and prediction contract
 

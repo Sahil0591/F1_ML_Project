@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 import pytest
 
 from f1_ml_predictor.trust.winter import (
+    _publication,
     _resume_request,
     latest_final_record,
     qualifying_at_cutoff,
@@ -36,6 +37,15 @@ def test_main_qualifying_state_ignores_sprint_but_not_earlier_revisions():
         qualifying_at_cutoff([main], main, datetime(2025, 3, 8, 15, 30, tzinfo=UTC))
 
 
+def test_summer_cet_label_uses_later_possible_utc_bound():
+    summer = record(30, "Provisional Qualifying Classification", "16:30")
+    summer["publication_cet"] = "05.07.25 16:30"
+    assert _publication(summer) == datetime(2025, 7, 5, 15, 30, tzinfo=UTC)
+    with pytest.raises(ValueError, match="another version"):
+        qualifying_at_cutoff([summer], summer, datetime(2025, 7, 5, 15, 30, tzinfo=UTC))
+    qualifying_at_cutoff([summer], summer, datetime(2025, 7, 5, 15, 31, tzinfo=UTC))
+
+
 def test_latest_roster_replacement_covers_old_recall_but_uncertain_release_blocks():
     old = record(11, "Entry List", "10:00", recalled=True)
     selected = record(13, "Entry List V2", "11:00")
@@ -63,6 +73,18 @@ def test_final_label_requires_latest_version_and_no_unreviewed_later_rulings():
     with pytest.raises(ValueError, match="latest"):
         latest_final_record([final, revision], final["url"], "50")
     assert latest_final_record([final, ruling, revision], revision["url"], "53") == revision
+
+
+def test_later_review_requires_exact_registry_identity(tmp_path):
+    final = record(50, "Final Race Classification", "20:30")
+    ruling = record(52, "Decision - Williams Petition for Right of Review", "20:40")
+    review = {
+        "later_documents": [{"document_id": "52", "title": ruling["title"], "url": ruling["url"]}],
+        "conclusion": "classification_cannot_be_amended",
+    }
+    changed = dict(ruling, document_id="53")
+    with pytest.raises(ValueError, match="differ"):
+        latest_final_record([final, changed], final["url"], "50", review=review, root=tmp_path)
 
 
 def test_recalled_rows_remain_visible_and_cannot_be_selected():

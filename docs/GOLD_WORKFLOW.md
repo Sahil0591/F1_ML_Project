@@ -44,16 +44,18 @@ The reviewed 2026 announcement in the shortlist is checked independently against
 its retained publication metadata and schedule table. Neither a claimed clock
 nor a schedule URL alone is accepted.
 
-`audit-winter` consumes the reviewed nine-race winter shortlist in
-`HISTORICAL_WINTER_CANDIDATES.json`. It verifies the complete contemporary roster,
+`audit-winter` consumes the reviewed winter shortlist or the expanded 27-race
+catalog in `HISTORICAL_EXPANSION_CANDIDATES.json`. It verifies the contemporary roster,
 exact qualifying cover identity and values, latest required versions at cutoff,
 schedule publication/table, and latest final classification with no unreviewed
 later rulings. Minute-resolution publication clocks use the end of the minute
-as their conservative availability bound. Summer feature clocks remain excluded.
+as their conservative availability bound. The printed CET clock on summer dates
+uses UTC+1 as the later possible UTC bound if CET or CEST was intended.
 Raw target clocks retain their ambiguity and a conservative upper bound.
 
 ```powershell
 .\.venv\Scripts\python.exe -m f1_ml_predictor audit-winter docs/HISTORICAL_WINTER_CANDIDATES.json
+.\.venv\Scripts\python.exe -m f1_ml_predictor audit-winter docs/HISTORICAL_EXPANSION_CANDIDATES.json --minimum-races 25 --reuse-retained
 ```
 
 `--reuse-retained` reuses hash-verified registry observations less than 24 hours
@@ -63,6 +65,14 @@ initial audit stops at eight eligible races. A damaged 2025 Australian PDF has
 four visually reviewed, exact-SHA-bound Q1 transcriptions in the shortlist;
 they cannot apply to another PDF or overwrite a parsed value. That event was
 not needed after the initial coverage target was reached.
+
+The expanded audit reached 25 eligible races on 2026-09-29: 506 driver-race
+observations from 24 unique drivers, with zero audited DNF labels. The Dutch
+Grand Prix has a later right-of-review decision whose retained exact document
+says the served penalty cannot be remedied by amending the final classification.
+Its identity and conclusion are checked again during replay. The 2025 Spanish
+final classification could not be parsed from its retained PDF, and the Canadian
+evidence had an immutable artifact conflict, so neither entered this cohort.
 
 ## Reconstructing Core
 

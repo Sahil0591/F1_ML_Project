@@ -139,16 +139,14 @@ def _final(rows: list[dict[str, Any]], event: EventId, race_name: str) -> dict[s
         raise ValueError(
             "latest nonrecalled final classification is missing or belongs to another event"
         )
-    selected = max(
-        finals, key=lambda row: (_publication(row, winter_required=False), int(row["document_id"]))
-    )
+    selected = max(finals, key=lambda row: (_publication(row), int(row["document_id"])))
     latest_final_record(rows, selected["url"], selected["document_id"])
-    key = (_publication(selected, winter_required=False), int(selected["document_id"]))
+    key = (_publication(selected), int(selected["document_id"]))
     later = [
         row
         for row in rows
         if not row["recalled"]
-        and (_publication(row, winter_required=False), int(row["document_id"])) > key
+        and (_publication(row), int(row["document_id"])) > key
         and row["title"].lower() != "championship points"
     ]
     if later:
@@ -310,7 +308,7 @@ def collect_final_outcomes(
         if rechecked != selected:
             raise ValueError("final registry version changed while the PDF was captured")
         observed = _clock(now)
-        published_bound = _publication(selected, winter_required=False) + timedelta(minutes=1)
+        published_bound = _publication(selected) + timedelta(minutes=1)
         if not race_start < published_bound <= observed:
             raise ValueError("final publication bound is before the race or not yet known")
         availability = max(observed, published_bound)

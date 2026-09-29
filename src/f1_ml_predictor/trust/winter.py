@@ -145,12 +145,9 @@ def registry_rows(text: str) -> list[dict[str, Any]]:
     return rows
 
 
-def _publication(row: dict[str, Any], *, winter_required: bool = True) -> datetime:
+def _publication(row: dict[str, Any]) -> datetime:
+    """Use the later UTC bound if the registry's CET label means CET or CEST."""
     local = datetime.strptime(row["publication_cet"], "%d.%m.%y %H:%M")
-    if winter_required and local.replace(tzinfo=ZoneInfo("Europe/Paris")).utcoffset() != timedelta(
-        hours=1
-    ):
-        raise ValueError("summer publication clock remains unresolved for predictive evidence")
     return local.replace(tzinfo=timezone(timedelta(hours=1))).astimezone(UTC)
 
 
@@ -205,7 +202,14 @@ def roster_at_cutoff(
         raise ValueError("selected roster is not the latest known entry-list state")
 
 
-def latest_final_record(rows: list[dict[str, Any]], url: str, identifier: str) -> dict[str, Any]:
+def latest_final_record(
+    rows: list[dict[str, Any]],
+    url: str,
+    identifier: str,
+    *,
+    review: dict[str, Any] | None = None,
+    root: Path | None = None,
+) -> dict[str, Any]:
     """Require the latest final classification to cover the last event ruling."""
     selected = _record(rows, url, identifier)
     versions = [
@@ -219,7 +223,7 @@ def latest_final_record(rows: list[dict[str, Any]], url: str, identifier: str) -
         not versions
         or max(
             versions,
-            key=lambda row: (_publication(row, winter_required=False), int(row["document_id"])),
+            key=lambda row: (_publication(row), int(row["document_id"])),
         )
         != selected
     ):
@@ -231,12 +235,32 @@ def latest_final_record(rows: list[dict[str, Any]], url: str, identifier: str) -
         if not row["recalled"]
         and row.get("url")
         and row["url"].startswith(event_prefix)
-        and (_publication(row, winter_required=False), int(row["document_id"]))
-        > (_publication(selected, winter_required=False), int(selected["document_id"]))
+        and (_publication(row), int(row["document_id"]))
+        > (_publication(selected), int(selected["document_id"]))
         and row["title"].lower() != "championship points"
     ]
     if later:
-        raise ValueError("later event documents require final outcome review")
+        if review is None or root is None:
+            raise ValueError("later event documents require final outcome review")
+        expected = {
+            (row["document_id"], row["title"], row["url"]) for row in review["later_documents"]
+        }
+        observed = {(row["document_id"], row["title"], row["url"]) for row in later}
+        if expected != observed or review.get("conclusion") != "classification_cannot_be_amended":
+            raise ValueError("later event documents differ from the completed review")
+        decisions = [row for row in later if row["title"].startswith("Decision - Williams")]
+        if len(decisions) != 1 or decisions[0]["document_id"] != review["decision_document_id"]:
+            raise ValueError("review decision identity changed")
+        artifact = review["decision_artifact"]
+        document = _safe_file(root, artifact["path"], artifact["sha256"])
+        inspected = inspect_pdf(document)
+        normalized = " ".join(inspected["text"].lower().split())
+        if (
+            inspected["document_id"] != decisions[0]["document_id"]
+            or "no power to remedy that served time penalty by amending the classifications"
+            not in normalized
+        ):
+            raise ValueError("review does not establish unchanged final classification")
     return selected
 
 
@@ -288,7 +312,7 @@ def _resume_request(root: Path, item: dict[str, Any]) -> Path | None:
     directory = root / "data/features/historical_evidence" / str(race["features"]["sha256"])
     request = json.loads((directory / "request.json").read_text(encoding="utf-8"))
     if any(
-        not binding["audit_reference"].startswith("fia-winter-direct-v2:")
+        not binding["audit_reference"].startswith(("fia-winter-direct-v2:", "fia-direct-v3:"))
         for binding in request["document_bindings"]
     ):
         raise ValueError("older winter audit must be withdrawn and rechecked")
@@ -322,7 +346,7 @@ def audit_winter_pool(
     """
     root = root.resolve()
     candidates = json.loads(catalog_path.read_text(encoding="utf-8"))["candidates"]
-    if not 8 <= minimum_races <= 20 or not 1 <= len(candidates) <= 20:
+    if not 8 <= minimum_races <= 40 or not 1 <= len(candidates) <= 60:
         raise ValueError("use a bounded pool and at least eight eligible races")
     index = root / "data/benchmarks/gold_core_registry.json"
     registered = (
@@ -481,7 +505,7 @@ def audit_winter_pool(
                 if verified_schedule.available_by > q_proof.available_at:
                     raise ValueError("scheduled context needs a later availability bound")
                 audit = (
-                    f"fia-winter-direct-v2:{registry['sha256']}:"
+                    f"fia-direct-v3:cet-upper-bound:{registry['sha256']}:"
                     f"{q_artifact['sha256']}:{schedule['sha256']}"
                 )
                 q_proof = _proof(
@@ -606,11 +630,13 @@ def audit_winter_pool(
                 }
                 target_spec = item["final_race_label"]
                 target_row = latest_final_record(
-                    rows, target_spec["url"], str(target_spec["document_id"])
+                    rows,
+                    target_spec["url"],
+                    str(target_spec["document_id"]),
+                    review=item.get("post_final_review"),
+                    root=root,
                 )
-                label_available = _publication(target_row, winter_required=False) + timedelta(
-                    minutes=1
-                )
+                label_available = _publication(target_row) + timedelta(minutes=1)
                 target_artifact = fetch(target_spec["url"])
                 target_text = inspect_pdf(root / target_artifact["path"])
                 if target_text["document_id"] != str(target_spec["document_id"]):
@@ -679,6 +705,7 @@ def audit_winter_pool(
                         else "verified_literal_CET",
                         "registry_path": registry["path"],
                         "registry_sha256": registry["sha256"],
+                        "post_final_review": item.get("post_final_review"),
                     }
                 ]
                 request_path = (
@@ -706,7 +733,7 @@ def audit_winter_pool(
             client.close()
     report = {
         "version": 1,
-        "audit_method": "fia-winter-direct-v2",
+        "audit_method": "fia-direct-v3-cet-upper-bound",
         "tier": "Gold",
         "minimum_gold_races": minimum_races,
         "included_races": sum(row["status"] == "included" for row in results),
