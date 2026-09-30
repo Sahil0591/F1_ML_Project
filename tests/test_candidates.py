@@ -6,7 +6,27 @@ from pathlib import Path
 import httpx
 import pytest
 
-from f1_ml_predictor.trust.candidates import FIA_ROOT, discover_candidates
+from f1_ml_predictor.trust.candidates import FIA_ROOT, _inspect_registry, discover_candidates
+
+
+def test_legacy_registry_resolves_exact_event_and_rejects_other_pdf_event() -> None:
+    item = {"season": 2023, "round": 1, "event_name": "Bahrain Grand Prix"}
+    def row(event: str, title: str, stamp: str) -> str:
+        return (
+            '<li class="document-row"><a href="/sites/default/files/decision-document/'
+            f'2023 {event} - {title}.pdf">{title}</a>'
+            f" Published on {stamp} CET</li>"
+        )
+
+    html = row("Bahrain Grand Prix", "Provisional Qualifying Classification", "04.03.23 17:10")
+    html += row("Bahrain Grand Prix", "Final Race Classification", "05.03.23 18:00")
+    _inspect_registry(item, html)
+    assert item["document_id"] is None
+    assert item["publication_cet"] == "04.03.23 17:10"
+    assert len(item["final_race_records"]) == 1
+    wrong = row("Australian Grand Prix", "Provisional Qualifying Classification", "04.03.23 17:10")
+    with pytest.raises(ValueError, match="does_not_match_exact_event_and_season"):
+        _inspect_registry({"season": 2023, "round": 1, "event_name": "Bahrain Grand Prix"}, wrong)
 
 
 def _race(round_number: int, *, date: str = "2025-03-02", name: str | None = None) -> dict:
@@ -136,6 +156,22 @@ def test_automatic_pool_retains_only_bounded_metadata_and_never_gold(tmp_path: P
         hashlib.sha256((tmp_path / result["report_path"]).read_bytes()).hexdigest()
         == result["report_sha256"]
     )
+
+
+def test_unbounded_discovery_accounts_for_every_completed_round(tmp_path: Path) -> None:
+    client, seen = _client([_race(number) for number in range(1, 25)])
+    with client:
+        result = discover_candidates(
+            tmp_path,
+            seasons=(2025,),
+            limit=None,
+            http_client=client,
+            now=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+    assert len(result["catalog"]["candidates"]) == 24
+    assert result["catalog"]["excluded_events"] == []
+    assert result["catalog"]["pool_limit"] is None
+    assert len(seen) == 27  # schedule, FIA root and season, all 24 registries
 
 
 def test_winter_evidence_ranks_before_more_recent_summer(tmp_path: Path) -> None:

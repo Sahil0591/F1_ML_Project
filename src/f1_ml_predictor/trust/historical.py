@@ -263,6 +263,50 @@ def inspect_pdf(path: Path) -> dict[str, Any]:
     }
 
 
+def verify_post_final_review(review: dict[str, Any], root: Path) -> None:
+    """Recheck a hash-bound review of documents published after the final table."""
+    conclusion = review.get("conclusion")
+    if conclusion == "classification_cannot_be_amended":
+        artifact = review["decision_artifact"]
+        inspected = inspect_pdf(_safe_file(root, artifact["path"], artifact["sha256"]))
+        normalized = " ".join(inspected["text"].lower().split())
+        if (
+            inspected["document_id"] != str(review["decision_document_id"])
+            or "no power to remedy that served time penalty by amending the classifications"
+            not in normalized
+        ):
+            raise ValueError("post-final review does not preserve the final classification")
+        return
+    if conclusion not in {"media_procedure_only", "no_penalty_applied"}:
+        raise ValueError("unsupported post-final review conclusion")
+    documents = review.get("later_documents")
+    if not review.get("audit_reference") or not review.get("reviewed_at") or not documents:
+        raise ValueError("post-final review lacks exact document audit identity")
+    if len({(row["document_id"], row["url"]) for row in documents}) != len(documents):
+        raise ValueError("post-final review repeats a document")
+    for row in documents:
+        artifact = row["artifact"]
+        inspected = inspect_pdf(_safe_file(root, artifact["path"], artifact["sha256"]))
+        if inspected["document_id"] != str(row["document_id"]):
+            raise ValueError("later document cover differs from the review")
+        if conclusion == "media_procedure_only":
+            normalized = " ".join(inspected["text"].lower().split())
+            if (
+                not row["title"].endswith("Procedure")
+                or "media delegate" not in normalized
+                or "note to teams" not in normalized
+                or "procedure" not in normalized
+            ):
+                raise ValueError("later document is not a reviewed media procedure")
+    if conclusion == "no_penalty_applied" and (
+        len(documents) != 1
+        or documents[0]["title"] != "Decision - Car 11 - Alleged false start - Moving before signal"
+        or review.get("visually_audited_page") != 1
+        or review.get("visual_conclusion") != "The stewards decided no penalty is applied to car 11"
+    ):
+        raise ValueError("later decision lacks an exact no-penalty visual review")
+
+
 def reconstruct_gold_core(request_path: Path, root: Path) -> dict[str, Any]:
     """Audit a lean feature request, freeze its evidence, and update a Gold registry.
 
@@ -418,17 +462,7 @@ def reconstruct_gold_core(request_path: Path, root: Path) -> dict[str, Any]:
             document = _safe_file(root, target["path"], target["sha256"])
             post_final_review = target.get("post_final_review")
             if post_final_review is not None:
-                reviewed = post_final_review["decision_artifact"]
-                reviewed_document = _safe_file(root, reviewed["path"], reviewed["sha256"])
-                reviewed_pdf = inspect_pdf(reviewed_document)
-                reviewed_text = " ".join(reviewed_pdf["text"].lower().split())
-                if (
-                    post_final_review.get("conclusion") != "classification_cannot_be_amended"
-                    or reviewed_pdf["document_id"] != str(post_final_review["decision_document_id"])
-                    or "no power to remedy that served time penalty by amending the classifications"
-                    not in reviewed_text
-                ):
-                    raise ValueError("post-final review does not preserve the final classification")
+                verify_post_final_review(post_final_review, root)
             if (
                 target.get("event_id") != item["event_id"]
                 or target.get("status") != "final"

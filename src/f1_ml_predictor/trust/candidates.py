@@ -1,4 +1,4 @@
-"""Automatic bounded discovery of candidate FIA publication records.
+"""Automatic discovery of candidate FIA publication records.
 
 Current Jolpica schedules supply discovery identities and completion hints only.
 No retained current response certifies historical availability or Gold eligibility.
@@ -13,7 +13,7 @@ from datetime import UTC, datetime, timedelta, timezone
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import unquote, urljoin, urlsplit
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -29,6 +29,14 @@ from f1_ml_predictor.trust.historical import (
 from f1_ml_predictor.trust.winter import registry_rows
 
 FIA_ROOT = "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14"
+_FIA_EVENT_LABELS = {
+    (2022, 20): "Mexican Grand Prix",
+    (2022, 21): "Brazilian Grand Prix",
+    (2026, 7): "Barcelona-Catalunya Grand Prix",
+}
+_FIA_DOCUMENT_STEMS = {
+    (2026, 7): "/system/files/decision-document/2026_barcelona-catalunya_grand_prix_-_"
+}
 
 
 class _Selectors(HTMLParser):
@@ -178,10 +186,24 @@ def _clock(row: dict[str, Any]) -> tuple[datetime, bool]:
 
 
 def _inspect_registry(candidate: dict[str, Any], html: str) -> None:
-    prefix = _stem(candidate["event_name"], candidate["season"])
+    prefix = _FIA_DOCUMENT_STEMS.get(
+        (candidate["season"], candidate["round"]),
+        _stem(candidate.get("fia_event_name", candidate["event_name"]), candidate["season"]),
+    )
     rows = registry_rows(html)
+    legacy_prefix = (
+        f"{candidate['season']} {candidate.get('fia_event_name', candidate['event_name'])} - "
+    )
     matching = [
-        row for row in rows if row.get("url") and urlsplit(row["url"]).path.startswith(prefix)
+        row
+        for row in rows
+        if row.get("url")
+        and (
+            urlsplit(row["url"]).path.startswith(prefix)
+            or _name(unquote(urlsplit(row["url"]).path.rsplit("/", 1)[-1])).startswith(
+                _name(legacy_prefix)
+            )
+        )
     ]
     for row in matching:
         _official(row["url"])
@@ -205,7 +227,7 @@ def _inspect_registry(candidate: dict[str, Any], html: str) -> None:
     ]
     if not provisionals:
         raise ValueError("downloadable_provisional_qualifying_record_missing")
-    selected = min(provisionals, key=lambda row: (_clock(row)[0], int(row["document_id"])))
+    selected = min(provisionals, key=lambda row: (_clock(row)[0], row["url"]))
     published, winter = _clock(selected)
     if published.year != candidate["season"]:
         raise ValueError("qualifying_publication_year_contradicts_event_identity")
@@ -274,23 +296,27 @@ def _inspect_registry(candidate: dict[str, Any], html: str) -> None:
 def discover_candidates(
     root: Path,
     seasons: tuple[int, ...] = (2026, 2025),
-    limit: int = 17,
+    limit: int | None = 17,
     http_client: httpx.Client | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    """Retain schedules and at most twenty event registries, without PDF downloads."""
-    if isinstance(limit, bool) or not 1 <= limit <= 20:
+    """Retain schedules and event registries, without PDF downloads.
+
+    ``limit=None`` audits every completed schedule identity in the selected
+    seasons. The bounded default remains useful for exploratory shortlists.
+    """
+    if limit is not None and (isinstance(limit, bool) or not 1 <= limit <= 20):
         raise ValueError("candidate discovery limit must be between one and twenty")
     if (
         not seasons
-        or len(seasons) > 3
+        or len(seasons) > 5
         or len(set(seasons)) != len(seasons)
         or any(
             isinstance(season, bool) or not isinstance(season, int) or not 2015 <= season <= 2100
             for season in seasons
         )
     ):
-        raise ValueError("discover one to three distinct supported seasons")
+        raise ValueError("discover one to five distinct supported seasons")
     as_of = now or datetime.now(UTC)
     if as_of.tzinfo is None or as_of.utcoffset() is None:
         raise ValueError("candidate discovery time requires a timezone")
@@ -349,8 +375,9 @@ def discover_candidates(
         hints.sort(
             key=lambda item: (not item["winter_ranking_hint"], -item["season"], -item["round"])
         )
-        pool = hints[:limit]
-        excluded.extend({**item, "reason": "bounded_pool_limit"} for item in hints[limit:])
+        pool = hints if limit is None else hints[:limit]
+        if limit is not None:
+            excluded.extend({**item, "reason": "bounded_pool_limit"} for item in hints[limit:])
         try:
             root_html = fia_html(FIA_ROOT)
         except (ValueError, httpx.HTTPError) as exc:
@@ -371,9 +398,11 @@ def discover_candidates(
                 if season not in season_pages:
                     season_url = _selector(root_html, f"SEASON {season}", season=season)
                     season_pages[season] = fia_html(season_url)
-                index_url = _selector(
-                    season_pages[season], candidate["event_name"], season=season, event=True
+                fia_name = _FIA_EVENT_LABELS.get(
+                    (season, candidate["round"]), candidate["event_name"]
                 )
+                candidate["fia_event_name"] = fia_name
+                index_url = _selector(season_pages[season], fia_name, season=season, event=True)
                 candidate["index_url"] = index_url
                 _inspect_registry(candidate, fia_html(index_url))
             except (ValueError, KeyError, TypeError, httpx.HTTPError) as exc:
@@ -408,7 +437,7 @@ def discover_candidates(
         if any(item["status"] == "audit_required" for item in pool)
         else "insufficient_data",
         "candidate_count": len(pool),
-        "preferred_pool_size_met": 12 <= len(pool) <= 20,
+        "preferred_pool_size_met": 12 <= len(pool) <= 20 if limit is not None else None,
         "candidates_with_publication_records": sum(
             item["status"] == "audit_required" for item in pool
         ),

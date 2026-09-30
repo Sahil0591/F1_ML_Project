@@ -98,6 +98,7 @@ def main() -> None:
         default=[datetime.now(UTC).year, datetime.now(UTC).year - 1],
     )
     candidates.add_argument("--limit", type=int, default=17)
+    candidates.add_argument("--all", action="store_true", help="Inspect every completed race")
     candidates.add_argument("--root", type=Path, default=Path.cwd())
     historical = subcommands.add_parser("audit-candidates", help="Rank a bounded FIA audit pool")
     historical.add_argument("catalog", type=Path)
@@ -118,6 +119,7 @@ def main() -> None:
     winter.add_argument("catalog", type=Path)
     winter.add_argument("--root", type=Path, default=Path.cwd())
     winter.add_argument("--reuse-retained", action="store_true")
+    winter.add_argument("--exhaustive", action="store_true", help="Attempt every catalog race")
     winter.add_argument("--minimum-races", type=int, default=8)
     scheduled = subcommands.add_parser("collect-next-race", help="Run one bounded prospective tick")
     scheduled.add_argument("--season", type=int)
@@ -165,7 +167,9 @@ def main() -> None:
     report: IngestReport | EnrichmentReport
     try:
         if args.command == "discover-gold-candidates":
-            result = discover_candidates(paths.root, seasons=tuple(args.seasons), limit=args.limit)
+            result = discover_candidates(
+                paths.root, seasons=tuple(args.seasons), limit=None if args.all else args.limit
+            )
             print(f"status: {result['auditability_report']['status']}")
             print(f"candidates: {len(result['catalog']['candidates'])}")
             print(f"eligible_gold_races: {result['catalog']['eligible_gold_races']}")
@@ -196,6 +200,7 @@ def main() -> None:
                         paths.root,
                         minimum_races=args.minimum_races,
                         reuse_retained=args.reuse_retained,
+                        exhaustive=args.exhaustive,
                     ),
                     indent=2,
                 )

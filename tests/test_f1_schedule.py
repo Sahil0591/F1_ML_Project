@@ -7,6 +7,7 @@ from f1_ml_predictor.trust.f1_schedule import (
     ARTICLE_URLS,
     SCHEDULE_URLS,
     ScheduleValidationError,
+    validate_event_timetable,
     validate_f1_schedule,
 )
 
@@ -225,3 +226,80 @@ def test_canonical_single_id_alias_is_supported_for_2026() -> None:
     )
     assert schedule.timezone_basis == "Asia/Tokyo"
     assert schedule.race_start.tzinfo == UTC
+
+
+def test_legacy_2022_article_uses_later_jsonld_time_and_exact_utc_row() -> None:
+    publication = "2022-02-11T17:13:44.277Z"
+    article = {
+        "@type": "NewsArticle",
+        "url": SCHEDULE_URLS[2022],
+        "datePublished": publication,
+        "dateModified": "2022-02-11T00:00:00Z",
+        "headline": "2022 F1 Grand Prix start times confirmed",
+    }
+    html = (
+        "<h1>2022 F1 Grand Prix start times confirmed</h1>"
+        "<time>Feb 11, 2022 12:00am UTC</time>"
+        f'<script type="application/ld+json">{json.dumps(article)}</script>'
+        "<table><tr><th>GRAND PRIX</th><th>DATE</th><th>LOCAL TIME</th><th>UTC</th></tr>"
+        "<tr><td>Bahrain</td><td>March 20</td><td>1800</td><td>1500</td></tr></table>"
+    )
+    claims = {
+        "season": 2022,
+        "round_number": 1,
+        "event_name": "Bahrain Grand Prix",
+        "circuit_id": "bahrain",
+        "claimed_publication": _dt(publication),
+        "claimed_race_start": _dt("2022-03-20T15:00:00Z"),
+        "source_url": SCHEDULE_URLS[2022],
+        "prediction_timestamp": _dt("2022-03-19T15:00:00Z"),
+    }
+    result = validate_f1_schedule(html, **claims)
+    assert result.available_by == _dt("2022-02-11T17:14:00Z")
+    with pytest.raises(ScheduleValidationError, match="GMT clock"):
+        validate_f1_schedule(html.replace("1500</td>", "1600</td>"), **claims)
+
+
+def test_historical_event_timetable_binds_published_race_row() -> None:
+    url = (
+        "https://www.formula1.com/en/latest/article/"
+        "formula-1-gulf-air-bahrain-grand-prix-2023-timetable.fixture123"
+    )
+    heading = "FORMULA 1 GULF AIR BAHRAIN GRAND PRIX 2023"
+    article = {
+        "@type": "NewsArticle",
+        "@id": url,
+        "url": url,
+        "headline": heading + " - full timetable | Formula 1",
+        "datePublished": "2023-01-27T11:33:43.263Z",
+        "dateModified": "2022-01-01T00:00:00Z",
+    }
+    html = (
+        f"<h1>{heading}</h1>"
+        f'<script type="application/ld+json">{json.dumps(article)}</script>'
+        "<table><tr><th>SUNDAY 5th MARCH</th><th></th><th></th></tr>"
+        "<tr><td>FORMULA 1</td><td>GRAND PRIX (57 LAPS OR 120 MINS)</td>"
+        "<td>18:00 - 20:00</td></tr></table>"
+    )
+    claims = {
+        "season": 2023,
+        "round_number": 1,
+        "event_name": "Bahrain Grand Prix",
+        "circuit_id": "bahrain",
+        "claimed_publication": _dt("2023-01-27T11:33:43.263Z"),
+        "claimed_race_start": _dt("2023-03-05T15:00:00Z"),
+        "source_url": url,
+        "prediction_timestamp": _dt("2023-03-04T15:00:00Z"),
+    }
+    result = validate_event_timetable(html, **claims)
+    assert result.available_by == _dt("2023-01-27T11:34:00Z")
+    with pytest.raises(ScheduleValidationError, match="contradicts claimed UTC"):
+        validate_event_timetable(html.replace("18:00 - 20:00", "19:00 - 21:00"), **claims)
+    with pytest.raises(ScheduleValidationError, match="event identity"):
+        validate_event_timetable(
+            html.replace("BAHRAIN GRAND PRIX", "AUSTRALIAN GRAND PRIX"), **claims
+        )
+    with pytest.raises(ScheduleValidationError, match="not known by cutoff"):
+        validate_event_timetable(
+            html.replace("2022-01-01T00:00:00Z", "2023-03-06T00:00:00Z"), **claims
+        )

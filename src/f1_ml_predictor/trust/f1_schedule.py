@@ -13,9 +13,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from html.parser import HTMLParser
 from typing import Any
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 SCHEDULE_URLS = {
+    2022: "https://www.formula1.com/en/latest/article/"
+    "2022-f1-grand-prix-start-times-confirmed.2JejCjCeFvatOkaHsFQYC2",
     2025: "https://www.formula1.com/en/latest/article/"
     "f1-announces-race-start-times-for-2025-season.490KLLD7T1AAM7wQl28tn6",
     2026: "https://www.formula1.com/en/latest/article/"
@@ -23,12 +26,18 @@ SCHEDULE_URLS = {
     "2UgPfArqH76tzlOYh21jSG.2UgPfArqH76tzlOYh21jSG",
 }
 # The retained 2026 request repeats the ID; the publisher's JSON-LD does not.
-ARTICLE_URLS = {2025: SCHEDULE_URLS[2025], 2026: SCHEDULE_URLS[2026].rsplit(".", 1)[0]}
+ARTICLE_URLS = {
+    2022: SCHEDULE_URLS[2022],
+    2025: SCHEDULE_URLS[2025],
+    2026: SCHEDULE_URLS[2026].rsplit(".", 1)[0],
+}
 _HEADLINES = {
+    2022: "2022 F1 Grand Prix start times confirmed",
     2025: "F1 announces race start times for 2025 season",
     2026: "Official Grand Prix start times for 2026 F1 season confirmed",
 }
 _HEADERS = {
+    2022: ("GRAND PRIX", "DATE", "LOCAL TIME", "UTC"),
     2025: ("RACE", "DATE", "LOCAL START TIME", "(GMT)"),
     2026: (
         "Venue, race date",
@@ -63,8 +72,58 @@ _VENUES = {
     "marina_bay": ("Singapore", "Singapore Grand Prix", "Asia/Singapore"),
     "americas": ("United States", "United States Grand Prix", "America/Chicago"),
     "rodriguez": ("Mexico City", "Mexico City Grand Prix", "America/Mexico_City"),
+    "madring": ("Madrid", "Spanish Grand Prix", "Europe/Madrid"),
+    "ricard": ("France", "French Grand Prix", "Europe/Paris"),
+}
+_EVENT_NAMES = {
+    (2022, "interlagos"): "São Paulo Grand Prix",
+    (2026, "catalunya"): "Barcelona Grand Prix",
+}
+_VENUE_NAMES = {
+    (2022, "interlagos"): "Brazil",
+    (2022, "imola"): "Emilia Romagna",
+    (2022, "rodriguez"): "Mexico",
+    (2022, "silverstone"): "Great Britain",
+    (2026, "catalunya"): "Barcelona",
+    (2026, "madring"): "Spain",
+}
+_TIMETABLE_HEADING_ALIASES = {
+    "red_bull_ring": ("osterreich",),
+    "monza": ("italia",),
+    "catalunya": ("espana",),
+    "rodriguez": ("mexico",),
 }
 _ROUNDS = {
+    **{
+        (2022, circuit): round_number
+        for round_number, circuit in enumerate(
+            (
+                "bahrain",
+                "jeddah",
+                "albert_park",
+                "imola",
+                "miami",
+                "catalunya",
+                "monaco",
+                "baku",
+                "villeneuve",
+                "silverstone",
+                "red_bull_ring",
+                "ricard",
+                "hungaroring",
+                "spa",
+                "zandvoort",
+                "monza",
+                "marina_bay",
+                "suzuka",
+                "americas",
+                "rodriguez",
+                "interlagos",
+                "yas_marina",
+            ),
+            start=1,
+        )
+    },
     (2025, "albert_park"): 1,
     (2025, "shanghai"): 2,
     (2025, "interlagos"): 21,
@@ -80,6 +139,12 @@ _ROUNDS = {
     (2026, "monza"): 13,
     (2026, "baku"): 15,
     (2026, "silverstone"): 9,
+    (2026, "miami"): 4,
+    (2026, "villeneuve"): 5,
+    (2026, "monaco"): 6,
+    (2026, "catalunya"): 7,
+    (2026, "red_bull_ring"): 8,
+    (2026, "madring"): 14,
     (2025, "suzuka"): 3,
     (2025, "bahrain"): 4,
     (2025, "jeddah"): 5,
@@ -205,6 +270,10 @@ def _alias(value: str) -> str:
     ).casefold()
 
 
+def _identity_words(value: str) -> str:
+    return " ".join(re.findall(r"[a-z0-9]+", _alias(value)))
+
+
 def _utc(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ScheduleValidationError("schedule claims require timezone-aware timestamps")
@@ -301,7 +370,7 @@ def validate_f1_schedule(
     if source_url is not None and source_url not in {expected_url, canonical_url}:
         raise ScheduleValidationError("schedule source URL is not the reviewed official article")
     venue, expected_event, zone_name = _VENUES[circuit_id]
-    if _alias(event_name) != _alias(expected_event):
+    if _alias(event_name) != _alias(_EVENT_NAMES.get((season, circuit_id), expected_event)):
         raise ScheduleValidationError("event name does not match the reviewed circuit")
     expected_round = _ROUNDS[season, circuit_id]
     if round_number is not None and round_number != expected_round:
@@ -336,11 +405,16 @@ def validate_f1_schedule(
         raise ScheduleValidationError("article JSON-LD headline contradicts the heading")
     published = _stamp(article.get("datePublished"))
     modified = _stamp(article.get("dateModified", article.get("datePublished")))
-    if modified < published:
+    if modified < published and season != 2022:
         raise ScheduleValidationError("article modification precedes publication")
     visible = [stamp for value in parser.times if (stamp := _visible_time(value)) is not None]
     minute = published.replace(second=0, microsecond=0)
-    if visible != [minute]:
+    if season == 2022:
+        # This article displays its publication day at midnight while JSON-LD
+        # supplies the later exact time. Use the later time as availability.
+        if len(visible) != 1 or visible[0].date() != published.date() or visible[0] > published:
+            raise ScheduleValidationError("visible UTC stamp contradicts article publication")
+    elif visible != [minute]:
         raise ScheduleValidationError("visible UTC stamp contradicts article publication")
     claimed = _utc(claimed_publication)
     if claimed not in {published, minute}:
@@ -359,16 +433,17 @@ def validate_f1_schedule(
     matches = [
         row
         for row in rows
-        if _alias(row[0] if season == 2025 else row[0].partition(",")[0]) == _alias(venue)
+        if _alias(row[0].rstrip(" *") if season in {2022, 2025} else row[0].partition(",")[0])
+        == _alias(_VENUE_NAMES.get((season, circuit_id), venue))
     ]
     if len(matches) != 1:
         raise ScheduleValidationError("event schedule row is missing or duplicated")
     row = matches[0]
-    date_text = row[1] if season == 2025 else row[0].partition(",")[2].strip()
+    date_text = row[1] if season in {2022, 2025} else row[0].partition(",")[2].strip()
     local = _date(date_text, season)
-    hour, minute_number = _clock(row[2] if season == 2025 else row[3])
+    hour, minute_number = _clock(row[2] if season in {2022, 2025} else row[3])
     race_start = _local_utc(local.replace(hour=hour, minute=minute_number), zone_name)
-    if season == 2025 and _clock(row[3]) != (race_start.hour, race_start.minute):
+    if season in {2022, 2025} and _clock(row[3]) != (race_start.hour, race_start.minute):
         raise ScheduleValidationError("local start time contradicts the printed GMT clock")
     if race_start != _utc(claimed_race_start):
         raise ScheduleValidationError("claimed UTC race start contradicts the schedule row")
@@ -384,5 +459,119 @@ def validate_f1_schedule(
         source_url or expected_url,
         row,
         zone_name,
+        hashlib.sha256(html.encode("utf-8")).hexdigest(),
+    )
+
+
+def validate_event_timetable(
+    html: str,
+    *,
+    season: int,
+    round_number: int,
+    event_name: str,
+    circuit_id: str,
+    claimed_publication: datetime,
+    claimed_race_start: datetime,
+    source_url: str,
+    prediction_timestamp: datetime,
+) -> ScheduledRace:
+    """Bind one published F1 event timetable to its exact race start row."""
+    parsed_url = urlsplit(source_url)
+    if (
+        parsed_url.scheme != "https"
+        or parsed_url.hostname != "www.formula1.com"
+        or parsed_url.port is not None
+        or not re.fullmatch(
+            rf"/en/latest/article/[a-z0-9-]+-{season}-timetable\.[A-Za-z0-9]+",
+            parsed_url.path,
+        )
+        or parsed_url.query
+        or parsed_url.fragment
+    ):
+        raise ScheduleValidationError("event timetable URL is not an official season article")
+    if season not in {2023, 2024} or circuit_id not in _VENUES:
+        raise ScheduleValidationError("unsupported historical event timetable")
+    if _utc(claimed_publication) >= _utc(prediction_timestamp):
+        raise ScheduleValidationError("event timetable was published after cutoff")
+    parser = _ScheduleHTML()
+    parser.feed(html)
+    parser.close()
+    if parser.capture is not None or parser.table is not None or len(parser.headings) != 1:
+        raise ScheduleValidationError("event timetable HTML is incomplete or ambiguous")
+    heading = _alias(parser.headings[0])
+    if str(season) not in heading.split() or not any(
+        marker in heading
+        for marker in ("grand prix", "gran premio", "grande premio", "grosser preis")
+    ):
+        raise ScheduleValidationError("event timetable heading contradicts season or document type")
+    heading_words = _identity_words(parser.headings[0])
+    labels = (
+        event_name.removesuffix(" Grand Prix"),
+        _VENUES[circuit_id][0],
+        *_TIMETABLE_HEADING_ALIASES.get(circuit_id, ()),
+    )
+    if not any(
+        re.search(rf"\b{re.escape(_identity_words(label))}\b", heading_words) for label in labels
+    ):
+        raise ScheduleValidationError("event timetable heading contradicts event identity")
+    articles: list[dict[str, Any]] = []
+    for script in parser.scripts:
+        try:
+            articles.extend(
+                item
+                for item in _entities(json.loads(script))
+                if item.get("@type") == "NewsArticle" and item.get("url") == source_url
+            )
+        except json.JSONDecodeError as exc:
+            raise ScheduleValidationError("invalid timetable JSON-LD") from exc
+    if len(articles) != 1:
+        raise ScheduleValidationError("one exact event timetable NewsArticle is required")
+    article = articles[0]
+    headline = _alias(article.get("headline", ""))
+    if article.get("@id", source_url) != source_url or not (
+        headline == heading or headline.startswith(heading + " - full timetable")
+    ):
+        raise ScheduleValidationError("event timetable canonical identity contradicts heading")
+    published = _stamp(article.get("datePublished"))
+    modified = _stamp(article.get("dateModified", article.get("datePublished")))
+    if published != _utc(claimed_publication):
+        raise ScheduleValidationError("timetable publication claim contradicts source")
+    available_by = max(published, modified).replace(second=0, microsecond=0) + timedelta(minutes=1)
+    if available_by > _utc(prediction_timestamp):
+        raise ScheduleValidationError("event timetable contents were not known by cutoff")
+    if _alias(event_name) != _alias(_EVENT_NAMES.get((season, circuit_id), _VENUES[circuit_id][1])):
+        raise ScheduleValidationError("event name contradicts reviewed circuit")
+    race_rows = [
+        (table[0], row)
+        for table in parser.tables
+        if table and len(table[0]) == 3
+        for row in table[1:]
+        if len(row) == 3
+        and row[0].upper() == "FORMULA 1"
+        and row[1].upper().startswith("GRAND PRIX")
+    ]
+    if len(race_rows) != 1:
+        raise ScheduleValidationError("one Formula 1 Grand Prix row is required")
+    header, row = race_rows[0]
+    day = re.fullmatch(r"[A-Z]+\s+(\d{1,2})(?:st|nd|rd|th)\s+([A-Z]+)", header[0])
+    start = re.fullmatch(r"(\d{2}):(\d{2})\s*-\s*\d{2}:\d{2}", row[2])
+    if day is None or start is None or day[2].lower() not in _MONTHS:
+        raise ScheduleValidationError("unsupported event timetable race date or time")
+    local = datetime(season, _MONTHS[day[2].lower()], int(day[1]), int(start[1]), int(start[2]))
+    race_start = _local_utc(local, _VENUES[circuit_id][2])
+    if race_start != _utc(claimed_race_start):
+        raise ScheduleValidationError("timetable race start contradicts claimed UTC event")
+    return ScheduledRace(
+        published,
+        available_by,
+        60,
+        race_start,
+        season,
+        round_number,
+        circuit_id,
+        event_name,
+        source_url,
+        (header[0], *row),
+        _VENUES[circuit_id][2],
         hashlib.sha256(html.encode("utf-8")).hexdigest(),
     )

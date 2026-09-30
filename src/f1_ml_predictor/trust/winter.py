@@ -4,6 +4,8 @@ import hashlib
 import json
 import re
 import time
+import unicodedata
+from calendar import month_name
 from datetime import UTC, datetime, timedelta, timezone
 from html import unescape
 from pathlib import Path
@@ -18,7 +20,7 @@ from f1_ml_predictor.benchmarks.builder import _safe_file, file_sha256
 from f1_ml_predictor.features.contracts import PreRaceEvent
 from f1_ml_predictor.identifiers import EventId
 from f1_ml_predictor.trust.evidence import table_hash
-from f1_ml_predictor.trust.f1_schedule import validate_f1_schedule
+from f1_ml_predictor.trust.f1_schedule import validate_event_timetable, validate_f1_schedule
 from f1_ml_predictor.trust.fia import (
     FiaDocumentMetadata,
     FiaDocumentStatus,
@@ -37,6 +39,7 @@ from f1_ml_predictor.trust.historical import (
     _retain_response,
     inspect_pdf,
     reconstruct_gold_core,
+    verify_post_final_review,
 )
 from f1_ml_predictor.trust.outcomes import DNF_TAXONOMY_VERSION, OUTCOME_SCHEMA
 from f1_ml_predictor.trust.transcription import reviewed_qualifying
@@ -71,17 +74,31 @@ _DRIVERS = {
     "Valtteri BOTTAS": "bottas",
     "Sergio PEREZ": "perez",
     "Sergio PÉREZ": "perez",
+    "Kevin MAGNUSSEN": "magnussen",
+    "Mick SCHUMACHER": "mick_schumacher",
+    "Daniel RICCIARDO": "ricciardo",
+    "Sebastian VETTEL": "vettel",
+    "Zhou GUANYU": "zhou",
+    "Guanyu ZHOU": "zhou",
+    "ZHOU Guanyu": "zhou",
+    "Nicholas LATIFI": "latifi",
+    "Nyck DE VRIES": "de_vries",
+    "Logan SARGEANT": "sargeant",
     "Arvid LINDBLAD": "lindblad",
 }
 _CONSTRUCTORS = {
     "Oracle Red Bull Racing": "red_bull",
     "Red Bull Racing": "red_bull",
     "McLaren Formula 1 Team": "mclaren",
+    "McLaren F1 Team": "mclaren",
     "McLaren Mastercard F1 Team": "mclaren",
     "McLaren": "mclaren",
     "Mercedes-AMG PETRONAS F1 Team": "mercedes",
+    "Mercedes-AMG Petronas F1 Team": "mercedes",
+    "Mercedes AMG-PETRONAS F1 Team": "mercedes",
     "Mercedes": "mercedes",
     "Scuderia Ferrari HP": "ferrari",
+    "Scuderia Ferrari": "ferrari",
     "Ferrari": "ferrari",
     "Aston Martin Aramco F1 Team": "aston_martin",
     "Aston Martin Aramco Mercedes": "aston_martin",
@@ -93,12 +110,21 @@ _CONSTRUCTORS = {
     "Alpine Renault": "alpine",
     "Alpine Mercedes": "alpine",
     "MoneyGram Haas F1 Team": "haas",
+    "Haas F1 Team": "haas",
+    "Alfa Romeo F1 Team ORLEN": "alfa_romeo",
+    "Alfa Romeo F1 Team Stake": "alfa_romeo",
+    "Alfa Romeo F1 Team Kick": "alfa_romeo",
+    "Scuderia AlphaTauri": "alpha_tauri",
+    "Aston Martin Aramco Cognizant F1 Team": "aston_martin",
+    "Aston Martin Aramco Cognizant F1": "aston_martin",
+    "Williams Racing": "williams",
     "TGR Haas F1 Team": "haas",
     "Haas Ferrari": "haas",
     "Visa Cash App Racing Bulls F1 Team": "rb",
     "Visa Cash App R acing Bulls F1 Team": "rb",
     "Racing Bulls Honda RBPT": "rb",
     "Visa Cash App RB Formula One Team": "rb",
+    "Visa Cash App RB F1 Team": "rb",
     "Racing Bulls Red Bull Ford": "rb",
     "Kick Sauber F1 Team": "sauber",
     "Stake F1 Team Kick Sauber": "sauber",
@@ -107,6 +133,8 @@ _CONSTRUCTORS = {
     "Audi Revolut F1 Team": "audi",
     "Audi": "audi",
     "Cadillac Formula 1 Team": "cadillac",
+    # Miami 2026 Doc 12 merges the team and chassis columns for car 11.
+    "Cadillac Formula 1Team Cadillac Ferrari": "cadillac",
     "Cadillac Ferrari": "cadillac",
     "Red Bull Racing Honda RBPT": "red_bull",
     "Red Bull Racing Red Bull Ford": "red_bull",
@@ -123,14 +151,19 @@ def registry_rows(text: str) -> list[dict[str, Any]]:
     for block in re.findall(r'<li\b[^>]*class="document-row[^>]*>.*?</li>', text, re.S):
         plain = " ".join(unescape(re.sub(r"<[^>]+>", " ", block)).split())
         match = re.search(
-            r"Doc\s+(\d+)\s*-\s*(.*?)\s+Published on\s+(\d{2}\.\d{2}\.\d{2}\s+\d{2}:\d{2})\s+CET",
+            r"^(?:Doc\s+(\d+)\s*-\s*)?(.*?)\s+Published on\s+"
+            r"(\d{2}\.\d{2}\.\d{2}\s+\d{2}:\d{2})\s+CET(?:\s|$)",
             plain,
         )
         if not match:
             continue
         url = re.search(r'<a\b[^>]*href="([^"]+)"', block)
+        if not match[1] and url is None:
+            continue
         rows.append(
             {
+                # Older registry pages omit the document number. The PDF cover
+                # must supply it before a direct evidence binding is certified.
                 "document_id": match[1],
                 "title": match[2],
                 "publication_cet": match[3],
@@ -151,12 +184,66 @@ def _publication(row: dict[str, Any]) -> datetime:
     return local.replace(tzinfo=timezone(timedelta(hours=1))).astimezone(UTC)
 
 
-def _record(rows: list[dict[str, Any]], url: str, identifier: str) -> dict[str, Any]:
+def _version_key(row: dict[str, Any]) -> tuple[datetime, int, str]:
+    return _publication(row), int(row["document_id"] or 0), row.get("url") or ""
+
+
+def _record(rows: list[dict[str, Any]], url: str, identifier: str | None) -> dict[str, Any]:
     _official(url)
-    matching = [row for row in rows if row["url"] == url and row["document_id"] == identifier]
+    matching = [
+        row
+        for row in rows
+        if row["url"] == url and (identifier is None or row["document_id"] in {None, identifier})
+    ]
     if len(matching) != 1 or matching[0]["recalled"]:
         raise ValueError("exact downloadable document version is missing, recalled or ambiguous")
+    if identifier is None and matching[0]["document_id"] is not None:
+        raise ValueError("document number is absent from the research catalog")
     return matching[0]
+
+
+def _bind_pdf_identity(
+    row: dict[str, Any], spec: dict[str, Any], inspected: dict[str, Any], item: dict[str, Any]
+) -> None:
+    """Fill legacy registry numbers only from the retained matching PDF cover."""
+    number = inspected["document_id"]
+    if number is None or (row["document_id"] is not None and row["document_id"] != number):
+        raise ValueError("downloaded PDF document number contradicts registry")
+    if spec["document_id"] is not None and str(spec["document_id"]) != number:
+        raise ValueError("downloaded PDF document number contradicts research catalog")
+    if row["document_id"] is not None:
+        spec["document_id"] = number
+        return
+
+    def words(value: str) -> str:
+        ascii_text = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode()
+        return " ".join(re.findall(r"[a-z0-9]+", ascii_text.casefold()))
+
+    cover = words(inspected["cover_text"])
+    event = words(item.get("fia_event_name", item["event_name"]))
+    title = words(row["title"])
+    date_match = re.search(
+        r"\bdate (\d{1,2}) (" + "|".join(name.lower() for name in month_name[1:]) + r") (\d{4})\b",
+        cover,
+    )
+    published_day = datetime.strptime(row["publication_cet"], "%d.%m.%y %H:%M").date()
+    issued_day = (
+        datetime(
+            int(date_match[3]), list(month_name).index(date_match[2].title()), int(date_match[1])
+        ).date()
+        if date_match
+        else None
+    )
+    if (
+        str(item["season"]) not in cover.split()
+        or event not in cover
+        or title not in cover
+        or issued_day is None
+        or abs((issued_day - published_day).days) > 1
+    ):
+        raise ValueError("PDF cover contradicts season, event, date, or document type")
+    row["document_id"] = number
+    spec["document_id"] = number
 
 
 def qualifying_at_cutoff(
@@ -174,7 +261,7 @@ def qualifying_at_cutoff(
         not known
         or selected["recalled"]
         or _publication(selected) + timedelta(minutes=1) > cutoff
-        or max(known, key=lambda row: (_publication(row), int(row["document_id"]))) != selected
+        or max(known, key=_version_key) != selected
     ):
         raise ValueError("required qualifying state at cutoff includes another version")
 
@@ -190,7 +277,7 @@ def roster_at_cutoff(
         if not from_qualifying:
             raise ValueError("entry-list roster is not present at cutoff")
         return
-    latest = max(known, key=lambda row: (_publication(row), int(row["document_id"])))
+    latest = max(known, key=_version_key)
     if from_qualifying:
         if _publication(latest) >= _publication(selected):
             raise ValueError("newer entry-list state requires roster review")
@@ -205,7 +292,7 @@ def roster_at_cutoff(
 def latest_final_record(
     rows: list[dict[str, Any]],
     url: str,
-    identifier: str,
+    identifier: str | None,
     *,
     review: dict[str, Any] | None = None,
     root: Path | None = None,
@@ -223,20 +310,21 @@ def latest_final_record(
         not versions
         or max(
             versions,
-            key=lambda row: (_publication(row), int(row["document_id"])),
+            key=_version_key,
         )
         != selected
     ):
         raise ValueError("selected final target is not the latest official classification")
-    event_prefix = url.split("_-_", 1)[0] + "_-_"
+    event_prefix = (
+        url.split("_-_", 1)[0] + "_-_" if "_-_" in url else url.rsplit(" - ", 1)[0] + " - "
+    )
     later = [
         row
         for row in rows
         if not row["recalled"]
         and row.get("url")
         and row["url"].startswith(event_prefix)
-        and (_publication(row), int(row["document_id"]))
-        > (_publication(selected), int(selected["document_id"]))
+        and _version_key(row) > _version_key(selected)
         and row["title"].lower() != "championship points"
     ]
     if later:
@@ -246,7 +334,13 @@ def latest_final_record(
             (row["document_id"], row["title"], row["url"]) for row in review["later_documents"]
         }
         observed = {(row["document_id"], row["title"], row["url"]) for row in later}
-        if expected != observed or review.get("conclusion") != "classification_cannot_be_amended":
+        if expected != observed:
+            raise ValueError("later event documents differ from the completed review")
+        conclusion = review.get("conclusion")
+        if conclusion in {"media_procedure_only", "no_penalty_applied"}:
+            verify_post_final_review(review, root)
+            return selected
+        if conclusion != "classification_cannot_be_amended":
             raise ValueError("later event documents differ from the completed review")
         decisions = [row for row in later if row["title"].startswith("Decision - Williams")]
         if len(decisions) != 1 or decisions[0]["document_id"] != review["decision_document_id"]:
@@ -337,8 +431,9 @@ def audit_winter_pool(
     minimum_races: int = 8,
     http_client: httpx.Client | None = None,
     reuse_retained: bool = False,
+    exhaustive: bool = False,
 ) -> dict[str, Any]:
-    """Audit exact document values and stop after enough complete Gold joins.
+    """Audit exact document values, optionally visiting the entire catalog.
 
     No current API classifications are used. Independent source downloads remain
     current-state artifacts; only the checked exact document/table association is
@@ -346,7 +441,7 @@ def audit_winter_pool(
     """
     root = root.resolve()
     candidates = json.loads(catalog_path.read_text(encoding="utf-8"))["candidates"]
-    if not 8 <= minimum_races <= 40 or not 1 <= len(candidates) <= 60:
+    if not 8 <= minimum_races <= 40 or not 1 <= len(candidates) <= (200 if exhaustive else 60):
         raise ValueError("use a bounded pool and at least eight eligible races")
     index = root / "data/benchmarks/gold_core_registry.json"
     registered = (
@@ -405,25 +500,29 @@ def audit_winter_pool(
                         }
                     )
                     results.append(result)
-                    if sum(row["status"] == "included" for row in results) >= minimum_races:
+                    if (
+                        not exhaustive
+                        and sum(row["status"] == "included" for row in results) >= minimum_races
+                    ):
                         break
                     continue
                 _official(item["index_url"])
+                if item.get("schedule_reference") is None:
+                    raise ValueError("cutoff_valid_official_race_schedule_missing")
+                if item.get("final_race_label") is None:
+                    raise ValueError("final_race_classification_missing")
                 registry = fetch(item["index_url"])
                 rows = registry_rows((root / registry["path"]).read_text(encoding="utf-8"))
-                q_spec = {"url": item["qualifying_url"], "document_id": str(item["document_id"])}
+                q_spec = {"url": item["qualifying_url"], "document_id": item["document_id"]}
                 q_row = _record(rows, q_spec["url"], q_spec["document_id"])
                 published = _publication(q_row)
                 if published != datetime.fromisoformat(item["published_at_utc"]):
                     raise ValueError("research publication claim differs from retained registry")
                 cutoff = datetime.fromisoformat(item["prediction_timestamp_utc"])
-                qualifying_at_cutoff(rows, q_row, cutoff)
                 q_artifact = fetch(q_spec["url"])
                 q_text = inspect_pdf(root / q_artifact["path"])
-                if q_text["document_id"] != q_spec["document_id"]:
-                    raise ValueError(
-                        "downloaded qualifying PDF differs from registered document number"
-                    )
+                _bind_pdf_identity(q_row, q_spec, q_text, item)
+                qualifying_at_cutoff(rows, q_row, cutoff)
                 review = item.get("qualifying_transcription")
                 qualifying = (
                     reviewed_qualifying(
@@ -444,12 +543,28 @@ def audit_winter_pool(
                     q_spec, q_row, q_artifact, qualifying, FiaDocumentStatus.PROVISIONAL, audit
                 )
                 roster_spec = item.get("roster_entry_list")
+                if not roster_spec and qualifying.num_rows < item["expected_roster_size"]:
+                    entry_lists = [
+                        row
+                        for row in rows
+                        if "entry list" in row["title"].lower()
+                        and not row["recalled"]
+                        and _publication(row) + timedelta(minutes=1) <= cutoff
+                    ]
+                    if entry_lists:
+                        selected_entry = max(
+                            entry_lists,
+                            key=_version_key,
+                        )
+                        roster_spec = {
+                            "url": selected_entry["url"],
+                            "document_id": selected_entry["document_id"],
+                        }
                 if roster_spec:
-                    roster_row = _record(rows, roster_spec["url"], str(roster_spec["document_id"]))
+                    roster_row = _record(rows, roster_spec["url"], roster_spec["document_id"])
                     roster_artifact = fetch(roster_spec["url"])
                     roster_text = inspect_pdf(root / roster_artifact["path"])
-                    if roster_text["document_id"] != str(roster_spec["document_id"]):
-                        raise ValueError("entry-list document number differs from registry")
+                    _bind_pdf_identity(roster_row, roster_spec, roster_text, item)
                     roster = parse_roster_text(
                         roster_text["text"], event, DRIVER_ALIASES, CONSTRUCTOR_ALIASES
                     )
@@ -486,10 +601,15 @@ def audit_winter_pool(
                     rows,
                     roster_row,
                     cutoff,
-                    from_qualifying=not bool(roster_spec and item.get("roster_entry_list")),
+                    from_qualifying=roster_artifact == q_artifact,
                 )
                 schedule = fetch(item["schedule_reference"]["url"])
-                verified_schedule = validate_f1_schedule(
+                schedule_validator = (
+                    validate_event_timetable
+                    if item["schedule_reference"].get("kind") == "event_timetable"
+                    else validate_f1_schedule
+                )
+                verified_schedule = schedule_validator(
                     (root / schedule["path"]).read_bytes().decode("utf-8"),
                     season=event.season,
                     round_number=event.round,
@@ -547,7 +667,10 @@ def audit_winter_pool(
                     if not path.exists():
                         path.parent.mkdir(parents=True, exist_ok=True)
                         pq.write_table(table, path)
-                    if not pq.ParquetFile(path).read().equals(table):
+                    stored = pq.ParquetFile(path).read()
+                    if not stored.schema.equals(table.schema) or table_hash(stored) != table_hash(
+                        table
+                    ):
                         raise ValueError("retained normalized audit table changed")
                     return {
                         "kind": kind,
@@ -632,17 +755,14 @@ def audit_winter_pool(
                 target_row = latest_final_record(
                     rows,
                     target_spec["url"],
-                    str(target_spec["document_id"]),
+                    target_spec["document_id"],
                     review=item.get("post_final_review"),
                     root=root,
                 )
                 label_available = _publication(target_row) + timedelta(minutes=1)
                 target_artifact = fetch(target_spec["url"])
                 target_text = inspect_pdf(root / target_artifact["path"])
-                if target_text["document_id"] != str(target_spec["document_id"]):
-                    raise ValueError(
-                        "final race document identity differs from exact registry version"
-                    )
+                _bind_pdf_identity(target_row, target_spec, target_text, item)
                 parsed = parse_final_text(
                     target_text["text"], event, DRIVER_ALIASES, CONSTRUCTOR_ALIASES
                 )
@@ -676,7 +796,10 @@ def audit_winter_pool(
                 label_path = directory / f"outcomes-{table_hash(labels)}.parquet"
                 if not label_path.exists():
                     pq.write_table(labels, label_path)
-                if not pq.ParquetFile(label_path).read().equals(labels):
+                stored_labels = pq.ParquetFile(label_path).read()
+                if not stored_labels.schema.equals(labels.schema) or table_hash(
+                    stored_labels
+                ) != table_hash(labels):
                     raise ValueError("retained audited outcome table changed")
                 request["outcomes"] = {
                     "path": label_path.relative_to(root).as_posix(),
@@ -726,7 +849,10 @@ def audit_winter_pool(
             except (ValueError, RuntimeError, OSError, KeyError, httpx.HTTPError) as exc:
                 result["reasons"] = [str(exc)]
             results.append(result)
-            if sum(row["status"] == "included" for row in results) >= minimum_races:
+            if (
+                not exhaustive
+                and sum(row["status"] == "included" for row in results) >= minimum_races
+            ):
                 break
     finally:
         if own:
@@ -736,6 +862,7 @@ def audit_winter_pool(
         "audit_method": "fia-direct-v3-cet-upper-bound",
         "tier": "Gold",
         "minimum_gold_races": minimum_races,
+        "exhaustive": exhaustive,
         "included_races": sum(row["status"] == "included" for row in results),
         "races": results,
         "catalog_sha256": file_sha256(catalog_path),

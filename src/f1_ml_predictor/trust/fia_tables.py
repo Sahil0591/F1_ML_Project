@@ -156,7 +156,9 @@ def _identity(
         remainder = remainder[nation.end() :]
     constructor, tail = _lookup_prefix(remainder, constructors, "constructor")
     if not roster and tail and not re.match(r"^(?:\d|[-])", tail) and not _STATUS.match(tail):
-        raise ParsingFailure("constructor alias does not match the complete timing-sheet entrant")
+        raise ParsingFailure(
+            f"constructor alias does not match the complete timing-sheet entrant: {remainder[:100]}"
+        )
     if roster:
         # An entry list has both Team and Constructor columns. When both names
         # are explicitly mapped, they must agree. No car number becomes a grid.

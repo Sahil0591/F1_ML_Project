@@ -8,6 +8,40 @@ Every used input must still pass the unchanged direct-evidence Gold policy.
 
 ## Historical candidates
 
+### Five-season exhaustive expansion
+
+`scripts/expand-historical-gold.py` discovers every completed race in the 2022–2026
+season window as of the run clock. It does not use a minimum-race stop. The
+discovery catalog retains current Jolpica schedule responses and exact FIA event
+registry observations; those are leads, not historical feature evidence.
+
+The script replays reviewed candidates and constructs additional 2022–2026
+candidates from exact registry publication rows. It resolves both legacy and
+modern FIA registry layouts and verifies legacy PDF cover identity before
+attempting every race through the unchanged direct-evidence Gold builder.
+Official Formula 1 schedule articles and event timetable content bind the race
+clock by the selected cutoff. It rebuilds the tiered benchmark and checks
+same-season prior-race rolling availability. Unreadable tables, unreviewed later
+rulings, conflicting schedule clocks and other failures remain per-race exclusions. Grid,
+penalty and weather values are used only with cutoff-valid direct evidence;
+optional features stay null otherwise. Metadata presence alone never creates
+Gold, Silver or Development rows.
+
+```powershell
+.\.venv\Scripts\python.exe scripts/expand-historical-gold.py
+```
+
+For an exact replay of an already retained discovery catalog, pass its path with
+`--discovery`. The immutable `five-year-coverage-*.json` output under
+`data/benchmarks/historical_audit` contains all race decisions, annual feature
+coverage, source coverage and exclusion reason counts. The command's summary
+prints the output path and tier counts. The 2026 season is partial until later
+races finish; the window is five season identities, not five complete calendars.
+The [initial expansion audit](HISTORICAL_GOLD_EXPANSION_2026-09-30.md) records
+the 36-race baseline. The [legacy FIA recovery audit](LEGACY_FIA_GOLD_RECOVERY_2026-09-30.md)
+records 107 candidates, 84 Gold races, and 23 exact exclusions. All three
+2026 later-document no-change reviews are bound to retained source hashes.
+
 `discover-gold-candidates` automatically discovers a bounded pool from current
 Jolpica schedule identities and exact FIA season/event selectors. It retains raw
 schedule and registry responses, ranks publication/version metadata, and writes
@@ -195,7 +229,9 @@ contains 22 distinct races after earlier fit and calibration history.
 The current bounded 2026 catalog in `docs/HISTORICAL_2026_CANDIDATES.json`
 audited six additional candidates. Azerbaijan, Hungary, Belgium and Great
 Britain passed; Italy and the Netherlands require review of later documents.
-Gold now includes 29 races, 594 driver-race observations and 24 unique drivers.
+At that bounded audit checkpoint, Gold included 29 races, 594 driver-race
+observations and 24 unique drivers. The five-season expansion above supersedes
+that checkpoint for Gold Core coverage.
 The separate `binary-dnf-v1` outcome catalog has 547 known labels, including 67
 DNFs, with 47 unknown or excluded binary states. It retains exact OpenF1 and
 Jolpica response hashes alongside the FIA final sources. The current rolling

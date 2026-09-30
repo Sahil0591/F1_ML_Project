@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 import pytest
 
 from f1_ml_predictor.trust.winter import (
+    _bind_pdf_identity,
     _publication,
     _resume_request,
     latest_final_record,
@@ -95,6 +96,54 @@ def test_recalled_rows_remain_visible_and_cannot_be_selected():
     assert rows[0]["recalled"] is True
     with pytest.raises(ValueError, match="recalled"):
         latest_final_record(rows, rows[0]["url"], "50")
+
+
+def test_legacy_registry_preserves_publication_without_inventing_document_number():
+    html = (
+        '<li class="document-row key-1668870865"><a href="/sites/default/files/'
+        'decision-document/2022 Abu Dhabi Grand Prix - Provisional Qualifying Classification.pdf">'
+        '<div class="title">Provisional Qualifying Classification</div>'
+        '<div class="published">Published on <span>19.11.22 16:14</span> CET</div>'
+        "</a></li>"
+    )
+    rows = registry_rows(html)
+    assert rows == [
+        {
+            "document_id": None,
+            "title": "Provisional Qualifying Classification",
+            "publication_cet": "19.11.22 16:14",
+            "url": "https://www.fia.com/sites/default/files/decision-document/"
+            "2022 Abu Dhabi Grand Prix - Provisional Qualifying Classification.pdf",
+            "recalled": False,
+        }
+    ]
+
+
+def test_legacy_pdf_cover_binds_number_and_rejects_wrong_event_date():
+    row = {
+        "document_id": None,
+        "title": "Provisional Qualifying Classification",
+        "publication_cet": "19.11.22 16:14",
+    }
+    spec = {"document_id": None}
+    item = {"season": 2022, "event_name": "Abu Dhabi Grand Prix"}
+    inspected = {
+        "document_id": "22",
+        "cover_text": "2022 ABU DHABI GRAND PRIX Date 19 November 2022 "
+        "Document 22 Title Provisional Qualifying Classification",
+    }
+    _bind_pdf_identity(row, spec, inspected, item)
+    assert row["document_id"] == spec["document_id"] == "22"
+    with pytest.raises(ValueError, match="date"):
+        _bind_pdf_identity(
+            {**row, "document_id": None},
+            {"document_id": None},
+            {
+                **inspected,
+                "cover_text": inspected["cover_text"].replace("19 November", "17 November"),
+            },
+            item,
+        )
 
 
 def test_frozen_audit_replay_preserves_original_evidence_request(tmp_path):
