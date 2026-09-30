@@ -6,7 +6,11 @@ from typing import Any
 import pyarrow as pa
 
 from f1_ml_predictor.identifiers import EventId
-from f1_ml_predictor.trust.fia_tables import QUALIFYING_SCHEMA, parse_qualifying_text
+from f1_ml_predictor.trust.fia_tables import (
+    QUALIFYING_SCHEMA,
+    parse_final_text,
+    parse_qualifying_text,
+)
 
 
 def reviewed_qualifying(
@@ -74,3 +78,66 @@ def reviewed_qualifying(
     return pa.Table.from_pylist(
         sorted(rows, key=lambda row: row["driver_id"]), schema=QUALIFYING_SCHEMA
     )
+
+
+def reviewed_image_final(
+    text: str,
+    event: EventId,
+    drivers: dict[str, str],
+    constructors: dict[str, str],
+    review: dict[str, Any],
+    document_sha256: str,
+) -> pa.Table:
+    """Parse a visually reviewed image table bound to one exact FIA PDF.
+
+    This fallback is only for a final table with no extractable timing header.
+    The transcribed rows pass through the ordinary final parser, including its
+    DNS, DSQ and unclassified-section checks.
+    """
+    if (
+        review.get("document_sha256") != document_sha256
+        or review.get("event_id") != event.partition()
+        or review.get("visually_audited") is not True
+        or not review.get("audit_reference")
+        or not isinstance(review.get("page_number"), int)
+        or review["page_number"] < 1
+    ):
+        raise ValueError("image transcription needs an exact PDF hash and completed visual audit")
+    try:
+        parse_final_text(text, event, drivers, constructors)
+    except ValueError as exc:
+        if "header was not found" not in str(exc):
+            raise
+    else:
+        raise ValueError("image transcription cannot override an extractable final table")
+    source_rows = review.get("rows")
+    if not isinstance(source_rows, list) or not 1 <= len(source_rows) <= 60:
+        raise ValueError("image transcription needs a bounded complete table")
+    lines = ["POS NO DRIVER LAPS TIME GAP"]
+    unclassified = False
+    for row in source_rows:
+        if (
+            not isinstance(row, dict)
+            or row.get("driver_display") not in drivers
+            or row.get("constructor_display") not in constructors
+            or not isinstance(row.get("car_number"), int)
+            or not 1 <= row["car_number"] <= 999
+        ):
+            raise ValueError("image transcription has an unbound row identity")
+        position = row.get("position")
+        status = row.get("status")
+        if position is None:
+            if status not in {"DNF", "DNS", "DSQ"}:
+                raise ValueError("image transcription needs an explicit unclassified status")
+            if not unclassified:
+                lines.append("NOT CLASSIFIED")
+                unclassified = True
+            prefix = str(row["car_number"])
+        else:
+            if unclassified or not isinstance(position, int) or position < 1 or status is not None:
+                raise ValueError("image transcription classification order is invalid")
+            prefix = f"{position} {row['car_number']}"
+        lines.append(
+            f"{prefix} {row['driver_display']} {row['constructor_display']} {status or '70'}"
+        )
+    return parse_final_text("\n".join(lines), event, drivers, constructors)

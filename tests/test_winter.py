@@ -7,6 +7,7 @@ from f1_ml_predictor.trust.winter import (
     _bind_pdf_identity,
     _publication,
     _resume_request,
+    constructor_aliases_for_season,
     latest_final_record,
     qualifying_at_cutoff,
     registry_rows,
@@ -96,6 +97,15 @@ def test_recalled_rows_remain_visible_and_cannot_be_selected():
     assert rows[0]["recalled"] is True
     with pytest.raises(ValueError, match="recalled"):
         latest_final_record(rows, rows[0]["url"], "50")
+
+
+def test_constructor_variants_are_scoped_to_the_document_season():
+    aliases = constructor_aliases_for_season(2024)
+    assert aliases["RB Honda RBPT"] == "rb"
+    assert aliases["Kick Sauber Ferrari"] == "sauber"
+    assert "RB Honda RBPT" not in constructor_aliases_for_season(2025)
+    assert "Kick Sauber Ferrari" in constructor_aliases_for_season(2025)
+    assert "Kick Sauber Ferrari" not in constructor_aliases_for_season(2026)
 
 
 def test_legacy_registry_preserves_publication_without_inventing_document_number():

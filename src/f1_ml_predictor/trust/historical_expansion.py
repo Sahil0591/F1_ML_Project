@@ -17,6 +17,7 @@ from f1_ml_predictor.identifiers import EventId
 from f1_ml_predictor.trust.f1_schedule import (
     SCHEDULE_URLS,
     _ScheduleHTML,
+    canonical_event_name,
     validate_event_timetable,
 )
 from f1_ml_predictor.trust.historical import _immutable, _json, _retain_response
@@ -99,18 +100,20 @@ def discover_historical_timetables(
                 )
                 cutoff = _publication(selected) + timedelta(minutes=2)
                 try:
-                    validate_event_timetable(
+                    verified = validate_event_timetable(
                         response.text,
                         season=candidate["season"],
                         round_number=candidate["round"],
-                        event_name=candidate["event_name"],
+                        event_name=(
+                            canonical_event_name(candidate["season"], candidate["circuit_id"])
+                            if "\ufffd" in candidate["event_name"]
+                            else candidate["event_name"]
+                        ),
                         circuit_id=candidate["circuit_id"],
                         claimed_publication=datetime.fromisoformat(
                             published.replace("Z", "+00:00")
                         ),
-                        claimed_race_start=datetime.fromisoformat(
-                            candidate["discovery_race_start_hint_utc"]
-                        ),
+                        claimed_race_start=None,
                         source_url=url,
                         prediction_timestamp=cutoff,
                     )
@@ -125,11 +128,22 @@ def discover_historical_timetables(
                         ).isoformat(),
                         "source_path": artifact["path"],
                         "source_sha256": artifact["sha256"],
+                        "race_start_utc": verified.race_start.isoformat(),
                     }
                 )
     finally:
         if own:
             client.close()
+    candidate_by_id = {event_id(row): row for row in candidates}
+    for key, matches in resolved.items():
+        if len(matches) > 1:
+            clock_matches = [
+                row
+                for row in matches
+                if row["race_start_utc"] == candidate_by_id[key]["discovery_race_start_hint_utc"]
+            ]
+            if len(clock_matches) == 1:
+                resolved[key] = clock_matches
     ambiguous = [key for key, matches in resolved.items() if len(matches) > 1]
     if ambiguous:
         raise ValueError(f"multiple official timetable articles match: {ambiguous}")
@@ -193,11 +207,39 @@ def prepare_audit_catalog(
         if qualifying is None:
             continue
         cutoff = _publication(qualifying) + timedelta(minutes=2)
+        timetable = (timetables or {}).get(key)
+        reference = schedule_reference.get(year) or timetable
+        if (
+            timetable is not None
+            and timetable["race_start_utc"] != item["discovery_race_start_hint_utc"]
+        ):
+            amendments = [
+                row
+                for row in item.get("registry_documents", [])
+                if row.get("url")
+                and not row["recalled"]
+                and "change to timetable" in row["title"].lower()
+                and _publication(row) + timedelta(minutes=1) <= cutoff
+            ]
+            if amendments:
+                amendment = max(amendments, key=lambda row: (_publication(row), row["url"]))
+                reference = {
+                    "kind": "fia_timetable_amendment",
+                    "url": amendment["url"],
+                    "document_id": amendment["document_id"],
+                    "published_at_utc": _publication(amendment).isoformat(),
+                    "superseded_race_start_hint_utc": item["discovery_race_start_hint_utc"],
+                    "supporting_event_timetable": timetable,
+                }
         by_event[key] = {
             "season": year,
             "round": item["round"],
             "circuit_id": item["circuit_id"],
-            "event_name": item["event_name"],
+            "event_name": (
+                canonical_event_name(year, item["circuit_id"])
+                if "\ufffd" in item["event_name"]
+                else item["event_name"]
+            ),
             "fia_event_name": item.get("fia_event_name", item["event_name"]),
             "index_url": item["index_url"],
             "qualifying_url": qualifying["url"],
@@ -209,8 +251,10 @@ def prepare_audit_catalog(
             # and exact final-outcome membership before Gold admission.
             "roster_entry_list": None,
             "expected_roster_size": 22 if year == 2026 else 20,
-            "race_start": item["discovery_race_start_hint_utc"],
-            "schedule_reference": schedule_reference.get(year) or (timetables or {}).get(key),
+            "race_start": (
+                timetable["race_start_utc"] if timetable else item["discovery_race_start_hint_utc"]
+            ),
+            "schedule_reference": reference,
             "final_race_label": (
                 {"url": final["url"], "document_id": final["document_id"]}
                 if final is not None
@@ -218,18 +262,22 @@ def prepare_audit_catalog(
             ),
             "candidate_origin": "automatic_registry_metadata_requires_direct_audit",
         }
-    review_path = root / "docs/HISTORICAL_2026_LATER_REVIEWS.json"
-    reviews = json.loads(review_path.read_text(encoding="utf-8"))["reviews"]
-    for key, review in reviews.items():
-        if key not in by_event or "post_final_review" in by_event[key]:
-            raise ValueError("later-document review does not bind one unreviewed candidate")
-        by_event[key]["post_final_review"] = review
+    review_paths = [
+        root / "docs/HISTORICAL_2026_LATER_REVIEWS.json",
+        root / "docs/HISTORICAL_2024_LATER_REVIEWS.json",
+    ]
+    for review_path in review_paths:
+        reviews = json.loads(review_path.read_text(encoding="utf-8"))["reviews"]
+        for key, review in reviews.items():
+            if key not in by_event or "post_final_review" in by_event[key]:
+                raise ValueError("later-document review does not bind one unreviewed candidate")
+            by_event[key]["post_final_review"] = review
     catalog = {
         "version": 1,
         "method": "five-year-exhaustive-direct-audit-v1",
         "discovery_sha256": hashlib.sha256(_json(discovery)).hexdigest(),
         "reviewed_catalog_sha256": file_sha256(reviewed_path),
-        "later_reviews_sha256": file_sha256(review_path),
+        "later_reviews_sha256": [file_sha256(path) for path in review_paths],
         "candidates": list(by_event.values()),
     }
     path = (
@@ -345,8 +393,8 @@ def build_window_report(
                     "recent_dnf_rate_10",
                 )
             }
-    source = Counter()
-    reason_counts = Counter()
+    source: Counter[str] = Counter()
+    reason_counts: Counter[str] = Counter()
     races = []
     for candidate in sorted(discovery["candidates"], key=lambda row: (row["season"], row["round"])):
         key = event_id(candidate)

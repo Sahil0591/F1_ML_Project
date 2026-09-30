@@ -20,7 +20,11 @@ from f1_ml_predictor.benchmarks.builder import _safe_file, file_sha256
 from f1_ml_predictor.features.contracts import PreRaceEvent
 from f1_ml_predictor.identifiers import EventId
 from f1_ml_predictor.trust.evidence import table_hash
-from f1_ml_predictor.trust.f1_schedule import validate_event_timetable, validate_f1_schedule
+from f1_ml_predictor.trust.f1_schedule import (
+    validate_event_timetable,
+    validate_f1_schedule,
+    validate_fia_timetable_amendment,
+)
 from f1_ml_predictor.trust.fia import (
     FiaDocumentMetadata,
     FiaDocumentStatus,
@@ -31,6 +35,7 @@ from f1_ml_predictor.trust.fia_tables import (
     parse_final_text,
     parse_qualifying_text,
     parse_roster_text,
+    qualifying_car_numbers,
 )
 from f1_ml_predictor.trust.historical import (
     _immutable,
@@ -42,7 +47,7 @@ from f1_ml_predictor.trust.historical import (
     verify_post_final_review,
 )
 from f1_ml_predictor.trust.outcomes import DNF_TAXONOMY_VERSION, OUTCOME_SCHEMA
-from f1_ml_predictor.trust.transcription import reviewed_qualifying
+from f1_ml_predictor.trust.transcription import reviewed_image_final, reviewed_qualifying
 
 # These aliases identify entities, not entrant membership. Membership is read
 # from each contemporary PDF's entrant column. Unmapped names fail explicitly.
@@ -128,7 +133,6 @@ _CONSTRUCTORS = {
     "Racing Bulls Red Bull Ford": "rb",
     "Kick Sauber F1 Team": "sauber",
     "Stake F1 Team Kick Sauber": "sauber",
-    "Kick Sauber Ferrari": "sauber",
     "Sauber": "sauber",
     "Audi Revolut F1 Team": "audi",
     "Audi": "audi",
@@ -143,6 +147,20 @@ _CONSTRUCTORS = {
 }
 DRIVER_ALIASES = {**_DRIVERS, **{key.title(): value for key, value in _DRIVERS.items()}}
 CONSTRUCTOR_ALIASES = _CONSTRUCTORS
+_CONSTRUCTOR_ALIASES_BY_SEASON = {
+    2024: {
+        "RB Honda RBPT": "rb",
+        "Kick Sauber Ferrari": "sauber",
+    },
+    2025: {
+        "Kick Sauber Ferrari": "sauber",
+    },
+}
+
+
+def constructor_aliases_for_season(season: int) -> dict[str, str]:
+    """Use only contemporary, unambiguous FIA constructor name variants."""
+    return {**CONSTRUCTOR_ALIASES, **_CONSTRUCTOR_ALIASES_BY_SEASON.get(season, {})}
 
 
 def registry_rows(text: str) -> list[dict[str, Any]]:
@@ -151,7 +169,7 @@ def registry_rows(text: str) -> list[dict[str, Any]]:
     for block in re.findall(r'<li\b[^>]*class="document-row[^>]*>.*?</li>', text, re.S):
         plain = " ".join(unescape(re.sub(r"<[^>]+>", " ", block)).split())
         match = re.search(
-            r"^(?:Doc\s+(\d+)\s*-\s*)?(.*?)\s+Published on\s+"
+            r"^(?:Recalled\s*-\s*)?(?:Doc\s+(\d+)\s*-\s*)?(.*?)\s+Published on\s+"
             r"(\d{2}\.\d{2}\.\d{2}\s+\d{2}:\d{2})\s+CET(?:\s|$)",
             plain,
         )
@@ -203,7 +221,12 @@ def _record(rows: list[dict[str, Any]], url: str, identifier: str | None) -> dic
 
 
 def _bind_pdf_identity(
-    row: dict[str, Any], spec: dict[str, Any], inspected: dict[str, Any], item: dict[str, Any]
+    row: dict[str, Any],
+    spec: dict[str, Any],
+    inspected: dict[str, Any],
+    item: dict[str, Any],
+    *,
+    require_title: bool = True,
 ) -> None:
     """Fill legacy registry numbers only from the retained matching PDF cover."""
     number = inspected["document_id"]
@@ -237,7 +260,7 @@ def _bind_pdf_identity(
     if (
         str(item["season"]) not in cover.split()
         or event not in cover
-        or title not in cover
+        or (require_title and title not in cover)
         or issued_day is None
         or abs((issued_day - published_day).days) > 1
     ):
@@ -315,15 +338,13 @@ def latest_final_record(
         != selected
     ):
         raise ValueError("selected final target is not the latest official classification")
-    event_prefix = (
-        url.split("_-_", 1)[0] + "_-_" if "_-_" in url else url.rsplit(" - ", 1)[0] + " - "
-    )
+    # The retained registry is already scoped to one event. FIA replacement
+    # filenames can use another case, delimiter, or hosting path.
     later = [
         row
         for row in rows
         if not row["recalled"]
         and row.get("url")
-        and row["url"].startswith(event_prefix)
         and _version_key(row) > _version_key(selected)
         and row["title"].lower() != "championship points"
     ]
@@ -337,7 +358,16 @@ def latest_final_record(
         if expected != observed:
             raise ValueError("later event documents differ from the completed review")
         conclusion = review.get("conclusion")
-        if conclusion in {"media_procedure_only", "no_penalty_applied"}:
+        if conclusion in {
+            "media_procedure_only",
+            "no_penalty_applied",
+            "no_race_classification_change",
+        }:
+            if (
+                conclusion == "no_race_classification_change"
+                and review.get("final_publication_cet") != selected["publication_cet"]
+            ):
+                raise ValueError("post-final review names another final publication")
             verify_post_final_review(review, root)
             return selected
         if conclusion != "classification_cannot_be_amended":
@@ -441,6 +471,9 @@ def audit_winter_pool(
     """
     root = root.resolve()
     candidates = json.loads(catalog_path.read_text(encoding="utf-8"))["candidates"]
+    image_reviews = json.loads(
+        (root / "docs/HISTORICAL_IMAGE_FINAL_REVIEWS.json").read_text(encoding="utf-8")
+    )["reviews"]
     if not 8 <= minimum_races <= 40 or not 1 <= len(candidates) <= (200 if exhaustive else 60):
         raise ValueError("use a bounded pool and at least eight eligible races")
     index = root / "data/benchmarks/gold_core_registry.json"
@@ -514,11 +547,26 @@ def audit_winter_pool(
                 registry = fetch(item["index_url"])
                 rows = registry_rows((root / registry["path"]).read_text(encoding="utf-8"))
                 q_spec = {"url": item["qualifying_url"], "document_id": item["document_id"]}
+                if "\ufffd" in q_spec["url"]:
+                    resolved = [
+                        row
+                        for row in rows
+                        if row.get("url")
+                        and not row["recalled"]
+                        and row["document_id"] == q_spec["document_id"]
+                        and "qualifying classification" in row["title"].lower()
+                        and "sprint" not in row["title"].lower()
+                        and _publication(row).isoformat() == item["published_at_utc"]
+                    ]
+                    if len(resolved) != 1:
+                        raise ValueError("qualifying URL encoding cannot be resolved exactly")
+                    q_spec["url"] = resolved[0]["url"]
                 q_row = _record(rows, q_spec["url"], q_spec["document_id"])
                 published = _publication(q_row)
                 if published != datetime.fromisoformat(item["published_at_utc"]):
                     raise ValueError("research publication claim differs from retained registry")
                 cutoff = datetime.fromisoformat(item["prediction_timestamp_utc"])
+                constructors = constructor_aliases_for_season(event.season)
                 q_artifact = fetch(q_spec["url"])
                 q_text = inspect_pdf(root / q_artifact["path"])
                 _bind_pdf_identity(q_row, q_spec, q_text, item)
@@ -529,14 +577,12 @@ def audit_winter_pool(
                         q_text["text"],
                         event,
                         DRIVER_ALIASES,
-                        CONSTRUCTOR_ALIASES,
+                        constructors,
                         review,
                         q_artifact["sha256"],
                     )
                     if review
-                    else parse_qualifying_text(
-                        q_text["text"], event, DRIVER_ALIASES, CONSTRUCTOR_ALIASES
-                    )
+                    else parse_qualifying_text(q_text["text"], event, DRIVER_ALIASES, constructors)
                 )
                 audit = f"fia-winter-direct-v1:{registry['sha256']}:{q_artifact['sha256']}"
                 q_proof = _proof(
@@ -566,7 +612,7 @@ def audit_winter_pool(
                     roster_text = inspect_pdf(root / roster_artifact["path"])
                     _bind_pdf_identity(roster_row, roster_spec, roster_text, item)
                     roster = parse_roster_text(
-                        roster_text["text"], event, DRIVER_ALIASES, CONSTRUCTOR_ALIASES
+                        roster_text["text"], event, DRIVER_ALIASES, constructors
                     )
                     roster_proof = _proof(
                         roster_spec,
@@ -595,7 +641,104 @@ def audit_winter_pool(
                     roster_proof = _proof(
                         q_spec, q_row, q_artifact, roster, FiaDocumentStatus.PROVISIONAL, audit
                     )
-                if roster.num_rows != item["expected_roster_size"]:
+                pre_cutoff_withdrawals = []
+                if roster_artifact != q_artifact and qualifying.num_rows < roster.num_rows:
+                    qualifying_ids = {row["driver_id"] for row in qualifying.to_pylist()}
+                    entry_rows = {row["driver_id"]: row for row in roster.to_pylist()}
+                    absent = set(entry_rows) - qualifying_ids
+                    if qualifying_ids <= set(entry_rows) and absent:
+                        for driver_id in sorted(absent):
+                            displays = [
+                                name
+                                for name, identity in DRIVER_ALIASES.items()
+                                if identity == driver_id
+                            ]
+                            numbers = {
+                                int(match[1])
+                                for line in roster_text["text"].splitlines()
+                                for name in displays
+                                if (match := re.match(rf"^\s*(\d+)\s+{re.escape(name)}\b", line))
+                            }
+                            if len(numbers) != 1:
+                                break
+                            car_number = numbers.pop()
+                            decisions = [
+                                row
+                                for row in rows
+                                if row.get("url")
+                                and not row["recalled"]
+                                and row["title"].lower().startswith(("information", "decision"))
+                                and _publication(row) + timedelta(minutes=1) <= cutoff
+                            ]
+                            matched = []
+                            for decision in decisions:
+                                decision_artifact = fetch(decision["url"])
+                                decision_pdf = inspect_pdf(root / decision_artifact["path"])
+                                plain = " ".join(
+                                    re.findall(r"[a-z0-9]+", decision_pdf["text"].lower())
+                                )
+                                if any(
+                                    re.search(
+                                        rf"withdrawing\s+car\s+{car_number}\s+driver\s+"
+                                        + r"\s+".join(
+                                            re.escape(part) for part in name.lower().split()
+                                        ),
+                                        plain,
+                                    )
+                                    for name in displays
+                                ):
+                                    matched.append((decision, decision_artifact, decision_pdf))
+                            if len(matched) != 1:
+                                break
+                            decision, decision_artifact, decision_pdf = matched[0]
+                            decision_spec = {
+                                "url": decision["url"],
+                                "document_id": decision["document_id"],
+                            }
+                            _bind_pdf_identity(
+                                decision, decision_spec, decision_pdf, item, require_title=False
+                            )
+                            pre_cutoff_withdrawals.append(
+                                {
+                                    "driver_id": driver_id,
+                                    "car_number": car_number,
+                                    "document_id": decision_spec["document_id"],
+                                    "url": decision["url"],
+                                    "publication_cet": decision["publication_cet"],
+                                    "available_at_utc": (
+                                        _publication(decision) + timedelta(minutes=1)
+                                    ).isoformat(),
+                                    "artifact": decision_artifact,
+                                }
+                            )
+                        if len(pre_cutoff_withdrawals) == len(absent):
+                            roster_artifact, roster_row, roster_spec = q_artifact, q_row, q_spec
+                            roster = pa.Table.from_pylist(
+                                [
+                                    {
+                                        "event_id": event.partition(),
+                                        "driver_id": row["driver_id"],
+                                        "constructor_id": row["constructor_id"],
+                                        "grid_position": None,
+                                        "start_type": "unknown",
+                                        "grid_status": "unknown",
+                                    }
+                                    for row in qualifying.to_pylist()
+                                ],
+                                schema=ROSTER_SCHEMA,
+                            )
+                            roster_proof = _proof(
+                                q_spec,
+                                q_row,
+                                q_artifact,
+                                roster,
+                                FiaDocumentStatus.PROVISIONAL,
+                                audit,
+                            )
+                        else:
+                            pre_cutoff_withdrawals = []
+                expected_size = item["expected_roster_size"] - len(pre_cutoff_withdrawals)
+                if roster.num_rows != expected_size:
                     raise ValueError("exact roster is incomplete")
                 roster_at_cutoff(
                     rows,
@@ -603,25 +746,57 @@ def audit_winter_pool(
                     cutoff,
                     from_qualifying=roster_artifact == q_artifact,
                 )
-                schedule = fetch(item["schedule_reference"]["url"])
-                schedule_validator = (
-                    validate_event_timetable
-                    if item["schedule_reference"].get("kind") == "event_timetable"
-                    else validate_f1_schedule
-                )
-                verified_schedule = schedule_validator(
-                    (root / schedule["path"]).read_bytes().decode("utf-8"),
-                    season=event.season,
-                    round_number=event.round,
-                    event_name=item["event_name"],
-                    circuit_id=item["circuit_id"],
-                    claimed_publication=datetime.fromisoformat(
+                schedule_kind = item["schedule_reference"].get("kind")
+                schedule_url = item["schedule_reference"]["url"]
+                if schedule_kind == "fia_timetable_amendment":
+                    amendment_rows = [
+                        row
+                        for row in rows
+                        if row["document_id"] == item["schedule_reference"]["document_id"]
+                        and "change to timetable" in row["title"].lower()
+                        and _publication(row).isoformat()
+                        == item["schedule_reference"]["published_at_utc"]
+                        and not row["recalled"]
+                        and row.get("url")
+                    ]
+                    if len(amendment_rows) != 1:
+                        raise ValueError("FIA timetable amendment registry identity is ambiguous")
+                    schedule_url = amendment_rows[0]["url"]
+                schedule = fetch(schedule_url)
+                schedule_claim = {
+                    "season": event.season,
+                    "round_number": event.round,
+                    "event_name": item["event_name"],
+                    "circuit_id": item["circuit_id"],
+                    "claimed_publication": datetime.fromisoformat(
                         item["schedule_reference"]["published_at_utc"]
                     ),
-                    claimed_race_start=datetime.fromisoformat(item["race_start"]),
-                    source_url=schedule["url"],
-                    prediction_timestamp=cutoff,
-                )
+                    "claimed_race_start": datetime.fromisoformat(item["race_start"]),
+                    "source_url": schedule_url,
+                    "prediction_timestamp": cutoff,
+                }
+                if schedule_kind == "fia_timetable_amendment":
+                    schedule_pdf = inspect_pdf(root / schedule["path"])
+                    schedule_row = _record(
+                        rows, schedule_url, item["schedule_reference"]["document_id"]
+                    )
+                    if schedule_pdf["document_id"] != str(schedule_row["document_id"]):
+                        raise ValueError("FIA timetable amendment document identity changed")
+                    verified_schedule = validate_fia_timetable_amendment(
+                        schedule_pdf["text"],
+                        **schedule_claim,
+                        document_sha256=schedule["sha256"],
+                    )
+                else:
+                    schedule_validator = (
+                        validate_event_timetable
+                        if schedule_kind == "event_timetable"
+                        else validate_f1_schedule
+                    )
+                    verified_schedule = schedule_validator(
+                        (root / schedule["path"]).read_bytes().decode("utf-8"),
+                        **schedule_claim,
+                    )
                 if verified_schedule.available_by > q_proof.available_at:
                     raise ValueError("scheduled context needs a later availability bound")
                 audit = (
@@ -713,6 +888,27 @@ def audit_winter_pool(
                     }
 
                 bindings = [binding(q_spec, q_artifact, [q_proof, event_proof])]
+                if pre_cutoff_withdrawals:
+                    bindings[0]["pre_cutoff_withdrawals"] = pre_cutoff_withdrawals
+                qualifying_chain = [
+                    row
+                    for row in rows
+                    if "qualifying classification" in row["title"].lower()
+                    and "sprint" not in row["title"].lower()
+                    and _publication(row) <= cutoff
+                ]
+                if any(row["recalled"] for row in qualifying_chain):
+                    bindings[0]["qualifying_document_chain"] = [
+                        {
+                            "document_id": row["document_id"],
+                            "title": row["title"],
+                            "publication_cet": row["publication_cet"],
+                            "url": row["url"],
+                            "recalled": row["recalled"],
+                            "selected": row == q_row,
+                        }
+                        for row in sorted(qualifying_chain, key=_version_key)
+                    ]
                 bindings[0]["supporting_artifacts"] = [schedule]
                 if review:
                     bindings[0]["qualifying_transcription"] = review
@@ -752,6 +948,18 @@ def audit_winter_pool(
                     "document_bindings": bindings,
                 }
                 target_spec = item["final_race_label"]
+                if "\ufffd" in target_spec["url"]:
+                    resolved = [
+                        row
+                        for row in rows
+                        if row.get("url")
+                        and not row["recalled"]
+                        and row["document_id"] == target_spec["document_id"]
+                        and row["title"].lower() == "final race classification"
+                    ]
+                    if len(resolved) != 1:
+                        raise ValueError("final URL encoding cannot be resolved exactly")
+                    target_spec = {**target_spec, "url": resolved[0]["url"]}
                 target_row = latest_final_record(
                     rows,
                     target_spec["url"],
@@ -763,9 +971,100 @@ def audit_winter_pool(
                 target_artifact = fetch(target_spec["url"])
                 target_text = inspect_pdf(root / target_artifact["path"])
                 _bind_pdf_identity(target_row, target_spec, target_text, item)
-                parsed = parse_final_text(
-                    target_text["text"], event, DRIVER_ALIASES, CONSTRUCTOR_ALIASES
+                image_review = image_reviews.get(event.partition())
+                parsed = (
+                    reviewed_image_final(
+                        target_text["text"],
+                        event,
+                        DRIVER_ALIASES,
+                        constructors,
+                        image_review,
+                        target_artifact["sha256"],
+                    )
+                    if image_review
+                    else parse_final_text(target_text["text"], event, DRIVER_ALIASES, constructors)
                 )
+                roster_by_driver = {row["driver_id"]: row for row in roster.to_pylist()}
+                final_by_driver = {row["driver_id"]: row for row in parsed.to_pylist()}
+                if not set(final_by_driver) <= set(roster_by_driver):
+                    raise ValueError(
+                        "final classification includes a driver outside the cutoff roster"
+                    )
+                transitions = []
+                if set(final_by_driver) != set(roster_by_driver):
+                    car_numbers = qualifying_car_numbers(
+                        q_text["text"], event, DRIVER_ALIASES, constructors
+                    )
+                    for driver_id in sorted(set(roster_by_driver) - set(final_by_driver)):
+                        qualified_car_number = car_numbers.get(driver_id)
+                        if qualified_car_number is None:
+                            raise ValueError(
+                                "missing final driver has no qualifying car-number proof"
+                            )
+                        decisions = [
+                            row
+                            for row in rows
+                            if not row["recalled"]
+                            and row.get("url")
+                            and "withdrawal from the competition" in row["title"].lower()
+                            and re.search(rf"\bcar\s+{qualified_car_number}\b", row["title"], re.I)
+                            and cutoff < _publication(row) < _publication(target_row)
+                        ]
+                        if len(decisions) != 1:
+                            raise ValueError(
+                                "missing final driver lacks one later FIA withdrawal decision"
+                            )
+                        decision = decisions[0]
+                        decision_artifact = fetch(decision["url"])
+                        decision_spec = {
+                            "url": decision["url"],
+                            "document_id": decision["document_id"],
+                        }
+                        decision_pdf = inspect_pdf(root / decision_artifact["path"])
+                        _bind_pdf_identity(decision, decision_spec, decision_pdf, item)
+                        decision_text = " ".join(
+                            re.findall(r"[a-z0-9]+", decision_pdf["text"].lower())
+                        )
+                        if (
+                            not re.search(
+                                rf"withdraw\s+car\s+{qualified_car_number}\s+from\s+the\s+competition",
+                                decision_text,
+                            )
+                            or "this request is approved" not in decision_text
+                        ):
+                            raise ValueError(
+                                "FIA decision does not approve the exact car withdrawal"
+                            )
+                        transitions.append(
+                            {
+                                "kind": "post_qualifying_withdrawal",
+                                "driver_id": driver_id,
+                                "car_number": qualified_car_number,
+                                "document_id": str(decision_spec["document_id"]),
+                                "document_url": decision_spec["url"],
+                                "path": decision_artifact["path"],
+                                "sha256": decision_artifact["sha256"],
+                                "registry_path": registry["path"],
+                                "registry_sha256": registry["sha256"],
+                                "publication_cet": decision["publication_cet"],
+                                "available_at_utc": (
+                                    _publication(decision) + timedelta(minutes=1)
+                                ).isoformat(),
+                            }
+                        )
+                        final_by_driver[driver_id] = {
+                            "event_id": event.partition(),
+                            "driver_id": driver_id,
+                            "constructor_id": roster_by_driver[driver_id]["constructor_id"],
+                            "position": None,
+                            "classified": False,
+                            "raw_status": "approved post-qualifying withdrawal",
+                            "dnf_category": "did_not_start",
+                            "dnf": None,
+                        }
+                    parsed = pa.Table.from_pylist(
+                        list(final_by_driver.values()), schema=parsed.schema
+                    )
                 target_audit = (
                     f"fia-final-direct-v2:{registry['sha256']}:{target_artifact['sha256']}"
                 )
@@ -829,6 +1128,8 @@ def audit_winter_pool(
                         "registry_path": registry["path"],
                         "registry_sha256": registry["sha256"],
                         "post_final_review": item.get("post_final_review"),
+                        "roster_transitions": transitions,
+                        "image_final_review": image_review,
                     }
                 ]
                 request_path = (

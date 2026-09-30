@@ -247,7 +247,10 @@ def inspect_pdf(path: Path) -> dict[str, Any]:
     except ImportError as exc:
         raise RuntimeError("FIA PDF inspection requires the optional audit dependency") from exc
     reader = PdfReader(path)
-    text = "\n".join(page.extract_text(extraction_mode="layout") for page in reader.pages)
+    text = "\n".join(
+        page.extract_text(extraction_mode="layout") or page.extract_text() or ""
+        for page in reader.pages
+    )
     cover = reader.pages[0].extract_text() or ""
     # Layout extraction can omit a rotated cover. Its document number still
     # comes from the PDF, using ordinary extraction of that same first page.
@@ -259,7 +262,7 @@ def inspect_pdf(path: Path) -> dict[str, Any]:
         "text": text,
         "cover_text": cover,
         "document_sha256": file_sha256(path),
-        "extraction_version": "pypdf-layout-cover-v2",
+        "extraction_version": "pypdf-layout-or-plain-cover-v3",
     }
 
 
@@ -276,6 +279,56 @@ def verify_post_final_review(review: dict[str, Any], root: Path) -> None:
             not in normalized
         ):
             raise ValueError("post-final review does not preserve the final classification")
+        return
+    if conclusion == "no_race_classification_change":
+        documents = review.get("later_documents")
+        if not review.get("audit_reference") or not review.get("reviewed_at") or not documents:
+            raise ValueError("post-final review lacks exact document audit identity")
+        if len({(row["document_id"], row["url"]) for row in documents}) != len(documents):
+            raise ValueError("post-final review repeats a document")
+        final_day = datetime.strptime(review["final_publication_cet"], "%d.%m.%y %H:%M").date()
+        decisions = set()
+        petitions = set()
+        for row in documents:
+            inspected = inspect_pdf(
+                _safe_file(root, row["artifact"]["path"], row["artifact"]["sha256"])
+            )
+            if inspected["document_id"] != str(row["cover_document_id"]):
+                raise ValueError("later document cover differs from the review")
+            text = "".join(re.findall(r"[a-z0-9]+", inspected["text"].lower()))
+            cover = " ".join(inspected["cover_text"].lower().split())
+            scope = row["scope"]
+            if scope == "pre_final_issue":
+                issued = re.search(r"\bdate\s+(\d{1,2})\s+([a-z]+)\s+(\d{4})\b", cover)
+                if (
+                    issued is None
+                    or datetime.strptime(" ".join(issued.groups()), "%d %B %Y").date() >= final_day
+                ):
+                    raise ValueError("later registry row lacks pre-final issue evidence")
+            elif scope == "organizer_only":
+                if not (
+                    "track" in text
+                    and "fine" in text
+                    and any(word in text for word in ("promoter", "organiser", "organizer"))
+                ):
+                    raise ValueError("later ruling is not confined to the event organizer")
+            elif scope in {"sprint_review_summons", "race_review_summons"}:
+                if "rightofreview" not in text and "petition" not in text:
+                    raise ValueError("later summons is not a review petition")
+                petitions.add(scope.split("_review_")[0])
+            elif scope in {"sprint_review_rejected", "race_review_rejected"}:
+                if not (
+                    "rightofreview" in text
+                    and ("petitionisrejected" in text or "dismissedthepetition" in text)
+                ):
+                    raise ValueError("later decision does not reject the review")
+                if scope.startswith("sprint") and "finalsprintclassification" not in text:
+                    raise ValueError("later decision does not identify the Sprint target")
+                decisions.add(scope.split("_review_")[0])
+            else:
+                raise ValueError("unsupported post-final document scope")
+        if petitions - decisions:
+            raise ValueError("post-final petition lacks a rejecting decision")
         return
     if conclusion not in {"media_procedure_only", "no_penalty_applied"}:
         raise ValueError("unsupported post-final review conclusion")
@@ -356,6 +409,22 @@ def reconstruct_gold_core(request_path: Path, root: Path) -> dict[str, Any]:
             bound_proofs.setdefault(bound["reference"], []).append(bound)
         for supporting in binding.get("supporting_artifacts", []):
             _safe_file(root, supporting["path"], supporting["sha256"])
+        for withdrawal in binding.get("pre_cutoff_withdrawals", []):
+            source = _safe_file(
+                root, withdrawal["artifact"]["path"], withdrawal["artifact"]["sha256"]
+            )
+            if (
+                withdrawal["url"] not in {link["url"] for link in parser.links}
+                or inspect_pdf(source)["document_id"] != str(withdrawal["document_id"])
+                or datetime.fromisoformat(withdrawal["available_at_utc"]) > cutoff
+            ):
+                raise ValueError("pre-cutoff withdrawal lacks exact FIA publication evidence")
+            plain = " ".join(re.findall(r"[a-z0-9]+", inspect_pdf(source)["text"].lower()))
+            if not re.search(
+                rf"withdrawing\s+car\s+{withdrawal['car_number']}\s+driver\s+",
+                plain,
+            ):
+                raise ValueError("pre-cutoff withdrawal does not identify the withdrawn car")
     for proof in evidence:
         if proof is None or proof.tier != BenchmarkTier.GOLD or not proof.audited:
             raise ValueError(
@@ -384,6 +453,13 @@ def reconstruct_gold_core(request_path: Path, root: Path) -> dict[str, Any]:
     for row in rows:
         if any(row[name] is not None for name in set(NUMERIC_FEATURES) - CORE_FEATURES):
             raise ValueError("Gold Core request contains unsupported richer features")
+    withdrawn = {
+        entry["driver_id"]
+        for binding in bindings
+        for entry in binding.get("pre_cutoff_withdrawals", [])
+    }
+    if withdrawn & {row["driver_id"] for row in rows}:
+        raise ValueError("withdrawn driver cannot enter a later predictive snapshot")
     feature_path = persist_snapshot(StoragePaths(root), table)
     persisted = pq.ParquetFile(feature_path).read()
     if not persisted.equals(table, check_metadata=False):
@@ -479,6 +555,57 @@ def reconstruct_gold_core(request_path: Path, root: Path) -> dict[str, Any]:
             parser.feed(target_registry.read_text(encoding="utf-8"))
             if target["document_url"] not in {link["url"] for link in parser.links}:
                 raise ValueError("final outcome URL is absent from retained publication registry")
+            transitions = target.get("roster_transitions", [])
+            if not isinstance(transitions, list):
+                raise ValueError("outcome roster transitions must be a list")
+            transitional_rows = {
+                row["driver_id"]: row
+                for row in outcome_table.to_pylist()
+                if row["raw_status"] == "approved post-qualifying withdrawal"
+            }
+            if {row.get("driver_id") for row in transitions} != set(transitional_rows):
+                raise ValueError("outcome roster transitions do not match DNS rows")
+            for transition in transitions:
+                if transition.get("kind") != "post_qualifying_withdrawal":
+                    raise ValueError("unsupported outcome roster transition")
+                driver = transitional_rows[transition["driver_id"]]
+                if (
+                    driver["dnf_category"] != "did_not_start"
+                    or driver["classified"]
+                    or driver["position"] is not None
+                    or driver["dnf"] is not None
+                ):
+                    raise ValueError("withdrawn driver must retain an unclassified DNS target")
+                source = _safe_file(root, transition["path"], transition["sha256"])
+                if (
+                    transition["registry_path"] != target["registry_path"]
+                    or transition["registry_sha256"] != target["registry_sha256"]
+                    or transition["document_url"] not in {link["url"] for link in parser.links}
+                    or inspect_pdf(source)["document_id"] != str(transition["document_id"])
+                ):
+                    raise ValueError("withdrawal evidence contradicts the retained FIA registry")
+                car = transition["car_number"]
+                decision_text = " ".join(
+                    re.findall(r"[a-z0-9]+", inspect_pdf(source)["text"].lower())
+                )
+                if (
+                    not isinstance(car, int)
+                    or not re.search(
+                        rf"withdraw\s+car\s+{car}\s+from\s+the\s+competition", decision_text
+                    )
+                    or "this request is approved" not in decision_text
+                    or datetime.fromisoformat(transition["available_at_utc"]) <= cutoff
+                    or datetime.fromisoformat(transition["available_at_utc"])
+                    > driver["label_available_at"]
+                ):
+                    raise ValueError("withdrawal decision does not support the target transition")
+            image_review = target.get("image_final_review")
+            if image_review is not None and (
+                image_review.get("document_sha256") != target["sha256"]
+                or image_review.get("visually_audited") is not True
+                or not image_review.get("audit_reference")
+            ):
+                raise ValueError("image final review does not bind the exact final PDF")
             if any(
                 row["audit_reference"] != target["audit_reference"]
                 or row["label_available_at"].isoformat() != target.get("label_available_at_utc")

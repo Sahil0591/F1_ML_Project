@@ -87,6 +87,13 @@ _VENUE_NAMES = {
     (2026, "catalunya"): "Barcelona",
     (2026, "madring"): "Spain",
 }
+
+
+def canonical_event_name(season: int, circuit_id: str) -> str:
+    """Administrative event label for an explicitly reviewed circuit identity."""
+    return _EVENT_NAMES.get((season, circuit_id), _VENUES[circuit_id][1])
+
+
 _TIMETABLE_HEADING_ALIASES = {
     "red_bull_ring": ("osterreich",),
     "monza": ("italia",),
@@ -471,7 +478,7 @@ def validate_event_timetable(
     event_name: str,
     circuit_id: str,
     claimed_publication: datetime,
-    claimed_race_start: datetime,
+    claimed_race_start: datetime | None,
     source_url: str,
     prediction_timestamp: datetime,
 ) -> ScheduledRace:
@@ -559,7 +566,7 @@ def validate_event_timetable(
         raise ScheduleValidationError("unsupported event timetable race date or time")
     local = datetime(season, _MONTHS[day[2].lower()], int(day[1]), int(start[1]), int(start[2]))
     race_start = _local_utc(local, _VENUES[circuit_id][2])
-    if race_start != _utc(claimed_race_start):
+    if claimed_race_start is not None and race_start != _utc(claimed_race_start):
         raise ScheduleValidationError("timetable race start contradicts claimed UTC event")
     return ScheduledRace(
         published,
@@ -574,4 +581,72 @@ def validate_event_timetable(
         (header[0], *row),
         _VENUES[circuit_id][2],
         hashlib.sha256(html.encode("utf-8")).hexdigest(),
+    )
+
+
+def validate_fia_timetable_amendment(
+    text: str,
+    *,
+    season: int,
+    round_number: int,
+    event_name: str,
+    circuit_id: str,
+    claimed_publication: datetime,
+    claimed_race_start: datetime,
+    source_url: str,
+    prediction_timestamp: datetime,
+    document_sha256: str,
+) -> ScheduledRace:
+    """Bind an approved FIA timetable revision published before prediction."""
+    parsed_url = urlsplit(source_url)
+    if parsed_url.scheme != "https" or parsed_url.hostname not in {"fia.com", "www.fia.com"}:
+        raise ScheduleValidationError("timetable amendment needs an official FIA PDF")
+    if _utc(claimed_publication).replace(second=0, microsecond=0) + timedelta(minutes=1) > _utc(
+        prediction_timestamp
+    ):
+        raise ScheduleValidationError("timetable amendment was not available at cutoff")
+    plain = _identity_words(text)
+    if (
+        str(season) not in plain.split()
+        or _identity_words(_VENUES[circuit_id][0]) not in plain
+        or not re.search(r"approve version \d+ of the timetable", plain)
+    ):
+        raise ScheduleValidationError("FIA timetable amendment identity or approval is missing")
+    sections = re.split(
+        r"(?m)^\s*(MONDAY|TUESDAY|WEDNESDAY|THURSDAY|FRIDAY|SATURDAY|SUNDAY)\s+([0-3]?\d)\s+([A-Z]+)\s+(20\d{2})\b",
+        text,
+    )
+    matches = []
+    for index in range(1, len(sections), 5):
+        day_name, day, month, year, body = sections[index : index + 5]
+        if int(year) != season or month.lower() not in _MONTHS:
+            continue
+        for line in body.splitlines():
+            match = re.match(
+                r"^\s*(\d{2}:\d{2})\*?\s+\d{2}:\d{2}\S*\s+FORMULA 1\s+TRACK\s+GRAND PRIX\b",
+                " ".join(line.split()),
+                re.I,
+            )
+            if match:
+                hour, minute = map(int, match[1].split(":"))
+                local = datetime(season, _MONTHS[month.lower()], int(day), hour, minute)
+                matches.append((local, line.strip()))
+    if len(matches) != 1:
+        raise ScheduleValidationError("one amended FIA Grand Prix start row is required")
+    race_start = _local_utc(matches[0][0], _VENUES[circuit_id][2])
+    if race_start != _utc(claimed_race_start):
+        raise ScheduleValidationError("FIA amendment contradicts the claimed race start")
+    return ScheduledRace(
+        _utc(claimed_publication),
+        _utc(claimed_publication).replace(second=0, microsecond=0) + timedelta(minutes=1),
+        60,
+        race_start,
+        season,
+        round_number,
+        circuit_id,
+        event_name,
+        source_url,
+        (str(matches[0][0]), matches[0][1]),
+        _VENUES[circuit_id][2],
+        document_sha256,
     )

@@ -230,6 +230,16 @@ def _timing_rows(
             classified = False
             section_status = normalized if normalized in {"DISQUALIFIED", "DID NOT START"} else None
             continue
+        if not qualifying:
+            leading_dsq = re.match(r"^\s*(?:DQ|DSQ)\s+(\d+)\s+", line, re.IGNORECASE)
+            if leading_dsq is not None:
+                driver, constructor, tail = _identity(
+                    line[leading_dsq.end() :], drivers, constructors
+                )
+                rows.append(_Row(line, None, driver, constructor, tail, False, "DISQUALIFIED"))
+                if len(rows) > _MAX_ROWS:
+                    raise ParsingFailure("timing table exceeds the bounded field")
+                continue
         prefix = _PREFIX.match(line)
         if prefix is None:
             continue
@@ -315,6 +325,25 @@ def parse_qualifying_text(
             }
         )
     return pa.Table.from_pylist(output, schema=QUALIFYING_SCHEMA)
+
+
+def qualifying_car_numbers(
+    text: str,
+    event: EventId,
+    driver_aliases: dict[str, str],
+    constructor_aliases: dict[str, str],
+) -> dict[str, int]:
+    """Read car numbers from the same exact qualifying rows used for features."""
+    rows = _timing_rows(text, event, driver_aliases, constructor_aliases, qualifying=True)
+    numbers = {}
+    for row in rows:
+        prefix = _PREFIX.match(row.text)
+        if prefix is None:
+            raise ParsingFailure("qualifying row lacks a car number")
+        numbers[row.driver] = int(prefix[2 if row.classified else 1])
+    if len(set(numbers.values())) != len(numbers):
+        raise ParsingFailure("duplicate car number in qualifying classification")
+    return numbers
 
 
 def parse_roster_text(

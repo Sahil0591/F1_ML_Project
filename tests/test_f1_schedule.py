@@ -9,6 +9,7 @@ from f1_ml_predictor.trust.f1_schedule import (
     ScheduleValidationError,
     validate_event_timetable,
     validate_f1_schedule,
+    validate_fia_timetable_amendment,
 )
 
 _HEADLINES = {
@@ -303,3 +304,66 @@ def test_historical_event_timetable_binds_published_race_row() -> None:
         validate_event_timetable(
             html.replace("2022-01-01T00:00:00Z", "2023-03-06T00:00:00Z"), **claims
         )
+
+
+def test_overnight_local_timetable_uses_next_utc_day() -> None:
+    url = (
+        "https://www.formula1.com/en/latest/article/"
+        "formula-1-las-vegas-grand-prix-2024-timetable.fixture123"
+    )
+    heading = "FORMULA 1 LAS VEGAS GRAND PRIX 2024"
+    article = {
+        "@type": "NewsArticle",
+        "@id": url,
+        "url": url,
+        "headline": heading + " - full timetable | Formula 1",
+        "datePublished": "2024-10-14T10:00:00Z",
+    }
+    html = (
+        f"<h1>{heading}</h1>"
+        f'<script type="application/ld+json">{json.dumps(article)}</script>'
+        "<table><tr><th>SATURDAY 23rd NOVEMBER</th><th></th><th></th></tr>"
+        "<tr><td>FORMULA 1</td><td>GRAND PRIX (50 LAPS OR 120 MINS)</td>"
+        "<td>22:00 - 00:00</td></tr></table>"
+    )
+    claims = {
+        "season": 2024,
+        "round_number": 22,
+        "event_name": "Las Vegas Grand Prix",
+        "circuit_id": "vegas",
+        "claimed_publication": _dt("2024-10-14T10:00:00Z"),
+        "claimed_race_start": None,
+        "source_url": url,
+        "prediction_timestamp": _dt("2024-11-23T08:00:00Z"),
+    }
+    result = validate_event_timetable(html, **claims)
+    assert result.race_start == _dt("2024-11-24T06:00:00Z")
+
+
+def test_fia_amendment_supersedes_original_schedule_before_cutoff() -> None:
+    text = (
+        "2024 SAO PAULO GRAND PRIX\n"
+        "The stewards approve Version 5 of the timetable.\n"
+        "SUNDAY 03 NOVEMBER 2024\n"
+        "12:30 14:30 FORMULA 1 TRACK GRAND PRIX\n"
+    )
+    claims = {
+        "season": 2024,
+        "round_number": 21,
+        "event_name": "São Paulo Grand Prix",
+        "circuit_id": "interlagos",
+        "claimed_publication": _dt("2024-11-02T21:31:00Z"),
+        "claimed_race_start": _dt("2024-11-03T15:30:00Z"),
+        "source_url": "https://www.fia.com/decision/amended-timetable.pdf",
+        "prediction_timestamp": _dt("2024-11-03T10:30:00Z"),
+        "document_sha256": "a" * 64,
+    }
+    assert (
+        validate_fia_timetable_amendment(text, **claims).race_start == claims["claimed_race_start"]
+    )
+    with pytest.raises(ScheduleValidationError, match="not available at cutoff"):
+        validate_fia_timetable_amendment(
+            text, **{**claims, "prediction_timestamp": _dt("2024-11-02T21:31:00Z")}
+        )
+    with pytest.raises(ScheduleValidationError, match="approval"):
+        validate_fia_timetable_amendment(text.replace("approve", "reject"), **claims)

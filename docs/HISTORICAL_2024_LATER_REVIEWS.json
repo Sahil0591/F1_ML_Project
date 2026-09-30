@@ -1,0 +1,233 @@
+{
+  "version": 1,
+  "reviews": {
+    "season=2024/round=04": {
+      "conclusion": "no_race_classification_change",
+      "reviewed_at": "2026-09-30",
+      "audit_reference": "fia-2024-round-04-later-documents-exact-review-2026-09-30",
+      "final_publication_cet": "07.04.24 11:25",
+      "later_documents": [
+        {
+          "document_id": null,
+          "cover_document_id": "25",
+          "title": "Post-Qualifying Procedure",
+          "url": "https://www.fia.com/sites/default/files/decision-document/2024 Japanese Grand Prix - Post-Qualifying Procedure.pdf",
+          "publication_cet": "08.04.24 08:25",
+          "scope": "pre_final_issue",
+          "artifact": {
+            "path": "data/raw/fia_audit/objects/c25d7164ad6cc3584e9252faf37188f36bd27ff242b49f56ff755f7ada5dcbb5.pdf",
+            "sha256": "c25d7164ad6cc3584e9252faf37188f36bd27ff242b49f56ff755f7ada5dcbb5"
+          }
+        }
+      ]
+    },
+    "season=2024/round=05": {
+      "conclusion": "no_race_classification_change",
+      "reviewed_at": "2026-09-30",
+      "audit_reference": "fia-2024-round-05-later-documents-exact-review-2026-09-30",
+      "final_publication_cet": "21.04.24 13:55",
+      "later_documents": [
+        {
+          "document_id": null,
+          "cover_document_id": "80",
+          "title": "Decision - Aston Martin Right of Review",
+          "url": "https://www.fia.com/sites/default/files/decision-document/doc_80_-_2024_chinese_grand_prix_-_decision_-_aston_martin_right_of_review_0.pdf",
+          "publication_cet": "05.05.24 01:30",
+          "scope": "sprint_review_rejected",
+          "artifact": {
+            "path": "data/raw/fia_audit/objects/74ac19b9025b95e790907c97fd978bea62bf21c172b8c3290ea9da319308c09c.pdf",
+            "sha256": "74ac19b9025b95e790907c97fd978bea62bf21c172b8c3290ea9da319308c09c"
+          }
+        },
+        {
+          "document_id": null,
+          "cover_document_id": "40",
+          "title": "Summons - Ferrari - Aston Martin Right of Review",
+          "url": "https://www.fia.com/sites/default/files/decision-document/2024 Chinese Grand Prix - Summons - Ferrari - Aston Martin Right of Review.pdf",
+          "publication_cet": "30.04.24 14:08",
+          "scope": "sprint_review_summons",
+          "artifact": {
+            "path": "data/raw/fia_audit/objects/9f8a030398fcadcc47c8a1d3989d168b8457c10dad1c83d4b75d2ff6d1cd8d2b.pdf",
+            "sha256": "9f8a030398fcadcc47c8a1d3989d168b8457c10dad1c83d4b75d2ff6d1cd8d2b"
+          }
+        },
+        {
+          "document_id": null,
+          "cover_document_id": "40",
+          "title": "Summons - Aston Martin - Right of Review",
+          "url": "https://www.fia.com/sites/default/files/decision-document/2024 Chinese Grand Prix - Summons - Aston Martin - Right of Review.pdf",
+          "publication_cet": "30.04.24 14:08",
+          "scope": "sprint_review_summons",
+          "artifact": {
+            "path": "data/raw/fia_audit/objects/f69480d43a041c886c70f47637b1bca6779b37a796f54c099442c0f7b4442d58.pdf",
+            "sha256": "f69480d43a041c886c70f47637b1bca6779b37a796f54c099442c0f7b4442d58"
+          }
+        }
+      ]
+    },
+    "season=2024/round=19": {
+      "conclusion": "no_race_classification_change",
+      "reviewed_at": "2026-09-30",
+      "audit_reference": "fia-2024-round-19-later-documents-exact-review-2026-09-30",
+      "final_publication_cet": "21.10.24 01:36",
+      "later_documents": [
+        {
+          "document_id": null,
+          "cover_document_id": "85",
+          "title": "DOC 85 - Decision - USRM - Right of Review",
+          "url": "https://www.fia.com/sites/default/files/decision-document/usa_doc_85_-_decision_-_usrm_-_right_of_review.pdf",
+          "publication_cet": "12.11.24 07:15",
+          "scope": "organizer_only",
+          "artifact": {
+            "path": "data/raw/fia_audit/objects/16d4c374c3255cdfe9fd0b80646fc80c1482ec9f1bd1014522783b02041c2268.pdf",
+            "sha256": "16d4c374c3255cdfe9fd0b80646fc80c1482ec9f1bd1014522783b02041c2268"
+          }
+        },
+        {
+          "document_id": null,
+          "cover_document_id": "84",
+          "title": "DOC 84 - Decision - COTA - Right of Review",
+          "url": "https://www.fia.com/sites/default/files/decision-document/usa_doc_84_-_decision_-_cota_-_right_of_review.pdf",
+          "publication_cet": "12.11.24 07:15",
+          "scope": "organizer_only",
+          "artifact": {
+            "path": "data/raw/fia_audit/objects/88fb98699a2c513e351c8f18e0b21b08dbdca8cc6b0afabd9e202bf734faaeeb.pdf",
+            "sha256": "88fb98699a2c513e351c8f18e0b21b08dbdca8cc6b0afabd9e202bf734faaeeb"
+          }
+        },
+        {
+          "document_id": "78",
+          "cover_document_id": "78",
+          "title": "Decision - McLaren - Right of Review",
+          "url": "https://www.fia.com/sites/default/files/decision-document/doc_78_-_2024_united_states_grand_prix_-_decision_-_mclaren_-_right_of_review.pdf",
+          "publication_cet": "24.10.24 17:15",
+          "scope": "race_review_rejected",
+          "artifact": {
+            "path": "data/raw/fia_audit/objects/862aede233e89a2e31c716d89ad78bde89fd034669426e9f889f8935d0e342c4.pdf",
+            "sha256": "862aede233e89a2e31c716d89ad78bde89fd034669426e9f889f8935d0e342c4"
+          }
+        },
+        {
+          "document_id": "77",
+          "cover_document_id": "77",
+          "title": "Summons - Red Bull - McLaren Right of Review Hearing",
+          "url": "https://www.fia.com/sites/default/files/decision-document/doc_77_-_2024_united_states_grand_prix_-_summons_-_red_bull_-_mclaren_right_of_review_hearing.pdf",
+          "publication_cet": "24.10.24 17:15",
+          "scope": "race_review_summons",
+          "artifact": {
+            "path": "data/raw/fia_audit/objects/670d58b1a6dd7bd4d5a164dfefb835ddaf663c35fdc531c6cbda11ee234c0318.pdf",
+            "sha256": "670d58b1a6dd7bd4d5a164dfefb835ddaf663c35fdc531c6cbda11ee234c0318"
+          }
+        },
+        {
+          "document_id": "76",
+          "cover_document_id": "76",
+          "title": "Summons - McLaren - Right of Review Hearing",
+          "url": "https://www.fia.com/sites/default/files/decision-document/doc_76_-_2024_united_states_grand_prix_-_summons_-_mclaren_-_right_of_review_hearing.pdf",
+          "publication_cet": "24.10.24 17:15",
+          "scope": "race_review_summons",
+          "artifact": {
+            "path": "data/raw/fia_audit/objects/c8bc81b9e668b97083344797a6a2aa6fb8b4c83d707bb3c963416a806382a0f6.pdf",
+            "sha256": "c8bc81b9e668b97083344797a6a2aa6fb8b4c83d707bb3c963416a806382a0f6"
+          }
+        },
+        {
+          "document_id": "75",
+          "cover_document_id": "75",
+          "title": "Infringement - Organiser and Promoter - Track Invasion",
+          "url": "https://www.fia.com/sites/default/files/decision-document/2024 United States Grand Prix - Infringement - Organiser and Promoter - Track Invasion.pdf",
+          "publication_cet": "21.10.24 03:10",
+          "scope": "organizer_only",
+          "artifact": {
+            "path": "data/raw/fia_audit/objects/6c469d04233cb0ba3580d3ab0f19d68f7ee16657c4407ef3de140595571ee446.pdf",
+            "sha256": "6c469d04233cb0ba3580d3ab0f19d68f7ee16657c4407ef3de140595571ee446"
+          }
+        },
+        {
+          "document_id": "60",
+          "cover_document_id": "60",
+          "title": "Infringement - Car 63 - Breach of Parc Ferme",
+          "url": "https://www.fia.com/sites/default/files/decision-document/2024 United States Grand Prix - Infringement - Car 63 - Breach of Parc Ferme.pdf",
+          "publication_cet": "30.10.24 14:14",
+          "scope": "pre_final_issue",
+          "artifact": {
+            "path": "data/raw/fia_audit/objects/9ed343fe22ceb445f51d53c7973cc2d71a3054e118c409b18c6432bdb4f94e20.pdf",
+            "sha256": "9ed343fe22ceb445f51d53c7973cc2d71a3054e118c409b18c6432bdb4f94e20"
+          }
+        },
+        {
+          "document_id": "48",
+          "cover_document_id": "48",
+          "title": "Championship Points after Sprint",
+          "url": "https://www.fia.com/sites/default/files/decision-document/2024 United States Grand Prix - Championship Points after Sprint.pdf",
+          "publication_cet": "30.10.24 14:13",
+          "scope": "pre_final_issue",
+          "artifact": {
+            "path": "data/raw/fia_audit/objects/ac43ffc4bdcce43d27357cad1d80891fbb3f9ca4b05356239c22218275a422cb.pdf",
+            "sha256": "ac43ffc4bdcce43d27357cad1d80891fbb3f9ca4b05356239c22218275a422cb"
+          }
+        },
+        {
+          "document_id": "38",
+          "cover_document_id": "38",
+          "title": "Final Sprint Starting Grid",
+          "url": "https://www.fia.com/sites/default/files/decision-document/2024 United States Grand Prix - Final Sprint Starting Grid .pdf",
+          "publication_cet": "30.10.24 14:13",
+          "scope": "pre_final_issue",
+          "artifact": {
+            "path": "data/raw/fia_audit/objects/f007e7cc28cf75f138e188af7d2bd8321fa1b28f8bef3fac907799a105e916d5.pdf",
+            "sha256": "f007e7cc28cf75f138e188af7d2bd8321fa1b28f8bef3fac907799a105e916d5"
+          }
+        },
+        {
+          "document_id": "37",
+          "cover_document_id": "37",
+          "title": "Infringement - Car 23 - Changes made during Parc Ferme",
+          "url": "https://www.fia.com/sites/default/files/decision-document/2024 United States Grand Prix - Infringement - Car 23 - Changes made during Parc Ferme.pdf",
+          "publication_cet": "30.10.24 14:13",
+          "scope": "pre_final_issue",
+          "artifact": {
+            "path": "data/raw/fia_audit/objects/a5cbcd5435ff07bc6b55e780b3642691e31237b0bd9e9e950e080fa379f9e088.pdf",
+            "sha256": "a5cbcd5435ff07bc6b55e780b3642691e31237b0bd9e9e950e080fa379f9e088"
+          }
+        },
+        {
+          "document_id": "36",
+          "cover_document_id": "36",
+          "title": "Parc Ferm\u00e9 Issues",
+          "url": "https://www.fia.com/sites/default/files/decision-document/2024 United States Grand Prix - Parc Ferm\u00e9 Issues_0.pdf",
+          "publication_cet": "30.10.24 13:22",
+          "scope": "pre_final_issue",
+          "artifact": {
+            "path": "data/raw/fia_audit/objects/1296c4489fc313390f463a6d612c67e40f435ce4bb0f9c97b2628e0ca2e0bdfa.pdf",
+            "sha256": "1296c4489fc313390f463a6d612c67e40f435ce4bb0f9c97b2628e0ca2e0bdfa"
+          }
+        },
+        {
+          "document_id": "30",
+          "cover_document_id": "30",
+          "title": "Final Sprint Qualifying Classification",
+          "url": "https://www.fia.com/sites/default/files/decision-document/2024 United States Grand Prix - Final Sprint Qualifying Classification.pdf",
+          "publication_cet": "30.10.24 13:05",
+          "scope": "pre_final_issue",
+          "artifact": {
+            "path": "data/raw/fia_audit/objects/9226e998afc0e1271d90fc88bcfce56e4328fef6ae84bc4c80dbf31c167c15d8.pdf",
+            "sha256": "9226e998afc0e1271d90fc88bcfce56e4328fef6ae84bc4c80dbf31c167c15d8"
+          }
+        },
+        {
+          "document_id": "21",
+          "cover_document_id": "21",
+          "title": "New PU elements for this Competition",
+          "url": "https://www.fia.com/sites/default/files/decision-document/2024 United States Grand Prix - New PU elements for this Competition_0.pdf",
+          "publication_cet": "21.10.24 19:45",
+          "scope": "pre_final_issue",
+          "artifact": {
+            "path": "data/raw/fia_audit/objects/4ca17c368f1ea986a1d429cc940292b30380c3f7abb5c63ab08529158e6acd41.pdf",
+            "sha256": "4ca17c368f1ea986a1d429cc940292b30380c3f7abb5c63ab08529158e6acd41"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -11,7 +11,9 @@ from f1_ml_predictor.trust.fia_tables import (
     parse_final_text,
     parse_qualifying_text,
     parse_roster_text,
+    qualifying_car_numbers,
 )
+from f1_ml_predictor.trust.transcription import reviewed_image_final
 
 EVENT = EventId(2024, 24)
 DRIVERS = {
@@ -283,6 +285,76 @@ def test_disqualified_section_without_repeated_row_status_is_preserved():
     row = parse_final_text(text, EVENT, DRIVERS, CONSTRUCTORS).to_pylist()[0]
     assert row["dnf_category"] == "disqualified"
     assert row["dnf"] is None
+
+
+def test_leading_disqualification_does_not_shift_final_positions():
+    text = (
+        f"{RHEADER}\n"
+        "DQ 63 Carlos SAINZ Scuderia Ferrari 44\n"
+        "1 1 Max VERSTAPPEN Oracle Red Bull Racing 44 1:20:00.000\n"
+        "NOT CLASSIFIED\n11 Sergio PEREZ Oracle Red Bull Racing 0 DNS"
+    )
+    rows = parse_final_text(text, EVENT, DRIVERS, CONSTRUCTORS).to_pylist()
+    by_driver = {row["driver_id"]: row for row in rows}
+    assert by_driver["sainz"]["dnf_category"] == "disqualified"
+    assert by_driver["sainz"]["dnf"] is None
+    assert by_driver["max_verstappen"]["position"] == 1
+    assert by_driver["perez"]["dnf_category"] == "did_not_start"
+    assert by_driver["perez"]["dnf"] is None
+
+
+def test_qualifying_car_numbers_bind_driver_to_withdrawal_car():
+    text = f"{QHEADER}\n1 1 Max VERSTAPPEN Oracle Red Bull Racing 1:22.877"
+    assert qualifying_car_numbers(text, EVENT, DRIVERS, CONSTRUCTORS) == {"max_verstappen": 1}
+
+
+def test_image_final_review_is_hash_bound_and_preserves_dnf_dns():
+    review = {
+        "event_id": EVENT.partition(),
+        "document_sha256": "a" * 64,
+        "page_number": 2,
+        "visually_audited": True,
+        "audit_reference": "image-final-test",
+        "rows": [
+            {
+                "position": 1,
+                "car_number": 1,
+                "driver_display": "Max VERSTAPPEN",
+                "constructor_display": "Oracle Red Bull Racing",
+            },
+            {
+                "position": None,
+                "car_number": 11,
+                "driver_display": "Sergio PEREZ",
+                "constructor_display": "Oracle Red Bull Racing",
+                "status": "DNF",
+            },
+            {
+                "position": None,
+                "car_number": 55,
+                "driver_display": "Carlos SAINZ",
+                "constructor_display": "Scuderia Ferrari",
+                "status": "DNS",
+            },
+        ],
+    }
+    rows = reviewed_image_final(
+        "Copyright only", EVENT, DRIVERS, CONSTRUCTORS, review, "a" * 64
+    ).to_pylist()
+    assert [row["dnf_category"] for row in rows] == ["unknown", "unknown", "did_not_start"]
+    assert [row["raw_status"] for row in rows] == ["classification_only", "DNF", "DNS"]
+    assert all(row["dnf"] is None for row in rows)
+    with pytest.raises(ValueError, match="exact PDF hash"):
+        reviewed_image_final("Copyright only", EVENT, DRIVERS, CONSTRUCTORS, review, "b" * 64)
+    with pytest.raises(ValueError, match="cannot override"):
+        reviewed_image_final(
+            f"{RHEADER}\n1 1 Max VERSTAPPEN Oracle Red Bull Racing 70",
+            EVENT,
+            DRIVERS,
+            CONSTRUCTORS,
+            review,
+            "a" * 64,
+        )
 
 
 def test_partial_constructor_alias_cannot_capture_a_longer_name():
