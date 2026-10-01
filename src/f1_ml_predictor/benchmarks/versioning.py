@@ -23,6 +23,13 @@ def _verified_manifest(directory: Path) -> dict[str, Any]:
         name = record["path"]
         if Path(name).name != name or file_sha256(directory / name) != record["sha256"]:
             raise ValueError("benchmark dataset hash mismatch")
+    if manifest.get("version") == 4:
+        for name, field in (
+            ("feature_provenance.json", "feature_provenance_sha256"),
+            ("scoring_provenance.json", "scoring_provenance_sha256"),
+        ):
+            if file_sha256(directory / name) != manifest[field]:
+                raise ValueError("scoring benchmark provenance hash mismatch")
     return cast(dict[str, Any], manifest)
 
 
@@ -66,6 +73,9 @@ def _archive_benchmark_locked(directory: Path) -> dict[str, Any]:
                 shutil.copyfile(directory / name, staging / name)
             for record in manifest["datasets"].values():
                 shutil.copyfile(directory / record["path"], staging / record["path"])
+            if manifest.get("version") == 4:
+                for name in ("feature_provenance.json", "scoring_provenance.json"):
+                    shutil.copyfile(directory / name, staging / name)
             _verified_manifest(staging)
             coverage = json.loads((staging / "coverage.json").read_text(encoding="utf-8"))
             previous_rows: dict[tuple[str, str], dict[str, Any]] = {}

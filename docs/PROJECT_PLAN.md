@@ -1,19 +1,19 @@
 # F1 ML Predictor Project Plan
 
-Status: Phases 1 through 7 and Phase 9 simulation infrastructure are delivered. Historical Gold now contains 95 post-qualifying races and 1,927 driver-race observations. The current rolling benchmark has 92 identical paired outer test races across four boosting backends; its binary DNF labels are unknown. The separate audited binary DNF benchmark retains 29 races, with 547 known labels and 26 paired test races. Task-specific model selection remains `no_selection` because of baseline regressions or uncertain paired improvement. Historical Gold eligibility remains open to evidence-based upgrades; each experiment binds an immutable benchmark version. A historical held-out race has a `development_only` prediction artifact. Validated race and championship forecasts still require prospective independent confirmation. The Windows prospective task remains disabled pending a local credential for signed-out network access; manual collection remains available. Updated 2026-09-30.
+Status: Phases 1 through 7 and Phase 9 simulation infrastructure are delivered. Historical Gold now contains 95 post-qualifying races and 1,927 driver-race observations. The audited championship scoring benchmark has 1,621 rows with point-in-time driver and constructor totals; its frozen evaluation has 92 paired outer test races. The separate audited binary DNF benchmark retains 29 races, with 547 known labels and 26 paired test races. Task-specific model selection remains `no_selection` because of baseline regressions or uncertain paired improvement. Historical Gold eligibility remains open to evidence-based upgrades; each experiment binds an immutable benchmark version. A historical held-out race has a `development_only` prediction artifact. Validated race and championship forecasts still require prospective independent confirmation. The Windows prospective task remains disabled pending a local credential for signed-out network access; manual collection remains available. Updated 2026-10-01.
 
 ## Audited championship scoring milestone
 
 The season and round aware scoring ledger importer, point-in-time standings engine,
-and version 4 Gold scoring benchmark writer are implemented. The writer is gated on
-Claude's audited `scoring_rules.json` and `event_points_evidence.json`; those files
-are not yet present, so no production point values, new Gold dataset, or scoring
-evaluation claim has been produced. The existing point columns remain missing.
-See [scoring ledger handoff](SCORING_LEDGER.md) for the exact audit schema and build
-command. On arrival, validate the audit, freeze a new benchmark, measure coverage,
-rerun frozen chronological evaluation and separate driver and constructor point
-ablations, and retain `no_selection` unless the existing gates pass. Constructor
-rolling DNF evidence remains a separate sparse, audited feature path.
+and version 4 Gold scoring benchmark are implemented using the committed FIA audit.
+Retained source hashes and the native evidence schema are verified before use. The
+new benchmark preserves the prior version and binds each snapshot to a scoring
+ledger hash and publication-time event versions. Coverage, the frozen chronological
+evaluation, and separate driver and constructor point ablations are in the
+[scoring evaluation](SCORING_EVALUATION_2026-10-01.md). Paired evidence does not
+justify selecting a backend; the existing `no_selection` gate remains in force.
+See [scoring ledger handoff](SCORING_LEDGER.md) for the schema and build command.
+Constructor rolling DNF evidence remains a separate sparse, audited feature path.
 
 ## Evolving Gold and reproducible model runs
 

@@ -1,10 +1,10 @@
 # Audited championship scoring ledger
 
-The scoring importer accepts awarded points only. Race finish positions and present-day standings are never converted into historical points. Claude's audit can be placed in `data/audit/scoring_rules.json` and `data/audit/event_points_evidence.json`. `docs/SCORING_EVIDENCE_AUDIT.md` should explain each source, publication time, disputed value, and amendment.
+The scoring importer accepts awarded points only. Race finish positions and present-day standings are never converted into historical points. The committed FIA audit in `data/audit/scoring_rules.json` and `data/audit/event_points_evidence.json` uses `scoring-evidence-v1`; `docs/SCORING_EVIDENCE_AUDIT.md` explains its sources, publication clocks, disputed values, and amendments. The native importer verifies retained FIA document and regulation bytes, the collection index hash, driver awards, and constructor matrix reconciliation. It reconstructs a complete event version at each FIA points publication clock. A revision only affects cutoffs after its publication. Pending appeals remain missing.
 
 ## Handoff format
 
-Both JSON files use `schema_version: 1`. Unknown or disputed values remain `null` with `revision_status: "unknown"` or `"disputed"`; they cannot populate Gold point features. Every object has exact keys. Extra or missing keys fail import.
+The compact handoff and synthetic fixture format below uses `schema_version: 1`. The committed native FIA format uses `schema_version: "scoring-evidence-v1"` and is parsed separately. In the compact format, unknown or disputed values remain `null` with `revision_status: "unknown"` or `"disputed"`; they cannot populate Gold point features. Every compact object has exact keys. Extra or missing keys fail import.
 
 `scoring_rules.json` is `{"schema_version":1,"rules":[...]}`. Each rule has:
 
@@ -25,11 +25,11 @@ Each entry has `season`, `event_id`, `driver_id`, `constructor_id`, `race_points
 
 ## Build and evaluation
 
-Run `python -m f1_ml_predictor build-gold-scoring --benchmark-dir <immutable historical enrichment directory>` after both audited JSON files arrive. The command validates their schemas and the source benchmark hashes. It writes `data/benchmarks/gold_championship_scoring_v1/<source manifest hash>/<ledger hash>/` with a version 4 manifest, copied secondary tiers, a new Gold Parquet file, season coverage, missing reasons, and per-row scoring provenance. The source manifest and prior model runs remain unchanged. Rebuilding the same inputs must produce the same files or fail on an immutable collision.
+Run `python -m f1_ml_predictor build-gold-scoring --benchmark-dir <immutable historical enrichment directory>` with the committed FIA audit files and the retained local FIA source cache described in [the evidence audit](SCORING_EVIDENCE_AUDIT.md). The raw cache is ignored by Git, so another checkout must restore the exact hashed source bytes before import. The command validates the schemas, retained source hashes, and source benchmark hashes. It writes `data/benchmarks/gold_championship_scoring_v2/<source manifest hash>/<ledger hash>/` with a version 4 manifest, copied secondary tiers, a new Gold Parquet file, season coverage, missing reasons, and per-row scoring provenance. The source manifest and prior model runs remain unchanged. Rebuilding the same inputs must produce the same files or fail on an immutable collision.
 
 Only complete earlier rounds with an audited rule and event version effective before the prediction cutoff contribute to a snapshot. Missing earlier rounds leave all point features missing. Driver totals follow the driver across constructor transfers. Constructor totals use the constructor credited in each event entry. Rolling features need all 3, 5, or 10 earlier rounds. Tied championship positions remain missing until countback evidence is audited; points and leader gaps remain available.
 
-The baseline and joint model runners accept version 4 benchmarks and record `scoring_ledger_sha256` in run metadata. After a real audit is integrated, compare the frozen chronological Gold evaluation with its source version, run separate driver and constructor point ablations, and report paired race-level uncertainty. Preserve `no_selection` unless the existing selection gates are met. These standings features alone do not validate WDC or WCC forecasts.
+The baseline and joint model runners accept version 4 benchmarks and record `scoring_ledger_sha256` in run metadata. The scoring benchmark is evaluated with the frozen chronological Gold protocol. Driver, constructor, and combined point ablations use the same folds and race-paired uncertainty. Preserve `no_selection` unless the existing selection gates are met. These standings features alone do not validate WDC or WCC forecasts.
 
 ## Constructor reliability
 

@@ -1,7 +1,9 @@
 """Synthetic scoring fixtures exercise audit and point-in-time behavior."""
 
 import copy
+import hashlib
 import json
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -16,6 +18,7 @@ from f1_ml_predictor.benchmarks.scoring import (
     build_gold_scoring,
     verify_scoring_manifest,
 )
+from f1_ml_predictor.benchmarks.versioning import archive_benchmark
 from f1_ml_predictor.identifiers import EventId
 from f1_ml_predictor.scoring.ledger import _digest, load_scoring_ledger
 
@@ -261,6 +264,22 @@ def test_tied_standings_position_stays_missing_without_countback(tmp_path: Path)
     assert row["driver_points_before_race"] == 18
     assert row["driver_championship_position"] is None
     assert row["driver_points_gap_to_leader"] == 0
+    first = ledger.events[0]
+    audited = replace(
+        first,
+        entries=tuple(
+            replace(entry, race_position=position, race_position_audited=True)
+            for entry, position in zip(first.entries, (1, 2), strict=True)
+        ),
+    )
+    ledger = replace(ledger, events=(audited, *ledger.events[1:]))
+    ordered = ledger.standings_before(
+        EventId(2021, 2),
+        datetime(2021, 1, 8, tzinfo=UTC),
+        {"alpha": "red", "beta": "blue"},
+    )
+    assert ordered["alpha"]["driver_championship_position"] == 1
+    assert ordered["beta"]["driver_championship_position"] == 2
 
 
 def test_season_without_constructor_championship_keeps_team_points_missing(
@@ -291,6 +310,8 @@ def test_new_gold_version_binds_scoring_hash_and_preserves_source(tmp_path: Path
     rows = []
     for number in (1, 2):
         for driver, constructor in (("alpha", "red"), ("beta", "blue")):
+            if number == 2 and driver == "alpha":
+                constructor = "blue"
             row = {
                 "event_id": EventId(2021, number).partition(),
                 "driver_id": driver,
@@ -318,7 +339,7 @@ def test_new_gold_version_binds_scoring_hash_and_preserves_source(tmp_path: Path
             if tier == "Gold"
             else [],
         }
-    (source / "coverage.json").write_text("{}", encoding="utf-8")
+    (source / "coverage.json").write_text('{"coverage":[]}', encoding="utf-8")
     (source / "feature_provenance.json").write_text("[]", encoding="utf-8")
     manifest = {
         "version": 3,
@@ -343,6 +364,188 @@ def test_new_gold_version_binds_scoring_hash_and_preserves_source(tmp_path: Path
     assert values[2]["driver_points_last_3_missing"] is True
     assert build_gold_scoring(tmp_path, source, rules_path, evidence_path) == report
     verify_scoring_manifest(output, frozen)
+    archived = archive_benchmark(output)
+    assert archived is not None
+    verify_scoring_manifest(archived["path"], frozen)
+    assert (archived["path"] / "feature_provenance.json").is_file()
     (output / "scoring_provenance.json").write_text("[]", encoding="utf-8")
     with pytest.raises(ValueError, match="provenance hash mismatch"):
         verify_scoring_manifest(output, frozen)
+
+
+def _native_fixture(tmp_path: Path) -> tuple[Path, Path]:
+    audit = tmp_path / "data/audit"
+    objects = tmp_path / "data/raw/fia_audit/objects"
+    collection_dir = tmp_path / "data/raw/scoring_audit"
+    audit.mkdir(parents=True)
+    objects.mkdir(parents=True)
+    collection_dir.mkdir(parents=True)
+
+    def retained(contents: bytes) -> str:
+        digest = hashlib.sha256(contents).hexdigest()
+        (objects / f"{digest}.pdf").write_bytes(contents)
+        return digest
+
+    regulation = retained(b"fixture regulation")
+    first = retained(b"fixture first points")
+    revised = retained(b"fixture revised points")
+    collection_bytes = b"fixture collection index"
+    collection_hash = hashlib.sha256(collection_bytes).hexdigest()
+    collection_path = collection_dir / "index.json"
+    collection_path.write_bytes(collection_bytes)
+    regulation_source = {"sha256": regulation, "url": "https://fia.example/regulation"}
+    season_rule = {
+        "season": 2022,
+        "constructor_scoring": "sum of both cars",
+        "fastest_lap_rule": "No fastest-lap point",
+        "evidence_source": {
+            "first_issue_in_force": regulation_source,
+            "last_issue_checked": regulation_source,
+        },
+    }
+    schedules = {
+        "race": (25, 18),
+        "sprint": (8,),
+        "race_reduced_col1_2laps_to_lt25pct": (6,),
+        "race_reduced_col2_25_to_lt50pct": (13,),
+        "race_reduced_col3_50_to_lt75pct": (19,),
+    }
+    rules = {
+        "schema_version": "scoring-evidence-v1",
+        "audit_as_of_utc": "2022-01-20T00:00:00+00:00",
+        "season_rules": [season_rule],
+        "rules": [
+            {"season": 2022, "event_type": kind, "position": position, "points": value}
+            for kind, values in schedules.items()
+            for position, value in enumerate(values, 1)
+        ],
+    }
+    event_id = EventId(2022, 1).partition()
+    first_at, revised_at = "2022-01-05T18:00:00+00:00", "2022-01-08T18:00:00+00:00"
+    documents = [
+        {
+            "document_key": digest,
+            "sha256": digest,
+            "recalled": False,
+            "url": f"https://fia.example/{digest}",
+            "published_at_utc_upper_bound": when,
+        }
+        for digest, when in ((first, first_at), (revised, revised_at))
+    ]
+    records = []
+    constructors = []
+    for driver, constructor, initial, final, old_place, new_place in (
+        ("alpha", "red", 25, 18, "1", "2"),
+        ("beta", "blue", 18, 25, "2", "1"),
+    ):
+        records.append(
+            {
+                "season": 2022,
+                "round": 1,
+                "event_id_if_known": event_id,
+                "driver": driver,
+                "constructor": constructor,
+                "race_points": final,
+                "sprint_points": 0,
+                "bonus_points": 0,
+                "total_event_points": final,
+                "checks": {"race_points_match_full_scale": True},
+                "evidence_quality": "fia_official_formula1_confirmed",
+                "revision_status": "revised",
+                "first_published_at": first_at,
+                "published_at": revised_at,
+                "points_timeline": [
+                    {
+                        "document": first,
+                        "published_at_utc_upper_bound": first_at,
+                        "points": initial,
+                        "position_token": old_place,
+                    },
+                    {
+                        "document": revised,
+                        "published_at_utc_upper_bound": revised_at,
+                        "points": final,
+                        "position_token": new_place,
+                    },
+                ],
+            }
+        )
+        constructors.append(
+            {
+                "event_id_if_known": event_id,
+                "constructor": constructor,
+                "agrees": True,
+                "fia_entrant_event_points": final,
+            }
+        )
+    evidence = {
+        "schema_version": "scoring-evidence-v1",
+        "audit_as_of_utc": rules["audit_as_of_utc"],
+        "collection_index": {
+            "path": "data/raw/scoring_audit/index.json",
+            "sha256": collection_hash,
+        },
+        "unresolved_events": [],
+        "event_summaries": [
+            {
+                "season": 2022,
+                "round": 1,
+                "event_id": event_id,
+                "status": "resolved",
+                "drivers": 2,
+            }
+        ],
+        "documents": documents,
+        "records": records,
+        "constructor_event_points": constructors,
+    }
+    rules_path, evidence_path = audit / "scoring_rules.json", audit / "event_points_evidence.json"
+    rules_path.write_text(json.dumps(rules), encoding="utf-8")
+    evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+    return rules_path, evidence_path
+
+
+def test_native_fia_timeline_uses_only_prior_revisions(tmp_path: Path) -> None:
+    rules_path, evidence_path = _native_fixture(tmp_path)
+    ledger = load_scoring_ledger(rules_path, evidence_path)
+    assert len(ledger.events) == 2
+    ledger = replace(ledger, rules={2022: (replace(ledger.rules[2022][0], last_round=2),)})
+    roster = {"alpha": "red", "beta": "blue"}
+    early = ledger.standings_before(EventId(2022, 2), datetime(2022, 1, 7, tzinfo=UTC), roster)
+    late = ledger.standings_before(EventId(2022, 2), datetime(2022, 1, 9, tzinfo=UTC), roster)
+    assert early["alpha"]["driver_points_before_race"] == 25
+    assert early["alpha"]["driver_championship_position"] == 1
+    assert late["alpha"]["driver_points_before_race"] == 18
+    assert late["beta"]["driver_championship_position"] == 1
+    assert late["alpha"]["constructor_points_before_race"] == 18
+    assert ledger.sha256 == load_scoring_ledger(rules_path, evidence_path).sha256
+
+
+@pytest.mark.parametrize(
+    "damage", ["document_hash", "collection_hash", "missing_driver", "disputed"]
+)
+def test_native_audit_rejects_damage_and_keeps_disputes_missing(
+    tmp_path: Path, damage: str
+) -> None:
+    rules_path, evidence_path = _native_fixture(tmp_path)
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    if damage == "document_hash":
+        evidence["documents"][0]["sha256"] = "0" * 64
+    elif damage == "collection_hash":
+        evidence["collection_index"]["sha256"] = "0" * 64
+    elif damage == "missing_driver":
+        evidence["records"].pop()
+    else:
+        evidence["records"][0]["revision_status"] = "pending_appeal"
+    evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+    if damage == "disputed":
+        ledger = load_scoring_ledger(rules_path, evidence_path)
+        ledger = replace(ledger, rules={2022: (replace(ledger.rules[2022][0], last_round=2),)})
+        row = ledger.standings_before(
+            EventId(2022, 2), datetime(2022, 1, 9, tzinfo=UTC), {"alpha": "red"}
+        )["alpha"]
+        assert row["driver_points_before_race"] is None
+        assert row["missing_reason"] == "audited_prior_event_missing_or_uncertain"
+    else:
+        with pytest.raises(ValueError):
+            load_scoring_ledger(rules_path, evidence_path)

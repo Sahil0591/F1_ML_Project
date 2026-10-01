@@ -19,7 +19,7 @@ from f1_ml_predictor.scoring.ledger import ScoringLedger, load_scoring_ledger
 from f1_ml_predictor.time import require_known_by
 from f1_ml_predictor.trust.locking import advisory_lock
 
-SCORING_VERSION = "gold-championship-scoring-v1"
+SCORING_VERSION = "gold-championship-scoring-v2"
 SCORING_FEATURES = (
     *(f"driver_points_last_{window}" for window in (3, 5, 10)),
     *(f"constructor_points_last_{window}" for window in (3, 5, 10)),
@@ -100,6 +100,8 @@ def _proof(ledger: ScoringLedger, event: EventId, cutoff: Any) -> list[dict[str,
                         "bonus_points": entry.bonus_points,
                         "adjustment_points": entry.adjustment_points,
                         "total_points": entry.total_points,
+                        "race_position": entry.race_position,
+                        "race_position_audited": entry.race_position_audited,
                         "effective_at": entry.effective_at.isoformat(),
                         "source_evidence": entry.source_evidence,
                         "evidence_hash": entry.evidence_hash,
@@ -123,7 +125,7 @@ def build_gold_scoring(
     evidence_path = evidence_path or root / "data/audit/event_points_evidence.json"
     ledger = load_scoring_ledger(rules_path, evidence_path)
     benchmark_dir = benchmark_dir.resolve()
-    with advisory_lock(root / "data/benchmarks/gold_championship_scoring_v1/.build.lock"):
+    with advisory_lock(root / "data/benchmarks/gold_championship_scoring_v2/.build.lock"):
         manifest_path = benchmark_dir / "manifest.json"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         if manifest.get("version") != 3 or manifest.get("enrichment_version") != ENRICHMENT_VERSION:
@@ -165,6 +167,19 @@ def build_gold_scoring(
             drivers = {row["driver_id"]: row["constructor_id"] for row in event_rows}
             if len(cutoffs) != 1 or len(drivers) != len(event_rows):
                 raise ValueError("inconsistent Gold event roster or cutoff")
+            target_versions = [version for version in ledger.events if version.event == event]
+            if not target_versions:
+                raise ValueError("Gold event has no audited scoring ledger entry")
+            latest_target = max(target_versions, key=lambda version: version.effective_at)
+            audited_roster = {
+                entry.driver_id: entry.constructor_id
+                for entry in latest_target.entries
+                if entry.driver_id is not None and entry.constructor_id is not None
+            }
+            if any(
+                audited_roster.get(driver) != constructor for driver, constructor in drivers.items()
+            ):
+                raise ValueError("Gold roster differs from audited scoring identities")
             cutoff = next(iter(cutoffs))
             features = ledger.standings_before(event, cutoff, drivers)
             history = _proof(ledger, event, cutoff)
@@ -210,7 +225,7 @@ def build_gold_scoring(
                     }
                 )
         source_hash = file_sha256(manifest_path)
-        output = root / "data/benchmarks/gold_championship_scoring_v1" / source_hash / ledger.sha256
+        output = root / "data/benchmarks/gold_championship_scoring_v2" / source_hash / ledger.sha256
         output.mkdir(parents=True, exist_ok=True)
         new_fields = [
             *(pa.field(name, pa.float64()) for name in NEW_FEATURE_COLUMNS[:3]),
@@ -238,6 +253,11 @@ def build_gold_scoring(
         coverage = output / "coverage.json"
         if not coverage.exists():
             shutil.copyfile(benchmark_dir / "coverage.json", coverage)
+        original_provenance = output / "feature_provenance.json"
+        if not original_provenance.exists():
+            shutil.copyfile(benchmark_dir / "feature_provenance.json", original_provenance)
+        if file_sha256(original_provenance) != manifest["feature_provenance_sha256"]:
+            raise ValueError("source feature provenance changed during scoring build")
         proof_path = output / "scoring_provenance.json"
         proof_bytes = _canonical(provenance)
         if proof_path.exists() and proof_path.read_bytes() != proof_bytes:

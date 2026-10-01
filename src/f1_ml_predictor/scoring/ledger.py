@@ -8,6 +8,7 @@ import hashlib
 import json
 import math
 import re
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -20,6 +21,7 @@ _SHA = re.compile(r"[0-9a-f]{64}\Z")
 _COMPONENTS = ("race_points", "sprint_points", "bonus_points", "adjustment_points")
 _STATUSES = {"audited", "revised", "unknown", "disputed"}
 _WINDOWS = (3, 5, 10)
+SCORING_LEDGER_VERSION = "fia-timeline-v2"
 
 
 def _object(value: Any, fields: set[str], label: str) -> dict[str, Any]:
@@ -100,6 +102,8 @@ class EventPoints:
     source_evidence: tuple[dict[str, str], ...]
     evidence_hash: str
     revision_status: str
+    race_position: int | None = None
+    race_position_audited: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,6 +188,9 @@ class ScoringLedger:
             }
         driver_totals: dict[str, float] = dict.fromkeys(drivers, 0.0)
         constructor_totals: dict[str, float] = dict.fromkeys(drivers.values(), 0.0)
+        driver_places: dict[str, dict[int, int]] = defaultdict(dict)
+        constructor_places: dict[str, dict[int, int]] = defaultdict(dict)
+        countback_audited = True
         event_driver: list[dict[str, float]] = []
         event_constructor: list[dict[str, float]] = []
         for version in selected:
@@ -192,6 +199,7 @@ class ScoringLedger:
             event_rule = self.rule_for(version.event)
             for entry in version.entries:
                 assert entry.total_points is not None
+                countback_audited &= entry.race_position_audited
                 if entry.driver_id is not None:
                     d_points[entry.driver_id] = (
                         d_points.get(entry.driver_id, 0.0) + entry.total_points
@@ -199,6 +207,9 @@ class ScoringLedger:
                     driver_totals[entry.driver_id] = (
                         driver_totals.get(entry.driver_id, 0.0) + entry.total_points
                     )
+                    if entry.race_position is not None:
+                        places = driver_places[entry.driver_id]
+                        places[entry.race_position] = places.get(entry.race_position, 0) + 1
                 if (
                     entry.constructor_id is not None
                     and event_rule is not None
@@ -210,14 +221,43 @@ class ScoringLedger:
                     constructor_totals[entry.constructor_id] = (
                         constructor_totals.get(entry.constructor_id, 0.0) + entry.total_points
                     )
+                    if entry.race_position is not None:
+                        places = constructor_places[entry.constructor_id]
+                        places[entry.race_position] = places.get(entry.race_position, 0) + 1
             event_driver.append(d_points)
             event_constructor.append(c_points)
 
-        def rank(totals: dict[str, float], identity: str) -> float | None:
+        max_place = max(
+            (
+                place
+                for counts in (*driver_places.values(), *constructor_places.values())
+                for place in counts
+            ),
+            default=0,
+        )
+
+        def rank(
+            totals: dict[str, float], places: dict[str, dict[int, int]], identity: str
+        ) -> float | None:
             value = totals.get(identity, 0.0)
-            if sum(other == value for other in totals.values()) > 1:
-                return None  # A countback audit is required for tied championship positions.
-            return float(1 + sum(other > value for other in totals.values()))
+            if not countback_audited:
+                if sum(other == value for other in totals.values()) > 1:
+                    return None
+                return float(1 + sum(other > value for other in totals.values()))
+
+            def key(entity: str) -> tuple[float | int, ...]:
+                return (
+                    totals.get(entity, 0.0),
+                    *(
+                        places.get(entity, {}).get(position, 0)
+                        for position in range(1, max_place + 1)
+                    ),
+                )
+
+            own = key(identity)
+            if sum(key(entity) == own for entity in totals) > 1:
+                return None  # A further FIA nomination or qualifying countback is needed.
+            return float(1 + sum(key(entity) > own for entity in totals))
 
         result: dict[str, dict[str, float | str | None]] = {}
         constructor_contested = (
@@ -228,11 +268,13 @@ class ScoringLedger:
             cp = constructor_totals.get(constructor, 0.0)
             result[driver] = {
                 "driver_points_before_race": dp,
-                "driver_championship_position": rank(driver_totals, driver),
+                "driver_championship_position": rank(driver_totals, driver_places, driver),
                 "driver_points_gap_to_leader": max(driver_totals.values(), default=0.0) - dp,
                 "constructor_points_before_race": cp if constructor_contested else None,
                 "constructor_championship_position": (
-                    rank(constructor_totals, constructor) if constructor_contested else None
+                    rank(constructor_totals, constructor_places, constructor)
+                    if constructor_contested
+                    else None
                 ),
                 "constructor_points_gap_to_leader": (
                     max(constructor_totals.values(), default=0.0) - cp
@@ -266,8 +308,19 @@ class ScoringLedger:
 def load_scoring_ledger(rules_path: Path, evidence_path: Path) -> ScoringLedger:
     """Import the versioned audit files with exact schemas and source hashes."""
     rules_bytes, evidence_bytes = rules_path.read_bytes(), evidence_path.read_bytes()
-    rules_doc = _object(json.loads(rules_bytes), {"schema_version", "rules"}, "rules file")
-    events_doc = _object(json.loads(evidence_bytes), {"schema_version", "events"}, "events file")
+    rules_doc = json.loads(rules_bytes)
+    events_doc = json.loads(evidence_bytes)
+    if (
+        isinstance(rules_doc, dict)
+        and isinstance(events_doc, dict)
+        and rules_doc.get("schema_version") == "scoring-evidence-v1"
+        and events_doc.get("schema_version") == "scoring-evidence-v1"
+    ):
+        from f1_ml_predictor.scoring.audit_adapter import load_native_audit
+
+        return load_native_audit(rules_doc, events_doc, rules_bytes, evidence_bytes, evidence_path)
+    rules_doc = _object(rules_doc, {"schema_version", "rules"}, "rules file")
+    events_doc = _object(events_doc, {"schema_version", "events"}, "events file")
     if rules_doc["schema_version"] != 1 or events_doc["schema_version"] != 1:
         raise ValueError("unsupported scoring evidence schema version")
     if not isinstance(rules_doc["rules"], list) or not isinstance(events_doc["events"], list):
@@ -514,7 +567,13 @@ def load_scoring_ledger(rules_path: Path, evidence_path: Path) -> ScoringLedger:
             for season, values in rules.items()
         },
         tuple(sorted(events, key=lambda item: (item.event, item.effective_at))),
-        _digest({"rules_sha256": rules_hash, "evidence_sha256": evidence_hash}),
+        _digest(
+            {
+                "engine_version": SCORING_LEDGER_VERSION,
+                "rules_sha256": rules_hash,
+                "evidence_sha256": evidence_hash,
+            }
+        ),
         rules_hash,
         evidence_hash,
     )
