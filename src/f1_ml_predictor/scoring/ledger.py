@@ -107,6 +107,7 @@ class EventVersion:
     event: EventId
     completed_at: datetime
     effective_at: datetime
+    race_schedule: str
     complete: bool
     revision_status: str
     entries: tuple[EventPoints, ...]
@@ -352,6 +353,7 @@ def load_scoring_ledger(rules_path: Path, evidence_path: Path) -> ScoringLedger:
                 "event_id",
                 "completed_at",
                 "effective_at",
+                "race_schedule",
                 "complete",
                 "revision_status",
                 "expected_driver_ids",
@@ -369,6 +371,24 @@ def load_scoring_ledger(rules_path: Path, evidence_path: Path) -> ScoringLedger:
             raise ValueError("event completeness or chronology invalid")
         if raw["revision_status"] not in _STATUSES:
             raise ValueError("invalid event revision status")
+        matching_rules = [
+            rule
+            for rule in rules[event.season]
+            if rule.first_round <= event.round <= rule.last_round
+        ]
+        if len(matching_rules) != 1:
+            raise ValueError("event lacks a unique season scoring rule")
+        ruleset = matching_rules[0]
+        schedule = raw["race_schedule"]
+        if schedule == "standard":
+            allowed_race = {0.0, *ruleset.race_points}
+        elif isinstance(schedule, str) and re.fullmatch(r"reduced:[0-9]+", schedule):
+            index = int(schedule.split(":")[1])
+            if index >= len(ruleset.reduced_race_points):
+                raise ValueError("event reduced scoring schedule is not in the season rule")
+            allowed_race = {0.0, *ruleset.reduced_race_points[index]}
+        else:
+            raise ValueError("event race_schedule must select an audited scoring schedule")
         key = (event, effective)
         if key in seen:
             raise ValueError("duplicate event revision effective time")
@@ -431,19 +451,7 @@ def load_scoring_ledger(rules_path: Path, evidence_path: Path) -> ScoringLedger:
                 {key: value for key, value in item.items() if key != "evidence_hash"}
             ):
                 raise ValueError("point entry evidence hash mismatch")
-            matches = [
-                rule
-                for rule in rules[event.season]
-                if rule.first_round <= event.round <= rule.last_round
-            ]
-            if len(matches) != 1:
-                raise ValueError("event lacks a unique season scoring rule")
-            ruleset = matches[0]
             race, sprint, bonus, adjustment = values
-            allowed_race = {0.0, *ruleset.race_points}
-            allowed_race.update(
-                point for schedule in ruleset.reduced_race_points for point in schedule
-            )
             if race is not None and race not in allowed_race:
                 raise ValueError("race award is outside audited season schedules")
             if sprint is not None and sprint not in {*ruleset.sprint_points, 0.0}:
@@ -487,6 +495,7 @@ def load_scoring_ledger(rules_path: Path, evidence_path: Path) -> ScoringLedger:
                 event,
                 completed,
                 effective,
+                schedule,
                 raw["complete"],
                 raw["revision_status"],
                 tuple(entries),

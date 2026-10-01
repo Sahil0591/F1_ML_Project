@@ -89,6 +89,7 @@ def _proof(ledger: ScoringLedger, event: EventId, cutoff: Any) -> list[dict[str,
             {
                 "event_id": selected.event.partition(),
                 "effective_at": selected.effective_at.isoformat(),
+                "race_schedule": selected.race_schedule,
                 "evidence_hash": selected.evidence_hash,
                 "awards": [
                     {

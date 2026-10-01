@@ -84,6 +84,7 @@ def _event(
     entries: list[dict],
     status: str = "audited",
     complete: bool = True,
+    race_schedule: str = "standard",
 ) -> dict:
     return _hashed(
         {
@@ -91,6 +92,7 @@ def _event(
             "event_id": EventId(2021, round_number).partition(),
             "completed_at": _stamp(round_number * 4),
             "effective_at": effective,
+            "race_schedule": race_schedule,
             "complete": complete,
             "revision_status": status,
             "expected_driver_ids": ["alpha", "beta"],
@@ -161,6 +163,8 @@ def test_sprint_bonus_constructor_penalty_transfer_and_revision(tmp_path: Path) 
 def test_reduced_points_and_missing_evidence(tmp_path: Path) -> None:
     rules, events = _documents()
     events["events"][0]["entries"][0] = _entry(1, _stamp(5), "alpha", "red", 12.5)
+    events["events"][0]["entries"][1] = _entry(1, _stamp(5), "beta", "blue", 9)
+    events["events"][0]["race_schedule"] = "reduced:0"
     events["events"][0] = _hashed(
         {key: value for key, value in events["events"][0].items() if key != "evidence_hash"}
     )
@@ -181,7 +185,9 @@ def test_reduced_points_and_missing_evidence(tmp_path: Path) -> None:
     assert missing["alpha"]["missing_reason"] == "audited_prior_event_missing_or_uncertain"
 
 
-@pytest.mark.parametrize("change", ["bad_total", "bad_hash", "missing_driver", "bad_sprint"])
+@pytest.mark.parametrize(
+    "change", ["bad_total", "bad_hash", "missing_driver", "bad_sprint", "bad_reduced"]
+)
 def test_evidence_schema_rejects_incomplete_or_malformed(tmp_path: Path, change: str) -> None:
     rules, events = _documents()
     broken = copy.deepcopy(events["events"][0])
@@ -191,6 +197,8 @@ def test_evidence_schema_rejects_incomplete_or_malformed(tmp_path: Path, change:
         broken["entries"][0]["evidence_hash"] = "0" * 64
     elif change == "missing_driver":
         broken["entries"].pop()
+    elif change == "bad_reduced":
+        broken["entries"][0] = _entry(1, _stamp(5), "alpha", "red", 12.5)
     else:
         broken["entries"][0] = _entry(1, _stamp(5), "alpha", "red", 25, sprint=8)
     events["events"][0] = _hashed(
