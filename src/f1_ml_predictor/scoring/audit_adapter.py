@@ -50,7 +50,7 @@ def _schedule(rows: list[dict[str, Any]], season: int, kind: str) -> tuple[float
 
 
 def _place(token: Any) -> int | None:
-    if token in {None, "NC", "DQ"}:
+    if token is None or token == "NC" or token == "DQ":
         return None
     if not isinstance(token, str) or re.fullmatch(r"[0-9]+F?", token) is None:
         raise ValueError("unsupported FIA race placing token")
@@ -300,7 +300,9 @@ def load_native_audit(
                         evidence_hash=_digest({"record_sha256": record_hash, "timeline": item}),
                         revision_status="revised" if index else "audited",
                         race_position=_place(item["position_token"]),
-                        race_position_audited=True,
+                        race_position_audited=(
+                            _place(row["race_position_fia"]) == _place(item["position_token"])
+                        ),
                     )
                 )
             complete = len(entries) == len(rows)

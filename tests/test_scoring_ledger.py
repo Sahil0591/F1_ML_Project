@@ -280,6 +280,18 @@ def test_tied_standings_position_stays_missing_without_countback(tmp_path: Path)
     )
     assert ordered["alpha"]["driver_championship_position"] == 1
     assert ordered["beta"]["driver_championship_position"] == 2
+    uncertain = replace(
+        audited,
+        entries=(replace(audited.entries[0], race_position_audited=False), audited.entries[1]),
+    )
+    ledger = replace(ledger, events=(uncertain, *ledger.events[1:]))
+    withheld = ledger.standings_before(
+        EventId(2021, 2),
+        datetime(2021, 1, 8, tzinfo=UTC),
+        {"alpha": "red", "beta": "blue"},
+    )
+    assert withheld["alpha"]["driver_championship_position"] is None
+    assert withheld["beta"]["constructor_championship_position"] is None
 
 
 def test_season_without_constructor_championship_keeps_team_points_missing(
@@ -452,6 +464,7 @@ def _native_fixture(tmp_path: Path) -> tuple[Path, Path]:
                 "checks": {"race_points_match_full_scale": True},
                 "evidence_quality": "fia_official_formula1_confirmed",
                 "revision_status": "revised",
+                "race_position_fia": new_place,
                 "first_published_at": first_at,
                 "published_at": revised_at,
                 "points_timeline": [
@@ -519,6 +532,16 @@ def test_native_fia_timeline_uses_only_prior_revisions(tmp_path: Path) -> None:
     assert late["beta"]["driver_championship_position"] == 1
     assert late["alpha"]["constructor_points_before_race"] == 18
     assert ledger.sha256 == load_scoring_ledger(rules_path, evidence_path).sha256
+
+
+def test_native_conflicting_classification_withholds_countback(tmp_path: Path) -> None:
+    rules_path, evidence_path = _native_fixture(tmp_path)
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    evidence["records"][0]["race_position_fia"] = "3"
+    evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+    ledger = load_scoring_ledger(rules_path, evidence_path)
+    assert ledger.events[-1].entries[0].race_position_audited is False
+    assert ledger.events[-1].entries[1].race_position_audited is True
 
 
 @pytest.mark.parametrize(

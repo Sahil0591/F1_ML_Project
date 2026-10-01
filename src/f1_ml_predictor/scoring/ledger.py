@@ -21,7 +21,7 @@ _SHA = re.compile(r"[0-9a-f]{64}\Z")
 _COMPONENTS = ("race_points", "sprint_points", "bonus_points", "adjustment_points")
 _STATUSES = {"audited", "revised", "unknown", "disputed"}
 _WINDOWS = (3, 5, 10)
-SCORING_LEDGER_VERSION = "fia-timeline-v2"
+SCORING_LEDGER_VERSION = "fia-timeline-v3"
 
 
 def _object(value: Any, fields: set[str], label: str) -> dict[str, Any]:
@@ -190,7 +190,8 @@ class ScoringLedger:
         constructor_totals: dict[str, float] = dict.fromkeys(drivers.values(), 0.0)
         driver_places: dict[str, dict[int, int]] = defaultdict(dict)
         constructor_places: dict[str, dict[int, int]] = defaultdict(dict)
-        countback_audited = True
+        driver_places_audited: dict[str, bool] = {}
+        constructor_places_audited: dict[str, bool] = {}
         event_driver: list[dict[str, float]] = []
         event_constructor: list[dict[str, float]] = []
         for version in selected:
@@ -199,8 +200,11 @@ class ScoringLedger:
             event_rule = self.rule_for(version.event)
             for entry in version.entries:
                 assert entry.total_points is not None
-                countback_audited &= entry.race_position_audited
                 if entry.driver_id is not None:
+                    driver_places_audited[entry.driver_id] = (
+                        driver_places_audited.get(entry.driver_id, True)
+                        and entry.race_position_audited
+                    )
                     d_points[entry.driver_id] = (
                         d_points.get(entry.driver_id, 0.0) + entry.total_points
                     )
@@ -215,6 +219,11 @@ class ScoringLedger:
                     and event_rule is not None
                     and event_rule.constructor_scoring == "sum_awarded_entries"
                 ):
+                    if entry.driver_id is not None:
+                        constructor_places_audited[entry.constructor_id] = (
+                            constructor_places_audited.get(entry.constructor_id, True)
+                            and entry.race_position_audited
+                        )
                     c_points[entry.constructor_id] = (
                         c_points.get(entry.constructor_id, 0.0) + entry.total_points
                     )
@@ -237,13 +246,17 @@ class ScoringLedger:
         )
 
         def rank(
-            totals: dict[str, float], places: dict[str, dict[int, int]], identity: str
+            totals: dict[str, float],
+            places: dict[str, dict[int, int]],
+            audited: dict[str, bool],
+            identity: str,
         ) -> float | None:
             value = totals.get(identity, 0.0)
-            if not countback_audited:
-                if sum(other == value for other in totals.values()) > 1:
-                    return None
+            peers = [entity for entity, points in totals.items() if points == value]
+            if len(peers) == 1:
                 return float(1 + sum(other > value for other in totals.values()))
+            if any(not audited.get(entity, False) for entity in peers):
+                return None
 
             def key(entity: str) -> tuple[float | int, ...]:
                 return (
@@ -255,9 +268,13 @@ class ScoringLedger:
                 )
 
             own = key(identity)
-            if sum(key(entity) == own for entity in totals) > 1:
+            if sum(key(entity) == own for entity in peers) > 1:
                 return None  # A further FIA nomination or qualifying countback is needed.
-            return float(1 + sum(key(entity) > own for entity in totals))
+            return float(
+                1
+                + sum(other > value for other in totals.values())
+                + sum(key(entity) > own for entity in peers)
+            )
 
         result: dict[str, dict[str, float | str | None]] = {}
         constructor_contested = (
@@ -268,11 +285,18 @@ class ScoringLedger:
             cp = constructor_totals.get(constructor, 0.0)
             result[driver] = {
                 "driver_points_before_race": dp,
-                "driver_championship_position": rank(driver_totals, driver_places, driver),
+                "driver_championship_position": rank(
+                    driver_totals, driver_places, driver_places_audited, driver
+                ),
                 "driver_points_gap_to_leader": max(driver_totals.values(), default=0.0) - dp,
                 "constructor_points_before_race": cp if constructor_contested else None,
                 "constructor_championship_position": (
-                    rank(constructor_totals, constructor_places, constructor)
+                    rank(
+                        constructor_totals,
+                        constructor_places,
+                        constructor_places_audited,
+                        constructor,
+                    )
                     if constructor_contested
                     else None
                 ),

@@ -19,7 +19,7 @@ from f1_ml_predictor.scoring.ledger import ScoringLedger, load_scoring_ledger
 from f1_ml_predictor.time import require_known_by
 from f1_ml_predictor.trust.locking import advisory_lock
 
-SCORING_VERSION = "gold-championship-scoring-v2"
+SCORING_VERSION = "gold-championship-scoring-v3"
 SCORING_FEATURES = (
     *(f"driver_points_last_{window}" for window in (3, 5, 10)),
     *(f"constructor_points_last_{window}" for window in (3, 5, 10)),
@@ -125,7 +125,7 @@ def build_gold_scoring(
     evidence_path = evidence_path or root / "data/audit/event_points_evidence.json"
     ledger = load_scoring_ledger(rules_path, evidence_path)
     benchmark_dir = benchmark_dir.resolve()
-    with advisory_lock(root / "data/benchmarks/gold_championship_scoring_v2/.build.lock"):
+    with advisory_lock(root / "data/benchmarks/gold_championship_scoring_v3/.build.lock"):
         manifest_path = benchmark_dir / "manifest.json"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         if manifest.get("version") != 3 or manifest.get("enrichment_version") != ENRICHMENT_VERSION:
@@ -225,7 +225,7 @@ def build_gold_scoring(
                     }
                 )
         source_hash = file_sha256(manifest_path)
-        output = root / "data/benchmarks/gold_championship_scoring_v2" / source_hash / ledger.sha256
+        output = root / "data/benchmarks/gold_championship_scoring_v3" / source_hash / ledger.sha256
         output.mkdir(parents=True, exist_ok=True)
         new_fields = [
             *(pa.field(name, pa.float64()) for name in NEW_FEATURE_COLUMNS[:3]),
