@@ -77,7 +77,11 @@ above one because a tie includes multiple entities. Current point totals do not
 contain historical finish counts, so the simulator does not invent FIA countback.
 Exact rational point arithmetic preserves fractional-point ties.
 
-Remaining events, including the race and sprint at one round, are independently
+Optional scenario groups correlate events. When every event carries
+`sample_groups`, each simulation draws one group (a model-uncertainty world) and
+then resamples every event's order within that group. Groups must be identical
+across events, and ungrouped inputs behave exactly as before. Without groups,
+remaining events, including the race and sprint at one round, are independently
 resampled. Shared season-level form, reliability, weather and incident effects
 are omitted. Both cars' points contribute to constructor scores, preserving the
 within-event dependencies represented by the supplied joint orders. These

@@ -4,127 +4,126 @@
 race and a development simulation of the rest of the season. Every output is
 labelled `development_only`. None of it is a validated forecast.
 
-## Command
-
-From the repository root:
+## Commands
 
 ```powershell
+.\.venv\Scripts\python.exe -m f1_ml_predictor evaluate-cutoffs
 .\.venv\Scripts\python.exe -m f1_ml_predictor predict-next-race
 ```
 
-The command first runs one bounded tick of the existing prospective collector
-(`collect-next-race`). The tick records a fresh Jolpica schedule observation and,
-once qualifying results are published, freezes a certified post-qualifying
-capture. The prediction then:
+`evaluate-cutoffs` builds the four cutoff-contract datasets and runs the frozen
+[protocol v3](EVALUATION_PROTOCOL_V3.md) evaluation for each. Results are cached by
+their exact inputs under `models/experiments/gold/<dataset>/cutoff_v3/`, so later
+runs reuse them. `predict-next-race` also triggers any evaluation it needs.
 
-1. Reads the retained schedule observation, verifies its payload hash and picks
-   the first race that starts after the prediction clock.
-2. Chooses the cutoff. A certified `post_qualifying` (or later `pre_race`)
-   capture for that race is preferred. Without one, the run is labelled
-   `pre_qualifying` and its `prediction_timestamp_utc` is the run time.
-3. Loads the latest immutable Gold scoring version and the latest audited binary
-   DNF version. Every manifest, dataset, coverage and provenance hash is verified.
-   The scoring ledger must match the hash bound into the Gold version.
-4. Builds one label-free row per entered driver with the same rolling form,
-   constructor form and scoring-ledger rules used to build Gold. Only audited
-   results and points published before the cutoff are read. The snapshot and its
-   source metadata are frozen under `data/features/development_snapshots/`
-   before any model is fitted.
-5. Fits the development models, samples coherent race outcomes, runs the season
-   simulation, validates everything and writes the artifacts.
+The prediction command first runs one bounded tick of the existing prospective
+collector. It then:
 
-Options:
+1. Picks the first race after the prediction clock from the fresh, hash-verified
+   schedule observation. The circuit comes from Jolpica's `circuitId`, never from
+   the event title, so "Bahrain Grand Prix in Malaysia" resolves to `sepang`.
+2. Chooses the cutoff contract. A certified post-qualifying (or pre-race) capture
+   selects `post_qualifying` (or `pre_race`). Without one the run uses
+   `pre_weekend`; if weekend sessions have already run but were not captured, the
+   report says so.
+3. Loads the latest immutable Gold scoring version, the latest audited binary DNF
+   version, the scoring ledger and retained season schedules, verifying every hash.
+4. Builds one label-free row per driver with the same contract code used for the
+   historical datasets, from audited data published before the cutoff only.
+5. Hides predictors that no driver has at the cutoff (for example points features
+   blocked by the strict ledger gate) from training as well, and uses the contract's
+   v3 evaluation repeated with exactly those predictors hidden. Circuit history is
+   exempt: at an unseen circuit its missingness is structural and its flags are
+   well represented in training.
+6. Fits every candidate, the selected DNF model and the baselines on all complete
+   Gold races before the cutoff, then samples the race with the calibrated primary.
+7. Runs the season simulation, validation and quality checks, and writes artifacts.
 
-| Option | Default | Meaning |
-| --- | --- | --- |
-| `--no-collect` | off | Skip the collector tick and use the retained schedule |
-| `--season` | next race | Restrict the search for the next race to one season |
-| `--simulations` | 100000 | Championship Monte Carlo simulations |
-| `--seed` | 42 | Seed for race draws, order samples and the season simulation |
-| `--draws` | 65536 | Joint race draws for next-race probabilities (128 to 65536) |
-| `--championship-orders` | 8192 | Sampled race orders per remaining session |
-| `--device` | auto | `cpu`, `auto` or `cuda`; the existing measured-benefit policy decides |
-| `--benchmark-dir`, `--dnf-benchmark-dir` | latest | Pin exact immutable dataset versions |
+Options: `--no-collect`, `--season`, `--simulations` (default 100000), `--seed`
+(42), `--draws` (65536 race draws), `--worlds` (1000 model-uncertainty worlds),
+`--orders-per-world` (16), `--device` (`cpu`, `auto`, `cuda`; the measured-benefit
+GPU policy decides), `--benchmark-dir`, `--dnf-benchmark-dir`, and
+`--methodology c52b674` to rerun the earlier single-model pipeline unchanged.
 
 ## Rerunning at later weekend cutoffs
 
-Run the same command again after qualifying. When the collector tick finds a
-nonempty qualifying response, it freezes a certified post-qualifying capture and
-the new prediction uses it, with the capture's cutoff as `prediction_timestamp_utc`.
-If results are not yet published the tick reports `waiting_for_qualifying_results`
-and the run stays `pre_qualifying`; try again a few minutes later. For a cutoff
-inside the pre-race window, first run
-`.\.venv\Scripts\python.exe -m f1_ml_predictor collect-next-race --pre-race`, then
-rerun the prediction. Every run gets a new run ID and directory, so earlier
-cutoffs are never overwritten.
+Run `predict-next-race` again after qualifying. When the collector tick finds a
+nonempty qualifying response it freezes a certified capture and the new run uses
+the `post_qualifying` contract with its own evaluation, calibration and selection.
+The pre-qualifying primary is never reused after qualifying. If results are not yet
+published, the tick reports `waiting_for_qualifying_results`; retry a few minutes
+later. For the pre-race window run
+`.\.venv\Scripts\python.exe -m f1_ml_predictor collect-next-race --pre-race` first.
+Practice is not captured live yet, so a run between practice and qualifying uses
+the `pre_weekend` contract and says so. Every run has a new run ID and directory.
 
-## Models
+## Models and calibration
 
-No task passes the frozen Gold selection gates, so the run uses development
-candidates and says so in its manifest and report:
+Each contract selects its own primary from the joint candidates (logistic,
+Ridge and Plackett-Luce strengths, four boosting backends and two ensembles).
+Baseline-derived candidates drive the same coherent sampler as boosting, so a
+baseline is never passed over because the simulator expects boosting. The
+logistic and Ridge baselines and the best single boosting model are reported
+next to the primary. Calibration is a race temperature plus mixing with a
+DNF-aware uniform race order, fitted only on earlier out-of-fold races, so winner,
+podium, finish and DNF stay coherent. No probability floor is imposed.
 
-- **Position strength (winner, podium, finish):** the joint boosting backend
-  with the lowest mean rank across winner log loss, podium Brier score and
-  finish MAE in the latest frozen comparison for the Gold version. A provisional
-  task selection would take precedence. Winner, podium and finish all come from
-  one position model so they stay coherent.
-- **DNF:** a separate model trained on the audited binary DNF version, using the
-  candidate with the lowest observed audited DNF Brier score. DNF therefore does
-  not depend on pace. The Gold scoring version has no binary DNF labels.
-- **Race distribution:** the existing seeded Plackett-Luce and independent DNF
-  sampler. Its temperature is chosen with the frozen grid on the latest
-  calibration race, using a DNF model fitted only on labels known at that race.
-- **Baselines:** the existing heuristic and logistic/Ridge baselines are fitted on
-  the same history and shown next to the model.
+DNF uses the candidate with the best out-of-fold Brier score on audited binary
+labels (1,506 after the [v2 expansion](DNF_AUDIT_STATUS.md)). If that is the base
+rate, every driver gets the same DNF probability and the report labels it as a
+field-wide rate rather than an individualised prediction.
 
-Predictors that no driver has at the cutoff, such as qualifying before it has
-run, target-weekend practice and point features blocked by the strict ledger
-gate, are hidden from the training rows as well. They are never median-filled
-at prediction time. A cached diagnostic evaluation repeats the frozen
-chronological folds with the same predictors hidden and is reported as model
-uncertainty. It is not selection evidence.
+## Checks reported separately
+
+- **Coherence and leakage** (fail closed): race probabilities are coherent, no
+  snapshot value or training label is later than the cutoff, training reads
+  immutable dataset versions, the season uses only this run's race samples, and
+  every artifact is labelled `development_only`.
+- **Development quality** (`pass`, `warn` or `fail`): live sharpness compared with
+  the same model's historical out-of-fold forecasts at the same cutoff, including
+  winner entropy, effective number of win contenders, the share of the field below
+  0.1% win or 1% podium probability, and the maximum win probability.
+- **Out of distribution**: unseen circuit, feature ranges, missing-value patterns
+  and nearest-row distance against leave-one-race-out training distances. Unseen
+  circuits use a separate calibration only where it beat shared calibration out of
+  fold; no circuit history is invented.
 
 ## Season simulation
 
-The existing championship simulator resamples whole sampled orders for every
-remaining race and sprint. Starting totals are the latest published FIA points
-before the cutoff from the audited ledger. Values under appeal are used as
-published and named in the report. Races after the next one use the
-pre-qualifying model with form held at the cutoff. Rounds after the audited rule
-interval continue that season's latest audited tables at full distance. Every
-entered driver is assumed points eligible, which keeps the simulator status
-`engineering_only`. Outputs include title probabilities, expected final points
-and final position distributions for drivers and constructors. Tied positions
-are shared evenly; no countback is invented.
+Every remaining race and sprint gets its own pre-weekend rows: circuit history,
+circuit attrition and sprint format change by event, while driver form is the
+form known at the cutoff. Model uncertainty is represented by worlds. Each world
+draws a driver strength random walk across the remaining weekends with per-race
+variance validated on historical stale-form forecasts (protocol addendum
+`season-drift-v1`), plus any persistent offset supported by out-of-fold residual
+correlation. All events in one simulated season share that world, so uncertainty
+does not average away across races. The simulator resamples whole joint orders
+within the world and updates points after every event.
+
+The number of simulations controls Monte Carlo noise only. Title probabilities
+are reported to whole percentage points, with Monte Carlo error bounded by the
+number of worlds. The report also shows titles with strength fixed (the c52b674
+assumption) and under single candidate models.
 
 ## Outputs
 
 Each run writes to
-`data/predictions/development/next_race/<event>/<cutoff kind>/<run id>/`:
-
-| File | Content |
-| --- | --- |
-| `predictions.parquet` | One row per driver: win, podium, DNF, expected finish, distribution, baselines |
-| `race_distribution.json` | Full finishing distributions, seed, draws and temperature |
-| `championship.json` | Simulator result, standings sources, sessions and assumptions |
-| `manifest.json` | Provenance: snapshot, datasets, reference runs, models, devices, checks |
-| `report.md` | Readable report |
-
-Fitted models are stored under `models/development/next_race/<run id>/`. Before
-the report is written, the run fails closed unless race probabilities are
-coherent, the snapshot has nothing after the cutoff, training reads immutable
-dataset versions, the season simulation uses only this run's race samples and
-every artifact is labelled `development_only`.
+`data/predictions/development/next_race/<event>/<cutoff>/<run id>/`:
+`predictions.parquet`, `race_distribution.json` (primary, calibration stages,
+candidates and baselines), `championship.json`, `manifest.json` (provenance,
+evaluation, OOD, sharpness, checks), `comparison.json` (against the c52b674
+regression fixture when the event matches) and `report.md`. Fitted models are in
+`models/development/next_race/<run id>/`. The c52b674 forecast is preserved in
+`docs/regression/c52b674-2026-round16-pre-qualifying.json`. The legacy pipeline resolves the latest DNF
+version, which is now the 95-race expansion; an exact c52b674 reproduction pins
+the original 29-race DNF version recorded in that fixture.
 
 ## Development only versus validated
 
-A `development_only` output is a reproducible engineering result from the best
-current candidate. It has no accuracy claim. Historical outer-fold metrics in the
-report show that the logistic baseline still has the lowest observed loss on
-winner, podium and finish tasks.
-
-A validated forecast would need a task to pass the frozen Gold protocol (25
-paired races, no baseline regression and a race-bootstrap improvement over both
-baselines), followed by confirmation on future independent races. Championship
-outputs would also need the simulator's validation evidence gate and explicit
-points classification. This command never sets those flags.
+A `development_only` output is the best current candidate under a frozen protocol
+with honest out-of-fold evidence. A task is formally selected only when it beats
+both baselines on 25 paired races with a race-bootstrap interval excluding zero
+and no regressions, and even then it needs future independent races before any
+forecast is called validated. Championship outputs would also need the
+simulator's validation evidence and explicit points classification. This command
+never sets those flags.

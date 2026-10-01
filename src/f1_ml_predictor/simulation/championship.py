@@ -200,6 +200,7 @@ class EventSimulation:
     model_id: str = "engineering_fixture"
     eligibility_policy: str = "explicit_classification"
     fastest_lap_drivers: tuple[str | None, ...] | None = None
+    sample_groups: tuple[int, ...] | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.event_id, EventId):
@@ -243,6 +244,14 @@ class EventSimulation:
                 raise ValueError("fastest-lap drivers must belong to the event roster")
         elif laps is not None:
             raise ValueError("fastest-lap samples are ambiguous when the rule awards no bonus")
+        if self.sample_groups is not None:
+            groups = tuple(self.sample_groups)
+            if len(groups) != len(orders) or any(
+                isinstance(group, bool) or not isinstance(group, int) or group < 0
+                for group in groups
+            ):
+                raise ValueError("sample groups need one nonnegative integer per joint order")
+            object.__setattr__(self, "sample_groups", groups)
         object.__setattr__(self, "driver_constructors", MappingProxyType(constructors))
         object.__setattr__(self, "sampled_orders", orders)
         object.__setattr__(self, "points_eligible_samples", eligible)
@@ -264,6 +273,7 @@ class EventSimulation:
             "fastest_lap_drivers": (
                 None if self.fastest_lap_drivers is None else list(self.fastest_lap_drivers)
             ),
+            **({} if self.sample_groups is None else {"sample_groups": list(self.sample_groups)}),
         }
 
 
@@ -555,6 +565,21 @@ def simulate_championship(
                 )
             samples.append(tuple(awards))
         event_scores.append(samples)
+    grouped = [event.sample_groups is not None for event in ordered_events]
+    if any(grouped) and not all(grouped):
+        raise ValueError("either every remaining event or none must carry sample groups")
+    group_ids: list[int] = []
+    members: list[dict[int, list[int]]] = []
+    if ordered_events and all(grouped):
+        for event in ordered_events:
+            assert event.sample_groups is not None
+            by_group: dict[int, list[int]] = {}
+            for index, group in enumerate(event.sample_groups):
+                by_group.setdefault(group, []).append(index)
+            members.append(by_group)
+        group_ids = sorted(members[0])
+        if any(sorted(item) != group_ids for item in members):
+            raise ValueError("every remaining event must share the same sample groups")
     rng = random.Random(seed)
     driver_wins, driver_ties, driver_totals = ([0] * len(driver_ids) for _ in range(3))
     team_wins, team_ties, team_totals = ([0] * len(constructor_ids) for _ in range(3))
@@ -564,8 +589,14 @@ def simulate_championship(
     for _ in range(simulations):
         final_drivers = current_drivers.copy()
         final_teams = current_constructors.copy()
-        for samples in event_scores:
-            for driver_index, team_index, points in samples[rng.randrange(len(samples))]:
+        world = group_ids[rng.randrange(len(group_ids))] if group_ids else None
+        for event_index, samples in enumerate(event_scores):
+            if world is None:
+                choice = rng.randrange(len(samples))
+            else:
+                candidates = members[event_index][world]
+                choice = candidates[rng.randrange(len(candidates))]
+            for driver_index, team_index, points in samples[choice]:
                 final_drivers[driver_index] += points
                 final_teams[team_index] += points
         _record_places(final_drivers, driver_places)
@@ -606,7 +637,11 @@ def simulate_championship(
         "rules_sha256": [_digest(event.rules.to_dict()) for event in ordered_events],
         "validation": validation_payload,
         "simulation_source_hash": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-        "sampling": "uniform empirical joint-order resampling",
+        "sampling": "uniform empirical joint-order resampling"
+        if not group_ids
+        else "one shared scenario group per simulation, then uniform joint-order resampling "
+        "within that group for every event",
+        "sample_groups": len(group_ids),
         "event_dependence": "independent between remaining race and sprint events",
         "ties": "unresolved; historical FIA countback is not available",
         "points_arithmetic": "exact rational units",
@@ -617,7 +652,10 @@ def simulate_championship(
         "Engineering fixtures do not establish predictive accuracy.",
         "Complete calendar, rosters, current points and scoring cases are caller-supplied.",
         "Points classification, fastest laps and shortened distances are explicit inputs.",
-        "Remaining events are independent; shared season-level form and incident risk are omitted.",
+        "Remaining events are independent; shared season-level form and incident risk are omitted."
+        if not group_ids
+        else "Events share one supplied scenario group per simulation and are independent "
+        "within it; shared effects are only those the caller encoded in the groups.",
         "Top-points ties are unresolved because historical FIA countback is not supplied.",
         "Monte Carlo standard error describes sampling error, not model uncertainty.",
     )

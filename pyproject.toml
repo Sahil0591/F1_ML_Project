@@ -47,6 +47,15 @@ module = ["pyarrow", "pyarrow.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["sklearn", "sklearn.*", "threadpoolctl", "threadpoolctl.*", "joblib", "joblib.*"]
+module = [
+    "sklearn",
+    "sklearn.*",
+    "threadpoolctl",
+    "threadpoolctl.*",
+    "joblib",
+    "joblib.*",
+    "scipy",
+    "scipy.*",
+]
 ignore_missing_imports = true
 disable_error_code = ["import-untyped"]

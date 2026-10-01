@@ -1,0 +1,298 @@
+{
+  "artifact_sha256": {
+    "championship": "bfa0db01d9cfcca9bd5fd5692cdb6f1b1e670cb76adffecf7c0dbb47b859ef2d",
+    "manifest": "cec6461ef915644dc456daecf29ff23a689dabd272bdb2915fc73a2f37204463",
+    "predictions": "0617813858b26d4108567106a4642509f1adb50072bf07b4fab67570e857ab26",
+    "race_distribution": "215b2c8e6b60ed663304e50005fdb95040a512aa1e71b2eb46d9cbae829d65d7"
+  },
+  "commit": "c52b6741a9f95f719aa227678611ae00c0f590e7",
+  "cutoff_kind": "pre_qualifying",
+  "dataset_version": "dataset-b3324b64c0aa6ae41ee8239ef71859ad6a188295232a3d755a35d1702b2bae9a",
+  "description": "Immutable c52b674 development forecast, reproduced exactly at its cutoff before the cutoff-specific methodology",
+  "dnf_dataset_directory": "data/benchmarks/gold_core_binary_dnf_v1/4a809a21c40d5f65c86d1bd6bc420471119a33578228fa597379c0725e604a89/benchmark/versions/dataset-be0704f0618d608743ce3bf89adf033305a52b43b421d6d6fdcefaa912caae0f",
+  "drivers": {
+    "albon": {
+      "dnf": 0.12252352154000681,
+      "expected_finish": 18.163970947265625,
+      "podium": 0.0,
+      "win": 0.0
+    },
+    "alonso": {
+      "dnf": 0.12252352154000681,
+      "expected_finish": 17.560791015625,
+      "podium": 0.0,
+      "win": 0.0
+    },
+    "antonelli": {
+      "dnf": 0.12252352154000681,
+      "expected_finish": 4.670654296875,
+      "podium": 0.6530303955078125,
+      "win": 0.2611541748046875
+    },
+    "bearman": {
+      "dnf": 0.12252352154000681,
+      "expected_finish": 15.266769409179688,
+      "podium": 0.0,
+      "win": 0.0
+    },
+    "bortoleto": {
+      "dnf": 0.12252352154000681,
+      "expected_finish": 13.694412231445312,
+      "podium": 0.0,
+      "win": 0.0
+    },
+    "bottas": {
+      "dnf": 0.12252352154000681,
+      "expected_finish": 19.1837158203125,
+      "podium": 0.0,
+      "win": 0.0
+    },
+    "colapinto": {
+      "dnf": 0.12252352154000681,
+      "expected_finish": 10.418792724609375,
+      "podium": 0.0,
+      "win": 0.0
+    },
+    "gasly": {
+      "dnf": 0.12252352154000681,
+      "expected_finish": 10.4920654296875,
+      "podium": 4.57763671875e-05,
+      "win": 0.0
+    },
+    "hadjar": {
+      "dnf": 0.12252352154000681,
+      "expected_finish": 6.6940765380859375,
+      "podium": 0.198333740234375,
+      "win": 0.050872802734375
+    },
+    "hamilton": {
+      "dnf": 0.12252352154000681,
+      "expected_finish": 6.6088714599609375,
+      "podium": 0.2148284912109375,
+      "win": 0.05743408203125
+    },
+    "hulkenberg": {
+      "dnf": 0.12252352154000681,
+      "expected_finish": 12.737716674804688,
+      "podium": 0.0,
+      "win": 0.0
+    },
+    "lawson": {
+      "dnf": 0.12252352154000681,
+      "expected_finish": 11.725784301757812,
+      "podium": 0.0,
+      "win": 0.0
+    },
+    "leclerc": {
+      "dnf": 0.12252352154000681,
+      "expected_finish": 5.4564361572265625,
+      "podium": 0.4533233642578125,
+      "win": 0.1425018310546875
+    },
+    "lindblad": {
+      "dnf": 0.12252352154000681,
+      "expected_finish": 10.860488891601562,
+      "podium": 1.52587890625e-05,
+      "win": 0.0
+    },
+    "max_verstappen": {
+      "dnf": 0.12252352154000681,
+      "expected_finish": 5.4598236083984375,
+      "podium": 0.44573974609375,
+      "win": 0.1359405517578125
+    },
+    "norris": {
+      "dnf": 0.12252352154000681,
+      "expected_finish": 5.51458740234375,
+      "podium": 0.441925048828125,
+      "win": 0.1361236572265625
+    },
+    "ocon": {
+      "dnf": 0.12252352154000681,
+      "expected_finish": 14.072982788085938,
+      "podium": 0.0,
+      "win": 0.0
+    },
+    "perez": {
+      "dnf": 0.12252352154000681,
+      "expected_finish": 19.067596435546875,
+      "podium": 0.0,
+      "win": 0.0
+    },
+    "piastri": {
+      "dnf": 0.12252352154000681,
+      "expected_finish": 8.7235107421875,
+      "podium": 0.00225830078125,
+      "win": 0.0004425048828125
+    },
+    "russell": {
+      "dnf": 0.12252352154000681,
+      "expected_finish": 4.8977203369140625,
+      "podium": 0.5904998779296875,
+      "win": 0.2155303955078125
+    },
+    "sainz": {
+      "dnf": 0.12252352154000681,
+      "expected_finish": 16.438873291015625,
+      "podium": 0.0,
+      "win": 0.0
+    },
+    "stroll": {
+      "dnf": 0.12252352154000681,
+      "expected_finish": 15.290359497070312,
+      "podium": 0.0,
+      "win": 0.0
+    }
+  },
+  "event_id": "season=2026/round=16",
+  "model_run_id": "070c0d58f5b94cbdb0951aba3d66c2af",
+  "model_version": "joint-boosting-v2+task-dnf-v1",
+  "position_backend": "catboost",
+  "prediction_timestamp_utc": "2026-10-01T18:32:29.799877+00:00",
+  "race_name": "Bahrain Grand Prix in Malaysia",
+  "reproduce": "Python: predict_next_race_c52b674(root, now=<prediction_timestamp_utc>, dnf_dir=<dnf_dataset_directory>) with the retained schedule observation of that run; CLI runs use the current clock",
+  "reproduction": "identical snapshot hash, race distribution and WDC/WCC outputs; championship input hash differs only through run-scoped model IDs",
+  "reproduction_run_id": "6ae51d5d96954f2d80b494a886b0c636",
+  "snapshot_sha256": "68c0ed14f2222651cf94b58197a4e8c62c389b4f1718290800254f00baaf8623",
+  "temperature": 0.5,
+  "wcc": {
+    "alpine": {
+      "expected_points": 103.89975,
+      "title": 0.0
+    },
+    "aston_martin": {
+      "expected_points": 3.25977,
+      "title": 0.0
+    },
+    "audi": {
+      "expected_points": 21.48706,
+      "title": 0.0
+    },
+    "cadillac": {
+      "expected_points": 0.00118,
+      "title": 0.0
+    },
+    "ferrari": {
+      "expected_points": 569.15205,
+      "title": 0.0
+    },
+    "haas": {
+      "expected_points": 28.13011,
+      "title": 0.0
+    },
+    "mclaren": {
+      "expected_points": 455.34935,
+      "title": 0.0
+    },
+    "mercedes": {
+      "expected_points": 789.87816,
+      "title": 1.0
+    },
+    "rb": {
+      "expected_points": 104.50131,
+      "title": 0.0
+    },
+    "red_bull": {
+      "expected_points": 451.28603,
+      "title": 0.0
+    },
+    "williams": {
+      "expected_points": 12.05523,
+      "title": 0.0
+    }
+  },
+  "wdc": {
+    "albon": {
+      "expected_points": 5.00384,
+      "title": 0.0
+    },
+    "alonso": {
+      "expected_points": 3.0091,
+      "title": 0.0
+    },
+    "antonelli": {
+      "expected_points": 431.36684,
+      "title": 0.98431
+    },
+    "bearman": {
+      "expected_points": 20.24623,
+      "title": 0.0
+    },
+    "bortoleto": {
+      "expected_points": 11.29815,
+      "title": 0.0
+    },
+    "bottas": {
+      "expected_points": 0.00042,
+      "title": 0.0
+    },
+    "colapinto": {
+      "expected_points": 45.31513,
+      "title": 0.0
+    },
+    "gasly": {
+      "expected_points": 58.58462,
+      "title": 0.0
+    },
+    "hadjar": {
+      "expected_points": 166.75778,
+      "title": 0.0
+    },
+    "hamilton": {
+      "expected_points": 281.87259,
+      "title": 0.0
+    },
+    "hulkenberg": {
+      "expected_points": 10.18891,
+      "title": 0.0
+    },
+    "lawson": {
+      "expected_points": 66.56235,
+      "title": 0.0
+    },
+    "leclerc": {
+      "expected_points": 287.27946,
+      "title": 0.0
+    },
+    "lindblad": {
+      "expected_points": 50.93896,
+      "title": 0.0
+    },
+    "max_verstappen": {
+      "expected_points": 270.52825,
+      "title": 0.0
+    },
+    "norris": {
+      "expected_points": 293.25285,
+      "title": 0.0
+    },
+    "ocon": {
+      "expected_points": 7.88388,
+      "title": 0.0
+    },
+    "perez": {
+      "expected_points": 0.00076,
+      "title": 0.0
+    },
+    "piastri": {
+      "expected_points": 162.0965,
+      "title": 0.0
+    },
+    "russell": {
+      "expected_points": 358.51132,
+      "title": 0.01445
+    },
+    "sainz": {
+      "expected_points": 7.05139,
+      "title": 0.0
+    },
+    "stroll": {
+      "expected_points": 0.25067,
+      "title": 0.0
+    },
+    "tsunoda": {
+      "expected_points": 1.0,
+      "title": 0.0
+    }
+  }
+}

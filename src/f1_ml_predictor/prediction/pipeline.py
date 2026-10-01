@@ -1,10 +1,10 @@
-"""Generate a development-only prediction for the next race and its season.
+"""Cutoff-specific development predictions for the next race and the season.
 
-The pipeline freezes a point-in-time snapshot, fits task-specific development
-models on the latest immutable Gold versions, samples coherent race orders with
-the existing joint sampler and runs the existing championship simulator. Every
-artifact is labelled ``development_only``; nothing here satisfies a validation
-gate or promotes a model.
+The cutoff decides the feature contract. The contract's frozen v3 evaluation
+(with the live run's unavailable predictors hidden) decides the primary model,
+its calibration and the DNF model. Race outputs come from one coherent joint
+sampler. The season simulation samples persistent strength worlds so model
+uncertainty is shared across events. Every artifact is ``development_only``.
 """
 
 from __future__ import annotations
@@ -23,150 +23,414 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from f1_ml_predictor.benchmarks.builder import file_sha256
+from f1_ml_predictor.models.boosting import BACKENDS
 from f1_ml_predictor.models.development import _check_race
 from f1_ml_predictor.models.hardware import library_versions
-from f1_ml_predictor.models.protocol import PROTOCOL, PROTOCOL_SHA256
-from f1_ml_predictor.prediction.history import (
-    GoldVersion,
-    audited_outcomes,
-    choose_dnf_model,
-    choose_position_backend,
-    latest_dnf_directory,
-    latest_gold_directory,
-    load_gold_version,
-    reference_run,
+from f1_ml_predictor.prediction.candidates import (
+    StrengthModel,
+    baseline_marginals,
+    fit_dnf,
+    fit_strength,
 )
-from f1_ml_predictor.prediction.live_features import (
-    LIVE_SNAPSHOT_VERSION,
-    PRE_QUALIFYING,
-    ScheduledEvent,
-    apply_mask,
-    availability_mask,
-    build_live_rows,
-    freeze_snapshot,
-    load_schedule,
-    missing_summary,
+from f1_ml_predictor.prediction.contracts import (
+    CONTRACT_VERSION,
+    GRID_NUMERIC,
+    QUALIFYING_NUMERIC,
+    AuditedHistory,
+    build_contract_datasets,
+    build_rows,
+    numeric_features,
 )
-from f1_ml_predictor.prediction.race import (
-    COMPOSED_MODEL_VERSION,
-    ComposedRaceModel,
-    baseline_predictions,
-    evaluate_availability_variant,
-    feature_importance,
-    fit_composed_model,
+from f1_ml_predictor.prediction.cutoff_report import render_report
+from f1_ml_predictor.prediction.drift import estimate_form_drift
+from f1_ml_predictor.prediction.evaluation import columns_for, training_rows
+from f1_ml_predictor.prediction.joint import marginals, sample_mixture, sharpness
+from f1_ml_predictor.prediction.legacy import _capture_base, _latest_roster
+from f1_ml_predictor.prediction.live_features import load_schedule
+from f1_ml_predictor.prediction.ood import ood_report
+from f1_ml_predictor.prediction.protocol import (
+    JOINT_CANDIDATES,
+    PROTOCOL_V3_SHA256,
+    PROTOCOL_V3_VERSION,
 )
-from f1_ml_predictor.prediction.report import render_report
+from f1_ml_predictor.prediction.schedules import weekends
 from f1_ml_predictor.prediction.season import (
     ELIGIBILITY_POLICY,
     points_rules,
     published_standings,
     remaining_sessions,
 )
-from f1_ml_predictor.scoring.ledger import load_scoring_ledger
+from f1_ml_predictor.prediction.workspace import evaluate_contract, load_audited_history
 from f1_ml_predictor.simulation import EventSimulation, simulate_championship
 from f1_ml_predictor.time import require_known_by, require_utc
 from f1_ml_predictor.trust.scheduler import scheduler_status
 
 STATUS = "development_only"
+METHODOLOGY = "cutoff-specific-v3"
 WARNING = (
-    "DEVELOPMENT ONLY. These outputs come from models that have not passed the frozen "
-    "Gold selection gates or prospective confirmation. They are not validated race or "
+    "DEVELOPMENT ONLY. Winner and podium models have not passed the frozen Gold selection "
+    "gates, and nothing here has prospective confirmation. These are not validated race or "
     "championship forecasts."
 )
+FIXTURE = Path("docs/regression/c52b674-2026-round16-pre-qualifying.json")
 _OUTPUT_ROOT = Path("data/predictions/development/next_race")
-
-
-def _canonical(value: Any) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
-
-
-def _json_default(value: Any) -> Any:
-    if isinstance(value, datetime):
-        return value.isoformat()
-    if isinstance(value, np.generic):
-        return value.item()
-    raise TypeError(f"unserializable {type(value).__name__}")
+BOOTSTRAP_REPLICATES = 20
+# Missing by the nature of the event (an unseen circuit), with flags well represented
+# in training; these are never hidden even when every live driver lacks them.
+STRUCTURAL_MISSING = ("driver_circuit_finish_mean", "circuit_dnf_rate")
+SENSITIVITY_SIMULATIONS = 20000
 
 
 def _write_json(path: Path, value: Any) -> str:
-    data = json.dumps(value, sort_keys=True, indent=2, default=_json_default, allow_nan=False)
+    def default(item: Any) -> Any:
+        if isinstance(item, datetime):
+            return item.isoformat()
+        if isinstance(item, np.generic):
+            return item.item()
+        if isinstance(item, np.ndarray):
+            return item.tolist()
+        raise TypeError(f"unserializable {type(item).__name__}")
+
+    data = json.dumps(value, sort_keys=True, indent=2, default=default, allow_nan=False)
     with path.open("xb") as handle:
         handle.write(data.encode("utf-8"))
     return file_sha256(path)
 
 
-def _capture_base(
-    root: Path, state: dict[str, Any], target: ScheduledEvent, clock: datetime
-) -> tuple[dict[str, Any], dict[str, dict[str, Any]]] | None:
-    """Return the latest certified post-qualifying capture for the target race, if any."""
-    entry = state.get("events", {}).get(target.event.partition())
-    if not entry or entry.get("race_start") != target.race_start.isoformat():
-        return None
-    captures = [
-        capture
-        for capture in entry.get("captures", [])
-        if capture.get("cutoff_kind") in {"post_qualifying", "pre_race"}
-        and capture.get("features")
-        and datetime.fromisoformat(capture["captured_at"]) <= clock
-    ]
-    if not captures:
-        return None
-    capture = max(captures, key=lambda item: item["captured_at"])
-    path = root / capture["features"]["path"]
-    if file_sha256(path) != capture["features"]["sha256"]:
-        raise ValueError("certified capture features changed since collection")
-    rows = pq.read_table(path).to_pylist()
-    if {row["event_id"] for row in rows} != {target.event.partition()}:
-        raise ValueError("certified capture belongs to another event")
-    return capture, {row["driver_id"]: row for row in rows}
+class ContractModel:
+    """Live models for one contract, configured by its masked v3 evaluation."""
+
+    def __init__(
+        self,
+        root: Path,
+        history: AuditedHistory,
+        datasets: dict[str, dict[str, Any]],
+        contract: str,
+        live_rows: list[dict[str, Any]],
+        *,
+        cutoff: datetime,
+        seed: int,
+        device: str,
+        hardware: dict[str, Any] | None,
+        progress: Callable[[str], None] | None,
+        candidates: tuple[str, ...] = JOINT_CANDIDATES,
+    ) -> None:
+        self.contract = contract
+        self.candidates = candidates
+        dataset = datasets[contract]
+        self.masked = tuple(
+            name
+            for name in numeric_features(contract)
+            if name not in STRUCTURAL_MISSING
+            and all(row[name] is None for row in live_rows)
+            and any(row[name] is not None for row in dataset["rows"])
+        )
+        sha = dataset["manifest"]["dataset_sha256"]
+        self.protocol, self.protocol_path = evaluate_contract(
+            root,
+            history,
+            contract,
+            dataset["rows"],
+            sha,
+            progress=progress,
+            candidates=candidates,
+        )
+        if self.masked:
+            self.evaluation, self.evaluation_path = evaluate_contract(
+                root,
+                history,
+                contract,
+                dataset["rows"],
+                sha,
+                masked=self.masked,
+                progress=progress,
+                candidates=candidates,
+            )
+        else:
+            self.evaluation, self.evaluation_path = self.protocol, self.protocol_path
+        self.dataset_sha256 = sha
+        self.columns, self.dnf_columns = columns_for(contract, self.masked)
+        self.training, self.training_events = training_rows(dataset["rows"], cutoff)
+        for row in self.training:
+            require_known_by(row["label_available_at"], cutoff)
+        live = self.evaluation["live"]
+        self.primary: str = live["primary"]
+        self.members: list[str] = live["primary_members"]
+        self.models: dict[str, StrengthModel] = {
+            name: fit_strength(
+                name, self.training, self.columns, seed=seed, device=device, hardware=hardware
+            )
+            for name in candidates
+        }
+        self.dnf_name: str = live["dnf_model"]
+        self.dnf = fit_dnf(self.dnf_name, self.training, self.dnf_columns, seed)
+        self.seed = seed
+
+    def calibration(self, name: str, unseen: bool) -> tuple[float, float, str]:
+        live = self.evaluation["live"]
+        rule = live["unseen_calibration"].get(name) if unseen else None
+        source = rule or live["calibration"][name]
+        return source["temperature"], source["shrink"], "unseen_rule" if rule else "shared"
+
+    def components(
+        self,
+        rows: list[dict[str, Any]],
+        unseen: bool,
+        *,
+        members: list[str] | None = None,
+        calibrated: bool = True,
+        allow_unseen_rule: bool = True,
+        temperature_scale: float = 1.0,
+    ) -> list[tuple[np.ndarray[Any, Any], float, float]]:
+        result = []
+        for name in members or self.members:
+            tau, shrink, _ = self.calibration(name, unseen and allow_unseen_rule)
+            if not calibrated:
+                tau, shrink = 1.0, 0.0
+            result.append((self.models[name].utility(rows), tau * temperature_scale, shrink))
+        return result
+
+    def distribution(
+        self, rows: list[dict[str, Any]], components: list[Any], *, draws: int, seed: int
+    ) -> dict[str, Any]:
+        dnf = self.dnf.predict(rows)
+        rng = np.random.default_rng(seed)
+        order, retired = sample_mixture(components, dnf, draws=draws, rng=rng)
+        values = marginals(order, retired)
+        values["dnf_model"] = dnf
+        return values
 
 
-def _latest_roster(
-    rows: list[dict[str, Any]], season: int, cutoff: datetime
-) -> tuple[dict[str, str], str]:
-    earlier = [
-        row
-        for row in rows
-        if row["event_id"].startswith(f"season={season}/")
-        and row["prediction_timestamp"] < cutoff
-        and row["label_available_at"] <= cutoff
-    ]
-    if not earlier:
-        raise ValueError("no audited same-season race exists to supply a roster")
-    latest = max(earlier, key=lambda row: row["prediction_timestamp"])["event_id"]
-    roster = {
-        row["driver_id"]: row["constructor_id"] for row in earlier if row["event_id"] == latest
-    }
-    return roster, latest
-
-
-def _race_rows(
-    model: ComposedRaceModel,
-    rows: list[dict[str, Any]],
-    *,
-    draws: int,
-    seed: int,
+def _race_table(
+    rows: list[dict[str, Any]], values: dict[str, Any], draws: int
 ) -> list[dict[str, Any]]:
-    distribution = model.distribution(rows, draws=draws, seed=seed)
-    for row in distribution:
-        values = row["finish_distribution"]
-        row["most_likely_position"] = int(np.argmax(values)) + 1
-        row["position_interval_80"] = [
-            int(np.searchsorted(np.cumsum(values), quantile - 1e-12)) + 1 for quantile in (0.1, 0.9)
+    table = []
+    for index, row in enumerate(rows):
+        finish = values["finish"][index]
+        cumulative = np.cumsum(finish)
+        table.append(
+            {
+                "driver_id": row["driver_id"],
+                "constructor_id": row["constructor_id"],
+                "winner_probability": float(values["winner"][index]),
+                "podium_probability": float(values["podium"][index]),
+                "dnf_probability": float(values["dnf"][index]),
+                "dnf_model_probability": float(values["dnf_model"][index]),
+                "finish_distribution": [float(value) for value in finish],
+                "expected_position": float(values["expected"][index]),
+                "most_likely_position": int(np.argmax(finish)) + 1,
+                "position_interval_80": [
+                    int(np.searchsorted(cumulative, quantile - 1e-12)) + 1
+                    for quantile in (0.1, 0.9)
+                ],
+                "winner_draws": int(round(values["winner"][index] * draws)),
+            }
+        )
+    _check_race(table)
+    return table
+
+
+def _quality(live: dict[str, float], reference: list[dict[str, float]]) -> dict[str, Any]:
+    """Compare live sharpness with the same model's historical out-of-fold forecasts."""
+    result: dict[str, Any] = {"metrics": {}, "status": "pass", "notes": []}
+    for key, value in live.items():
+        history = np.asarray([item[key] for item in reference])
+        percentile = float((history <= value).mean())
+        result["metrics"][key] = {
+            "live": value,
+            "historical_percentile": percentile,
+            "historical_min": float(history.min()),
+            "historical_median": float(np.median(history)),
+            "historical_max": float(history.max()),
+        }
+    sharper = [
+        ("effective_win_contenders", "low"),
+        ("winner_entropy", "low"),
+        ("maximum_win_probability", "high"),
+        ("fraction_below_0_1_percent_win", "high"),
+    ]
+    for key, side in sharper:
+        item = result["metrics"][key]
+        beyond = (
+            item["live"] < item["historical_min"]
+            if side == "low"
+            else item["live"] > item["historical_max"]
+        )
+        extreme = (
+            item["historical_percentile"] < 0.025
+            if side == "low"
+            else item["historical_percentile"] > 0.975
+        )
+        if beyond:
+            result["status"] = "fail"
+            result["notes"].append(f"{key} is sharper than every historical out-of-fold race")
+        elif extreme and result["status"] == "pass":
+            result["status"] = "warn"
+            result["notes"].append(f"{key} is in the sharpest 2.5% of historical races")
+    flat = result["metrics"]["effective_win_contenders"]["historical_percentile"]
+    if flat > 0.975:
+        result["notes"].append(
+            "informational: flatter than 97.5% of historical out-of-fold races, consistent "
+            "with hidden predictors and an unseen circuit"
+        )
+    return result
+
+
+def _bootstrap_spread(
+    model: ContractModel, name: str, rows: list[dict[str, Any]], seed: int
+) -> dict[str, Any]:
+    """Race-level bootstrap refits: parameter uncertainty in calibrated utility units."""
+    events = sorted({row["event_id"] for row in model.training})
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in model.training:
+        grouped.setdefault(row["event_id"], []).append(row)
+    rng = np.random.default_rng((seed, 99))
+    tau, _, _ = model.calibration(name, False)
+    utilities = []
+    for replicate in range(BOOTSTRAP_REPLICATES):
+        sample = rng.choice(len(events), size=len(events), replace=True)
+        rows_sample = [
+            {**row, "event_id": f"{row['event_id']}#{replicate}-{draw}"}
+            for draw, index in enumerate(sample)
+            for row in grouped[events[index]]
         ]
-    _check_race(distribution)
-    return distribution
-
-
-def _model_record(root: Path, run_dir: Path, name: str, model: ComposedRaceModel) -> dict[str, Any]:
-    path = root / "models/development/next_race" / run_dir.name / f"{name}.joblib"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(model, path)
+        refit = fit_strength(name, rows_sample, model.columns, seed=seed)
+        utility = refit.utility(rows) / tau
+        utilities.append(utility - utility.mean())
+    spread = np.std(np.asarray(utilities), axis=0)
     return {
-        "path": path.relative_to(root).as_posix(),
-        "sha256": file_sha256(path),
-        "metadata": model.metadata,
+        "model": name,
+        "replicates": BOOTSTRAP_REPLICATES,
+        "mean_utility_standard_deviation": float(spread.mean()),
+        "max_utility_standard_deviation": float(spread.max()),
+        "by_driver": {
+            row["driver_id"]: float(value) for row, value in zip(rows, spread, strict=True)
+        },
     }
+
+
+def _feature_drivers(model: ContractModel, experimental: str) -> dict[str, Any]:
+    """Global drivers: standardized logistic coefficients and booster split importance."""
+    result: dict[str, Any] = {}
+    if "logistic_pl" in model.models:
+        logistic = model.models["logistic_pl"].model.named_steps["model"]
+        coefficients = sorted(
+            zip(model.columns, logistic.coef_[0], strict=True), key=lambda item: -abs(item[1])
+        )
+        result["logistic_pl_standardized_coefficients"] = [
+            {"feature": name, "coefficient": float(value)} for name, value in coefficients[:10]
+        ]
+    fitted = model.models[experimental].model
+    booster = fitted[1] if isinstance(fitted, tuple) else None
+    values = getattr(booster, "feature_importances_", None)
+    if values is not None and float(np.sum(values)) > 0:
+        share = np.asarray(values, dtype=float) / float(np.sum(values))
+        ranked = sorted(zip(model.columns, share, strict=True), key=lambda item: -item[1])
+        result[f"{experimental}_importance_share"] = [
+            {"feature": name, "share": float(value)} for name, value in ranked[:10]
+        ]
+    return result
+
+
+def _season(
+    history: AuditedHistory,
+    model: ContractModel,
+    next_model: ContractModel,
+    next_rows: list[dict[str, Any]],
+    schedule: list[Any],
+    target: Any,
+    cutoff: datetime,
+    roster: dict[str, str],
+    *,
+    worlds: int,
+    orders_per_world: int,
+    sigma: float,
+    drift_variance: float,
+    temperature_scale: float,
+    members: list[str] | None,
+    seed: int,
+    run_id: str,
+    source_hash: str,
+) -> tuple[list[EventSimulation], list[dict[str, Any]]]:
+    """Event-specific pre-weekend distributions sampled within shared strength worlds.
+
+    Each world draws persistent driver offsets and a random-walk drift path; the
+    next race has lag zero, later weekends accumulate per-race drift variance.
+    """
+    remaining = remaining_sessions(schedule, target, cutoff)
+    weekends_ahead = sorted({item.event for item, _, _ in remaining}, key=lambda event: event.round)
+    lag = {event: index for index, event in enumerate(weekends_ahead)}
+    rng = np.random.default_rng((seed, 7))
+    count = len(roster)
+    persistent = rng.normal(0.0, sigma, size=(worlds, 1, count)) if sigma > 0 else 0.0
+    steps = rng.normal(0.0, np.sqrt(drift_variance), size=(worlds, len(weekends_ahead), count))
+    steps[:, 0, :] = 0.0
+    paths = np.cumsum(steps, axis=1) + persistent
+    shared = sigma > 0 or drift_variance > 0
+    events, sessions = [], []
+    for item, kind, start in remaining:
+        is_next = item.event == target.event and kind == "race"
+        if is_next:
+            rows, owner = next_rows, next_model
+        else:
+            weekend = history.weekends[item.event]
+            rows, _ = build_rows(
+                history,
+                "pre_weekend",
+                event=item.event,
+                circuit_id=weekend.circuit_id,
+                cutoff=cutoff,
+                roster=roster,
+            )
+            owner = model
+        unseen = not bool(rows[0]["circuit_seen_before"])
+        components = owner.components(
+            rows, unseen, members=members, temperature_scale=temperature_scale
+        )
+        dnf = owner.dnf.predict(rows)
+        draws = worlds * orders_per_world
+        session_rng = np.random.default_rng((seed, item.event.round, kind == "sprint"))
+        expanded = (
+            np.repeat(paths[:, lag[item.event], :], orders_per_world, axis=0) if shared else None
+        )
+        order, _ = sample_mixture(components, dnf, draws=draws, rng=session_rng, offsets=expanded)
+        drivers = [row["driver_id"] for row in rows]
+        orders = tuple(tuple(drivers[index] for index in sampled) for sampled in order)
+        rules, rules_status = points_rules(history.ledger, item.event, kind)
+        model_id = f"{run_id}:{owner.contract}:{METHODOLOGY}"
+        events.append(
+            EventSimulation(
+                event_id=item.event,
+                scheduled_at=start,
+                available_at=cutoff,
+                driver_constructors=roster,
+                sampled_orders=orders,
+                points_eligible_samples=tuple(tuple(roster) for _ in orders),
+                rules=rules,
+                source_hash=source_hash,
+                model_id=model_id,
+                eligibility_policy=ELIGIBILITY_POLICY,
+                sample_groups=tuple(np.repeat(np.arange(worlds), orders_per_world).tolist()),
+            )
+        )
+        sessions.append(
+            {
+                "event_id": item.event.partition(),
+                "race_name": item.race_name,
+                "session": kind,
+                "scheduled_at": start.isoformat(),
+                "circuit_id": rows[0]["circuit_id"],
+                "circuit_seen_before": not unseen,
+                "contract": owner.contract,
+                "model_id": model_id,
+                "rules_id": rules.rules_id,
+                "rules_status": rules_status,
+                "points_by_position": list(rules.points_by_position),
+                "orders": draws,
+                "drift_lag": lag[item.event],
+            }
+        )
+    return events, sessions
 
 
 def predict_next_race(
@@ -176,13 +440,16 @@ def predict_next_race(
     simulations: int = 100000,
     seed: int = 42,
     draws: int = 65536,
-    championship_orders: int = 8192,
+    worlds: int = 1000,
+    orders_per_world: int = 16,
     device: str = "auto",
     gold_dir: Path | None = None,
     dnf_dir: Path | None = None,
     now: Callable[[], datetime] | None = None,
+    progress: Callable[[str], None] | None = None,
+    candidates: tuple[str, ...] = JOINT_CANDIDATES,
 ) -> dict[str, Any]:
-    """Freeze the latest snapshot and publish development race and title outputs."""
+    """Freeze a cutoff-specific snapshot and publish development race and title outputs."""
     root = root.resolve()
     clock = (now or (lambda: datetime.now(UTC)))()
     require_utc(clock, "prediction clock")
@@ -191,6 +458,7 @@ def predict_next_race(
     if not observation:
         raise ValueError("no retained schedule observation; run collect-next-race first")
     schedule, schedule_source = load_schedule(root, observation)
+    payload = json.loads((root / observation).read_text(encoding="utf-8"))["payload"]
     observed_at = datetime.fromisoformat(schedule_source["captured_at"])
     require_known_by(observed_at, clock)
     upcoming = [
@@ -201,276 +469,369 @@ def predict_next_race(
     if not upcoming:
         raise ValueError("the retained schedule has no upcoming race")
     target = upcoming[0]
-
+    history, dnf_version, sources = load_audited_history(root, gold_dir=gold_dir, dnf_dir=dnf_dir)
+    live_weekends = weekends(payload)
+    history.weekends.update(live_weekends)
+    for version in (history.version, dnf_version):
+        if version.directory.name != version.dataset_version:
+            raise ValueError("training data must come from an immutable dataset version")
+    weekend = live_weekends[target.event]
+    if weekend.circuit_id != target.circuit_id:
+        raise ValueError("schedule circuit identities disagree")
     capture = _capture_base(root, state, target, clock)
+    notes = []
     if capture is None:
-        cutoff, cutoff_kind, base, capture_record = clock, PRE_QUALIFYING, None, None
+        contract, cutoff, capture_record = "pre_weekend", clock, None
+        roster, roster_basis = _latest_roster(history.rows, target.event.season, cutoff)
+        roster_source = f"latest_audited_gold_event_roster:{roster_basis}"
+        weekend_values = None
+        if weekend.first_practice is not None and clock >= weekend.first_practice:
+            notes.append(
+                "weekend sessions before the cutoff are not captured, so the pre-weekend "
+                "contract is used"
+            )
     else:
         capture_record, base = capture
+        contract = "pre_race" if capture_record["cutoff_kind"] == "pre_race" else "post_qualifying"
         cutoff = next(iter(base.values()))["prediction_timestamp"]
-        cutoff_kind = capture_record["cutoff_kind"]
-    require_known_by(observed_at, cutoff)
-
-    version = load_gold_version(gold_dir or latest_gold_directory(root))
-    dnf_version = load_gold_version(dnf_dir or latest_dnf_directory(root))
-    outcomes = audited_outcomes(root, version)
-    ledger = load_scoring_ledger(
-        root / "data/audit/scoring_rules.json", root / "data/audit/event_points_evidence.json"
-    )
-    if ledger.sha256 != version.manifest.get("scoring_ledger_sha256"):
-        raise ValueError("scoring ledger differs from the Gold version; rebuild Gold scoring first")
-    if base is None:
-        roster, roster_basis = _latest_roster(version.rows, target.event.season, cutoff)
-        roster_source = f"latest_audited_gold_event_roster:{roster_basis}"
-    else:
         roster = {driver: row["constructor_id"] for driver, row in base.items()}
-        roster_source = "certified_post_qualifying_capture"
-
-    reference_path, reference = reference_run(root, version)
-    dnf_reference_path, dnf_reference = reference_run(root, dnf_version)
-    position_choice = choose_position_backend(reference, "post_qualifying")
-    dnf_choice = choose_dnf_model(dnf_reference, "post_qualifying")
+        roster_source = "certified_capture"
+        allowed = (*QUALIFYING_NUMERIC, *(GRID_NUMERIC if contract == "pre_race" else ()))
+        weekend_values = {
+            driver: {
+                **{name: row.get(name) for name in allowed},
+                **{f"{name}_available_at": row["feature_timestamp"] for name in allowed},
+            }
+            for driver, row in base.items()
+        }
+    require_known_by(observed_at, cutoff)
     hardware_path = root / "models/experiments/hardware.json"
     hardware = (
         json.loads(hardware_path.read_text(encoding="utf-8"))
         if device != "cpu" and hardware_path.exists()
         else None
     )
-
-    variants: dict[str, dict[str, Any]] = {}
-    plans: list[tuple[str, dict[str, dict[str, Any]] | None]] = [(PRE_QUALIFYING, None)]
-    if base is not None:
-        plans.insert(0, (cutoff_kind, base))
-    for kind, variant_base in plans:
-        rows, provenance = build_live_rows(
-            version,
-            outcomes,
-            ledger,
-            target=target,
-            cutoff=cutoff,
-            cutoff_kind=kind,
-            roster=roster,
-            opened_at=observed_at,
-            base=variant_base,
-        )
-        masked = availability_mask(version, rows)
-        snapshot = freeze_snapshot(
-            root,
-            version,
-            rows,
-            {
-                "event_id": target.event.partition(),
-                "race_name": target.race_name,
-                "cutoff_kind": kind,
-                "prediction_timestamp_utc": cutoff.isoformat(),
-                "dataset_version": version.dataset_version,
-                "feature_schema_version": version.manifest["scoring_version"],
-                "scoring_ledger_sha256": ledger.sha256,
-                "audited_registry_sha256": version.manifest["catalog_sha256"],
-                "schedule_source": schedule_source,
-                "capture": None
-                if variant_base is None or capture_record is None
-                else {
-                    "bundle": capture_record["bundle"],
-                    "manifest_sha256": capture_record["manifest_sha256"],
-                    "captured_at": capture_record["captured_at"],
-                    "features": capture_record["features"],
-                },
-                "roster_source": roster_source,
-                "masked_for_training": list(masked),
-                "provenance": provenance,
-            },
-        )
-        dnf_masked = tuple(name for name in masked if name in dnf_version.feature_columns)
-        model = fit_composed_model(
-            apply_mask(version.rows, masked),
-            rows,
-            apply_mask(dnf_version.rows, dnf_masked),
-            backend=position_choice["backend"],
-            dnf_name=dnf_choice["model"],
-            cutoff=cutoff,
-            cutoff_kind=kind,
-            seed=seed,
-            device=device,
-            hardware=hardware,
-        )
-        variants[kind] = {
-            "rows": rows,
-            "provenance": provenance,
-            "masked": masked,
-            "snapshot": snapshot,
-            "model": model,
-            "missing": missing_summary(version, rows, provenance, masked),
-            "evaluation": evaluate_availability_variant(
-                root, version, dnf_version, masked, backend=position_choice["backend"], seed=seed
-            ),
-            "baselines": baseline_predictions(
-                apply_mask(version.rows, masked), rows, cutoff=cutoff, seed=seed
-            ),
-            "importance": feature_importance(model),
-        }
-
-    run_id = uuid.uuid4().hex
-    run_dir = root / _OUTPUT_ROOT / target.event.partition() / cutoff_kind / run_id
-    run_dir.mkdir(parents=True)
-    models = {
-        kind: _model_record(root, run_dir, kind, variant["model"])
-        for kind, variant in variants.items()
-    }
-    model_ids = {kind: f"{run_id}:{kind}:{COMPOSED_MODEL_VERSION}" for kind in variants}
-    primary = variants[cutoff_kind]
-    race = _race_rows(primary["model"], primary["rows"], draws=draws, seed=seed)
-
-    standings, standings_notes, standings_sources = published_standings(
-        ledger, target.event, cutoff, roster
+    datasets = build_contract_datasets(root, history, dnf_version, sources)
+    rows, reasons = build_rows(
+        history,
+        contract,
+        event=target.event,
+        circuit_id=target.circuit_id,
+        cutoff=cutoff,
+        roster=roster,
+        weekend=weekend_values,
     )
-    sessions = []
-    events = []
-    for item, kind, start in remaining_sessions(schedule, target, cutoff):
-        variant = cutoff_kind if item.event == target.event and kind == "race" else PRE_QUALIFYING
-        rules, rules_status = points_rules(ledger, item.event, kind)
-        session_seed = seed + 1000 * item.event.round + (1 if kind == "sprint" else 0)
-        orders = variants[variant]["model"].orders(
-            variants[variant]["rows"], draws=championship_orders, seed=session_seed
+    common: dict[str, Any] = {
+        "cutoff": cutoff,
+        "seed": seed,
+        "device": device,
+        "hardware": hardware,
+        "candidates": candidates,
+    }
+    model = ContractModel(root, history, datasets, contract, rows, progress=progress, **common)
+    if contract == "pre_weekend":
+        pre_model, pre_rows = model, rows
+    else:
+        pre_rows, _ = build_rows(
+            history,
+            "pre_weekend",
+            event=target.event,
+            circuit_id=target.circuit_id,
+            cutoff=cutoff,
+            roster=roster,
         )
-        events.append(
-            EventSimulation(
-                event_id=item.event,
-                scheduled_at=start,
-                available_at=cutoff,
-                driver_constructors=roster,
-                sampled_orders=orders,
-                points_eligible_samples=tuple(tuple(roster) for _ in orders),
-                rules=rules,
-                source_hash=models[variant]["sha256"],
-                model_id=model_ids[variant],
-                eligibility_policy=ELIGIBILITY_POLICY,
-            )
+        pre_model = ContractModel(
+            root, history, datasets, "pre_weekend", pre_rows, progress=progress, **common
         )
-        sessions.append(
-            {
-                "event_id": item.event.partition(),
-                "race_name": item.race_name,
-                "session": kind,
-                "scheduled_at": start.isoformat(),
-                "model_variant": variant,
-                "model_id": model_ids[variant],
-                "orders": championship_orders,
-                "order_seed": session_seed,
-                "rules_id": rules.rules_id,
-                "rules_status": rules_status,
-                "points_by_position": list(rules.points_by_position),
-            }
+    unseen = not bool(rows[0]["circuit_seen_before"])
+    final = model.distribution(rows, model.components(rows, unseen), draws=draws, seed=seed)
+    race = _race_table(rows, final, draws)
+    stages = {
+        "uncalibrated": model.distribution(
+            rows, model.components(rows, unseen, calibrated=False), draws=draws, seed=seed
+        ),
+        "calibrated_shared": model.distribution(
+            rows,
+            model.components(rows, unseen, allow_unseen_rule=False),
+            draws=draws,
+            seed=seed,
+        ),
+    }
+    objectives = model.evaluation["live"]["mean_objective"]
+    boosted = [name for name in BACKENDS if name in candidates]
+    experimental = min(boosted or list(candidates), key=lambda name: objectives[name])
+    alternatives = {
+        name: model.distribution(
+            rows, model.components(rows, unseen, members=[name]), draws=draws, seed=seed
         )
+        for name in candidates
+    }
+    baselines = baseline_marginals(model.training, rows, model.columns, seed)
+    live_sharpness = sharpness(final["winner"], final["podium"])
+    quality = _quality(live_sharpness, model.evaluation["live"]["sharpness_reference"])
+    ood = ood_report(
+        model.training,
+        rows,
+        model.columns,
+        circuit_id=target.circuit_id,
+        circuit_name=weekend.circuit_name,
+    )
+    run_id = uuid.uuid4().hex
+    run_dir = root / _OUTPUT_ROOT / target.event.partition() / contract / run_id
+    run_dir.mkdir(parents=True)
+    model_path = root / "models/development/next_race" / run_id / "models.joblib"
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(
+        {
+            "contract": {"models": model.models, "dnf": model.dnf},
+            "pre_weekend": {"models": pre_model.models, "dnf": pre_model.dnf},
+        },
+        model_path,
+    )
+    model_sha = file_sha256(model_path)
+    pre_live = pre_model.evaluation["live"]
+    persistence = pre_live["persistent_strength"]
+    sigma = float(persistence["persistent_standard_deviation"])
+    strength = pre_live["strength_model_for_uncertainty"]
+    simulated_tau = pre_live["simulation_temperature"].get("temperature")
+    scale = (
+        float(simulated_tau) / float(pre_live["calibration"][strength]["temperature"])
+        if sigma > 0 and simulated_tau
+        else 1.0
+    )
+    drift = estimate_form_drift(
+        root,
+        history,
+        datasets["pre_weekend"]["rows"],
+        pre_model.evaluation,
+        masked=pre_model.masked,
+        seed=seed,
+        dataset_sha256=pre_model.dataset_sha256,
+    )
+    drift_variance = float(drift["per_race_variance"])
+    standings, standings_notes, standings_sources = published_standings(
+        history.ledger, target.event, cutoff, roster
+    )
+    season_args: dict[str, Any] = {
+        "worlds": worlds,
+        "orders_per_world": orders_per_world,
+        "seed": seed,
+        "run_id": run_id,
+        "source_hash": model_sha,
+    }
+    events, sessions = _season(
+        history,
+        pre_model,
+        model,
+        rows,
+        schedule,
+        target,
+        cutoff,
+        roster,
+        sigma=sigma,
+        drift_variance=drift_variance,
+        temperature_scale=scale,
+        members=None,
+        **season_args,
+    )
     championship = simulate_championship(
         standings, events, prediction_timestamp=cutoff, simulations=simulations, seed=seed
     )
-
-    created_at = datetime.now(UTC)
-    common = {
-        "validation_status": STATUS,
-        "model_run_id": run_id,
-        "model_version": COMPOSED_MODEL_VERSION,
-        "dataset_manifest_hash": version.manifest_sha256,
-        "feature_schema_version": version.manifest["scoring_version"],
-        "snapshot_sha256": primary["snapshot"]["sha256"],
+    sensitivity: dict[str, Any] = {}
+    fixed_events, _ = _season(
+        history,
+        pre_model,
+        model,
+        rows,
+        schedule,
+        target,
+        cutoff,
+        roster,
+        sigma=0.0,
+        drift_variance=0.0,
+        temperature_scale=1.0,
+        members=None,
+        **season_args,
+    )
+    fixed = simulate_championship(
+        standings,
+        fixed_events,
+        prediction_timestamp=cutoff,
+        simulations=SENSITIVITY_SIMULATIONS,
+        seed=seed,
+    )
+    sensitivity["fixed_strength_no_persistent_uncertainty"] = {
+        "wdc": dict(fixed.wdc.title_probability),
+        "wcc": dict(fixed.wcc.title_probability),
     }
-    baselines = primary["baselines"]
-    constructors = {row["driver_id"]: row["constructor_id"] for row in primary["rows"]}
-    table_rows = [
-        {
-            "event_id": target.event.partition(),
-            "race_name": target.race_name,
-            "driver_id": row["driver_id"],
-            "constructor_id": constructors[row["driver_id"]],
-            "prediction_timestamp": cutoff,
-            "cutoff_kind": cutoff_kind,
-            "generated_at": created_at,
-            "win_probability": row["winner_probability"],
-            "podium_probability": row["podium_probability"],
-            "dnf_probability": row["dnf_probability"],
-            "dnf_model_probability": row["dnf_model_probability"],
-            "expected_finish": row["expected_position"],
-            "most_likely_position": row["most_likely_position"],
-            "finishing_position_distribution": row["finish_distribution"],
-            "position_score": row["position_score"],
-            "logistic_win_probability": baselines[row["driver_id"]]["logistic_win_probability"],
-            "logistic_podium_probability": baselines[row["driver_id"]][
-                "logistic_podium_probability"
-            ],
-            "linear_finish_rank": baselines[row["driver_id"]]["linear_finish_rank"],
-            "heuristic_win_probability": baselines[row["driver_id"]]["heuristic_win_probability"],
-            "position_backend": position_choice["backend"],
-            "dnf_model": dnf_choice["model"],
-            **common,
+    ranked = sorted(candidates, key=lambda name: pre_live["mean_objective"][name])
+    for name in ranked[:3]:
+        alt_events, _ = _season(
+            history,
+            pre_model,
+            model,
+            rows,
+            schedule,
+            target,
+            cutoff,
+            roster,
+            sigma=sigma,
+            drift_variance=drift_variance,
+            temperature_scale=scale,
+            members=[name],
+            **season_args,
+        )
+        alt = simulate_championship(
+            standings,
+            alt_events,
+            prediction_timestamp=cutoff,
+            simulations=SENSITIVITY_SIMULATIONS,
+            seed=seed,
+        )
+        sensitivity[f"single_candidate_{name}"] = {
+            "wdc": dict(alt.wdc.title_probability),
+            "wcc": dict(alt.wcc.title_probability),
         }
-        for row in race
-    ]
+    bootstrap = _bootstrap_spread(pre_model, strength, pre_rows, seed)
+    created_at = datetime.now(UTC)
+    identity = {
+        "validation_status": STATUS,
+        "methodology": METHODOLOGY,
+        "model_run_id": run_id,
+        "cutoff_kind": contract,
+        "prediction_timestamp_utc": cutoff.isoformat(),
+        "dataset_version": history.version.dataset_version,
+        "dnf_dataset_version": dnf_version.dataset_version,
+        "feature_contract": CONTRACT_VERSION,
+        "evaluation_protocol": PROTOCOL_V3_VERSION,
+    }
+    by_driver = {row["driver_id"]: index for index, row in enumerate(rows)}
+    table_rows = []
+    for item in race:
+        index = by_driver[item["driver_id"]]
+        table_rows.append(
+            {
+                **identity,
+                "event_id": target.event.partition(),
+                "race_name": target.race_name,
+                "prediction_timestamp": cutoff,
+                "generated_at": created_at,
+                **{key: item[key] for key in item if key != "position_interval_80"},
+                "primary_model": model.primary,
+                "logistic_win_probability": float(baselines["logistic"]["winner"][index]),
+                "logistic_podium_probability": float(baselines["logistic"]["podium"][index]),
+                "linear_finish_rank": float(baselines["logistic"]["expected"][index]),
+                "heuristic_win_probability": float(baselines["heuristic"]["winner"][index]),
+                "experimental_model": experimental,
+                "experimental_win_probability": float(alternatives[experimental]["winner"][index]),
+                "uncalibrated_win_probability": float(stages["uncalibrated"]["winner"][index]),
+            }
+        )
     predictions_path = run_dir / "predictions.parquet"
     pq.write_table(pa.Table.from_pylist(table_rows), predictions_path)
     race_payload = {
-        **common,
+        **identity,
         "event_id": target.event.partition(),
         "race_name": target.race_name,
         "race_start": target.race_start.isoformat(),
-        "cutoff_kind": cutoff_kind,
-        "prediction_timestamp_utc": cutoff.isoformat(),
         "draws": draws,
         "seed": seed,
-        "temperature": primary["model"].temperature,
+        "monte_carlo_resolution": 1 / draws,
         "simulation_standard_error_max": 0.5 / draws**0.5,
-        "distribution_policy": (
-            "independent sampled DNF from the task DNF model; Plackett-Luce order from the "
-            "position model; sampled retirees trail finishers; total modelled order, not FIA "
-            "classification"
-        ),
+        "primary_model": model.primary,
+        "primary_members": model.members,
+        "calibration": {
+            name: dict(
+                zip(
+                    ("temperature", "shrink", "source"),
+                    model.calibration(name, unseen),
+                    strict=True,
+                )
+            )
+            for name in model.members
+        },
         "drivers": race,
+        "stages": {
+            name: {
+                row["driver_id"]: {
+                    "win": float(values["winner"][index]),
+                    "podium": float(values["podium"][index]),
+                    "expected_finish": float(values["expected"][index]),
+                }
+                for index, row in enumerate(rows)
+            }
+            for name, values in {
+                **stages,
+                **{f"candidate_{k}": v for k, v in alternatives.items()},
+            }.items()
+        },
+        "baselines": {
+            name: {
+                row["driver_id"]: {key: float(values[key][index]) for key in values}
+                for index, row in enumerate(rows)
+            }
+            for name, values in baselines.items()
+        },
     }
     race_sha = _write_json(run_dir / "race_distribution.json", race_payload)
     championship_payload = {
-        "validation_status": STATUS,
+        **identity,
         "validated_forecast": False,
-        "model_run_id": run_id,
-        "model_ids": model_ids,
         "race_distribution_sha256": race_sha,
+        "starting_points": standings.to_dict(),
         "standings_source": {
-            "scoring_ledger_sha256": ledger.sha256,
+            "scoring_ledger_sha256": history.ledger.sha256,
             "rounds": standings_sources,
             "notes": standings_notes,
         },
         "sessions": sessions,
-        "eligibility_policy": ELIGIBILITY_POLICY,
-        "starting_points": standings.to_dict(),
+        "uncertainty": {
+            "worlds": worlds,
+            "orders_per_world": orders_per_world,
+            "persistent_strength": persistence,
+            "persistent_standard_deviation": sigma,
+            "form_drift": drift,
+            "per_race_drift_variance": drift_variance,
+            "simulation_temperature_scale": scale,
+            "bootstrap_parameter_spread": bootstrap,
+            "monte_carlo": "simulations resample whole worlds; title-probability Monte Carlo "
+            "error is bounded by treating the worlds as the effective sample, "
+            "sqrt(p(1-p)/worlds), not by the simulation count",
+            "monte_carlo_standard_error_max": 0.5 / worlds**0.5,
+            "sensitivity": sensitivity,
+        },
         "assumptions": [
-            "Races after the next one use the pre-qualifying model with form held at the cutoff.",
+            "Every remaining event uses its own pre-weekend rows: circuit history, circuit "
+            "attrition and sprint format change by event; driver form is the form known at "
+            "the cutoff.",
+            "Each simulated world draws a driver strength random walk across the remaining "
+            "weekends, with per-race variance validated on stale-form historical forecasts, "
+            "plus any persistent offset supported by out-of-fold residual correlation.",
+            "Simulated results do not update rolling form features; drift between events is "
+            "carried by the shared random walk instead.",
             "Sprints reuse the race model with the audited sprint points table.",
-            "Every remaining round uses the full-distance table of the latest audited "
-            "season rule; shortened races, cancellations and penalties are not simulated.",
-            "Every entered driver is assumed points eligible at their sampled position.",
-            "The current roster is assumed for every remaining round.",
-            "Remaining events are independent; season-level shocks are omitted.",
+            "Full-distance tables of the latest audited season rule; shortened races, "
+            "cancellations and penalties are not simulated.",
+            "Every entered driver is points eligible at their sampled position.",
+            "The current roster races every remaining round.",
         ],
         "simulator": championship.to_dict(),
     }
     championship_sha = _write_json(run_dir / "championship.json", championship_payload)
-
-    checks = validate_publication(
+    comparison = _compare(root, target, race, rows, stages, championship_payload)
+    if comparison is not None:
+        _write_json(run_dir / "comparison.json", {**identity, **comparison})
+    checks = _validate(
         root,
-        race=race,
-        variants=variants,
-        cutoff=cutoff,
-        observed_at=observed_at,
-        version=version,
-        dnf_version=dnf_version,
-        events=events,
-        model_ids=model_ids,
-        models=models,
-        ledger_sources=standings_sources,
-        artifacts=[
-            predictions_path,
-            run_dir / "race_distribution.json",
-            run_dir / "championship.json",
-        ],
+        race,
+        rows,
+        cutoff,
+        model,
+        pre_model,
+        events,
+        model_sha,
+        run_id,
+        [predictions_path, run_dir / "race_distribution.json", run_dir / "championship.json"],
     )
     try:
         commit = subprocess.check_output(
@@ -478,109 +839,97 @@ def predict_next_race(
         ).strip()
     except (OSError, subprocess.SubprocessError):
         commit = None
+    evaluation = model.evaluation
     manifest = {
-        **common,
+        **identity,
         "warning": WARNING,
         "validated_forecast": False,
         "created_at": created_at.isoformat(),
         "git_commit": commit,
+        "notes": notes,
         "event": {
             "event_id": target.event.partition(),
             "race_name": target.race_name,
             "circuit_id": target.circuit_id,
+            "circuit_name": weekend.circuit_name,
             "race_start": target.race_start.isoformat(),
+            "first_practice": None
+            if weekend.first_practice is None
+            else weekend.first_practice.isoformat(),
             "qualifying_start": None
-            if target.qualifying_start is None
-            else target.qualifying_start.isoformat(),
-            "qualifying_started_before_cutoff": target.qualifying_start is not None
-            and target.qualifying_start <= cutoff,
-        },
-        "prediction_cutoff": {
-            "kind": cutoff_kind,
-            "prediction_timestamp_utc": cutoff.isoformat(),
-            "preferred_kind": "post_qualifying",
-            "reason": "certified capture"
-            if base is not None
-            else "no certified post-qualifying capture exists before the cutoff",
-        },
-        "snapshot": {
-            kind: {**variant["snapshot"], "version": LIVE_SNAPSHOT_VERSION}
-            for kind, variant in variants.items()
+            if weekend.qualifying is None
+            else weekend.qualifying.isoformat(),
+            "sprint_weekend": weekend.sprint is not None,
         },
         "schedule_source": schedule_source,
         "roster_source": roster_source,
+        "capture": None
+        if capture_record is None
+        else {key: capture_record[key] for key in ("bundle", "manifest_sha256", "captured_at")},
         "evidence_tier": {
             "training": "Gold",
             "prediction_snapshot": "Development",
-            "explanation": (
-                "Training rows are audited Gold races. The live snapshot derives from Gold "
-                "history, the audited scoring ledger and collector captures, but it is not a "
-                "Gold benchmark row until its outcome is audited."
-            ),
         },
         "dataset": {
-            "path": version.directory.relative_to(root).as_posix(),
-            "dataset_version": version.dataset_version,
-            "manifest_sha256": version.manifest_sha256,
-            "gold_races": len(version.events),
-            "gold_rows": len(version.rows),
-            "scoring_ledger_sha256": ledger.sha256,
+            "gold": history.version.dataset_version,
+            "gold_manifest_sha256": history.version.manifest_sha256,
+            "dnf": dnf_version.dataset_version,
+            "dnf_manifest_sha256": dnf_version.manifest_sha256,
+            "dnf_known_labels": sum(row["label_dnf"] is not None for row in dnf_version.rows),
+            "contract_dataset_sha256": model.dataset_sha256,
+            "scoring_ledger_sha256": history.ledger.sha256,
+            "schedule_sources": sources,
         },
-        "dnf_dataset": {
-            "path": dnf_version.directory.relative_to(root).as_posix(),
-            "dataset_version": dnf_version.dataset_version,
-            "manifest_sha256": dnf_version.manifest_sha256,
-            "known_dnf_labels": sum(row["label_dnf"] is not None for row in dnf_version.rows),
-        },
-        "evaluation_protocol": {"version": PROTOCOL["version"], "sha256": PROTOCOL_SHA256},
-        "reference_runs": {
-            "position": {
-                "path": reference_path.relative_to(root).as_posix(),
-                "run_id": reference["run_metadata"]["run_id"],
-                "task_selection": {
-                    task: value["status"]
-                    for task, value in reference["task_selection"]["post_qualifying"].items()
-                },
+        "protocol": {"version": PROTOCOL_V3_VERSION, "sha256": PROTOCOL_V3_SHA256},
+        "evaluation": {
+            "protocol_evaluation": model.protocol_path.relative_to(root).as_posix(),
+            "live_masked_evaluation": model.evaluation_path.relative_to(root).as_posix(),
+            "masked_for_training": list(model.masked),
+            "outer_races": evaluation["outer_races"],
+            "primary": model.primary,
+            "primary_members": model.members,
+            "experimental_model": experimental,
+            "mean_objective": evaluation["live"]["mean_objective"],
+            "formal_gate": {
+                name: {task: value["status"] for task, value in result["formal_gate"].items()}
+                for name, result in evaluation["models"].items()
+            },
+            "protocol_formal_gate": {
+                name: {task: value["status"] for task, value in result["formal_gate"].items()}
+                for name, result in model.protocol["models"].items()
             },
             "dnf": {
-                "path": dnf_reference_path.relative_to(root).as_posix(),
-                "run_id": dnf_reference["run_metadata"]["run_id"],
-                "dnf_selection": dnf_reference["task_selection"]["post_qualifying"]["dnf"][
-                    "status"
-                ],
+                "model": model.dnf_name,
+                "candidates": {
+                    name: {
+                        key: value[key]
+                        for key in (
+                            "brier_score",
+                            "log_loss",
+                            "ece",
+                            "labels",
+                            "mean_within_race_standard_deviation",
+                        )
+                    }
+                    for name, value in evaluation["dnf"]["candidates"].items()
+                },
             },
         },
-        "model_choice": {"position": position_choice, "dnf": dnf_choice},
-        "models": {
-            kind: {
-                **record,
-                "model_id": model_ids[kind],
-                "masked_for_training": list(variants[kind]["masked"]),
-                "scoring_gate": variants[kind]["provenance"][0]["scoring_gate"],
-                "feature_importance": variants[kind]["importance"],
-                "availability_evaluation": variants[kind]["evaluation"],
-                "baseline_status": variants[kind]["baselines"]["_status"],
-            }
-            for kind, record in models.items()
+        "model_artifact": {"path": model_path.relative_to(root).as_posix(), "sha256": model_sha},
+        "missing_feature_reasons": {
+            row["driver_id"]: reasons[row["driver_id"]]["missing_reasons"] for row in rows
         },
-        "missing_features": {kind: variant["missing"] for kind, variant in variants.items()},
+        "ood": ood,
+        "feature_drivers": _feature_drivers(model, experimental),
+        "sharpness": {"live": live_sharpness, "quality": quality},
         "seeds": {"race": seed, "championship": seed},
         "race_draws": draws,
-        "championship": {
-            "simulations": simulations,
-            "orders_per_session": championship_orders,
-            "seed": seed,
-            "sha256": championship_sha,
-        },
+        "championship": {"simulations": simulations, "sha256": championship_sha},
         "execution": {
             "requested_device": device,
-            "devices": {
-                kind: variant["model"].position.device for kind, variant in variants.items()
-            },
-            "device_reasons": {
-                kind: variant["model"].position.metadata["device_reason"]
-                for kind, variant in variants.items()
-            },
+            "devices": sorted({item.device for item in model.models.values()}),
+            "device_reasons": sorted({item.device_reason for item in model.models.values()}),
+            "evaluation_devices": evaluation.get("devices"),
             "libraries": library_versions(),
         },
         "artifacts": {
@@ -592,70 +941,138 @@ def predict_next_race(
             "championship": {"sha256": championship_sha},
         },
         "validation_checks": checks,
+        "development_quality": quality["status"],
     }
     manifest_sha = _write_json(run_dir / "manifest.json", manifest)
-    report = render_report(manifest, race_payload, championship_payload, table_rows)
+    report = render_report(
+        manifest,
+        race_payload,
+        championship_payload,
+        model.evaluation,
+        model.protocol,
+        comparison,
+        rows,
+    )
     (run_dir / "report.md").write_text(report, encoding="utf-8")
     return {
         "status": STATUS,
         "run_dir": run_dir.relative_to(root).as_posix(),
         "manifest_sha256": manifest_sha,
         "event_id": target.event.partition(),
-        "cutoff_kind": cutoff_kind,
+        "cutoff_kind": contract,
         "prediction_timestamp_utc": cutoff.isoformat(),
         "report": report,
     }
 
 
-def validate_publication(
+def _compare(
     root: Path,
-    *,
+    target: Any,
     race: list[dict[str, Any]],
-    variants: dict[str, dict[str, Any]],
+    rows: list[dict[str, Any]],
+    stages: dict[str, dict[str, Any]],
+    championship: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Attribute movements from the c52b674 forecast to model, calibration and OOD stages."""
+    path = root / FIXTURE
+    if not path.exists():
+        return None
+    fixture = json.loads(path.read_text(encoding="utf-8"))
+    if fixture["event_id"] != target.event.partition():
+        return None
+    index = {row["driver_id"]: position for position, row in enumerate(rows)}
+    drivers = {}
+    for item in race:
+        driver = item["driver_id"]
+        old = fixture["drivers"].get(driver)
+        if old is None:
+            continue
+        slot = index[driver]
+        uncal = float(stages["uncalibrated"]["winner"][slot])
+        shared = float(stages["calibrated_shared"]["winner"][slot])
+        drivers[driver] = {
+            "old": old,
+            "new": {
+                "win": item["winner_probability"],
+                "podium": item["podium_probability"],
+                "dnf": item["dnf_model_probability"],
+                "expected_finish": item["expected_position"],
+            },
+            "win_stages": {
+                "c52b674": old["win"],
+                "new_models_and_features_uncalibrated": uncal,
+                "after_calibration": shared,
+                "final": item["winner_probability"],
+            },
+            "win_attribution": {
+                "models_and_features": uncal - old["win"],
+                "calibration": shared - uncal,
+                "unseen_circuit_rule": item["winner_probability"] - shared,
+            },
+            "features": {
+                key: rows[slot].get(key)
+                for key in (
+                    "recent_finish_mean_3",
+                    "driver_finish_mean_any_10",
+                    "driver_qualifying_mean_any_5",
+                    "constructor_average_finish_last_5",
+                    "driver_dnf_rate_any_10",
+                    "constructor_dnf_rate_any_10",
+                )
+            },
+        }
+    simulator = championship["simulator"]
+    return {
+        "fixture": FIXTURE.as_posix(),
+        "fixture_run_id": fixture["model_run_id"],
+        "old_temperature": fixture["temperature"],
+        "old_position_backend": fixture["position_backend"],
+        "drivers": drivers,
+        "wdc": {
+            name: {
+                "old": fixture["wdc"].get(name, {}).get("title"),
+                "new": simulator["wdc"]["title_probability"][name],
+                "old_expected_points": fixture["wdc"].get(name, {}).get("expected_points"),
+                "new_expected_points": simulator["wdc"]["mean_final_points"][name],
+            }
+            for name in simulator["wdc"]["title_probability"]
+        },
+        "wcc": {
+            name: {
+                "old": fixture["wcc"].get(name, {}).get("title"),
+                "new": simulator["wcc"]["title_probability"][name],
+            }
+            for name in simulator["wcc"]["title_probability"]
+        },
+    }
+
+
+def _validate(
+    root: Path,
+    race: list[dict[str, Any]],
+    rows: list[dict[str, Any]],
     cutoff: datetime,
-    observed_at: datetime,
-    version: GoldVersion,
-    dnf_version: GoldVersion,
+    model: ContractModel,
+    pre_model: ContractModel,
     events: list[EventSimulation],
-    model_ids: dict[str, str],
-    models: dict[str, dict[str, Any]],
-    ledger_sources: list[dict[str, Any]],
+    model_sha: str,
+    run_id: str,
     artifacts: list[Path],
 ) -> dict[str, bool]:
-    """Fail closed before a development artifact is reported."""
+    """Fail closed on coherence, leakage, provenance and labelling."""
     _check_race(race)
-    if any(not 0 <= row["dnf_probability"] <= 1 for row in race):
-        raise ValueError("invalid DNF probability")
-    for variant in variants.values():
-        for row in variant["rows"]:
-            require_known_by(row["feature_timestamp"], cutoff)
-            if any(name.startswith("label_") for name in row):
-                raise ValueError("live snapshot contains outcome labels")
-        snapshot = pq.read_table(root / variant["snapshot"]["path"])
-        if file_sha256(root / variant["snapshot"]["path"]) != variant["snapshot"]["sha256"]:
-            raise ValueError("frozen snapshot bytes changed")
-        if max(snapshot["feature_timestamp"].to_pylist()) > cutoff:
-            raise ValueError("frozen snapshot contains post-cutoff information")
-        metadata = variant["model"].metadata
-        if (
-            datetime.fromisoformat(metadata["position_model"]["fit_label_availability_max"])
-            > cutoff
-        ):
-            raise ValueError("position model used post-cutoff labels")
-        dnf_max = variant["model"].dnf.metadata["label_available_at_max"]
-        if dnf_max is not None and dnf_max > cutoff:
-            raise ValueError("DNF model used post-cutoff labels")
-    require_known_by(observed_at, cutoff)
-    for source in ledger_sources:
-        if datetime.fromisoformat(source["effective_at"]) >= cutoff:
-            raise ValueError("standings use a points version published after the cutoff")
-    for dataset in (version, dnf_version):
-        if file_sha256(dataset.directory / "manifest.json") != dataset.manifest_sha256:
-            raise ValueError("training dataset manifest changed")
-        if dataset.directory.name != dataset.dataset_version:
-            raise ValueError("training data does not come from an immutable dataset version")
-    allowed = {(model_ids[kind], models[kind]["sha256"]) for kind in model_ids}
-    if any((event.model_id, event.source_hash) not in allowed for event in events):
+    for row in rows:
+        require_known_by(row["feature_timestamp"], cutoff)
+        if any(name.startswith("label_") for name in row):
+            raise ValueError("live rows contain outcome labels")
+    for owner in (model, pre_model):
+        for row in owner.training:
+            require_known_by(row["label_available_at"], cutoff)
+            if row["label_dnf"] is not None and row["label_dnf_available_at"] > cutoff:
+                raise ValueError("DNF training label published after the cutoff")
+    if any(
+        event.source_hash != model_sha or not event.model_id.startswith(run_id) for event in events
+    ):
         raise ValueError("championship uses race samples outside this development run")
     for path in artifacts:
         if path.suffix == ".parquet":
@@ -667,6 +1084,7 @@ def validate_publication(
     return {
         "race_probabilities_coherent": True,
         "snapshot_has_no_post_cutoff_data": True,
+        "training_labels_known_at_cutoff": True,
         "training_uses_immutable_dataset_manifests": True,
         "championship_uses_only_development_race_samples": True,
         "outputs_labelled_development_only": True,

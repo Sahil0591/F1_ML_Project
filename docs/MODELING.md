@@ -1,5 +1,12 @@
 # Probabilistic Race Models
 
+Cutoff-specific development models (contracts, candidates including
+baseline-derived joint models, prequential calibration and selection, OOD and
+sharpness diagnostics, season uncertainty) follow the frozen
+[protocol v3](EVALUATION_PROTOCOL_V3.md) and are described in
+[development predictions](DEVELOPMENT_PREDICTIONS.md). The v2 comparison below is
+unchanged and remains the post-qualifying record.
+
 Phase 8 implements bounded comparisons of scikit-learn histogram boosting,
 XGBoost, LightGBM, and CatBoost. Real-world selection requires sufficient eligible
 Gold coverage and independent paired folds. Test fixtures verify software

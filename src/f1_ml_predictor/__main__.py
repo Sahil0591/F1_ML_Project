@@ -30,7 +30,10 @@ from f1_ml_predictor.models.development import publish_development_fold
 from f1_ml_predictor.models.hardware import inspect_hardware
 from f1_ml_predictor.models.probabilistic import run_probabilistic_files
 from f1_ml_predictor.paths import StoragePaths
+from f1_ml_predictor.prediction.legacy import predict_next_race_c52b674
 from f1_ml_predictor.prediction.pipeline import predict_next_race
+from f1_ml_predictor.prediction.protocol import CUTOFFS
+from f1_ml_predictor.prediction.workspace import evaluate_cutoffs
 from f1_ml_predictor.sources.jolpica import JolpicaClient
 from f1_ml_predictor.sources.open_meteo import OpenMeteoClient
 from f1_ml_predictor.sources.openf1 import OpenF1Client
@@ -201,6 +204,14 @@ def main() -> None:
     nextrace.add_argument("--seed", type=int, default=42)
     nextrace.add_argument("--draws", type=int, default=65536)
     nextrace.add_argument("--championship-orders", type=int, default=8192)
+    nextrace.add_argument("--worlds", type=int, default=1000)
+    nextrace.add_argument("--orders-per-world", type=int, default=16)
+    nextrace.add_argument(
+        "--methodology",
+        choices=["cutoff-specific-v3", "c52b674"],
+        default="cutoff-specific-v3",
+        help="c52b674 reruns the earlier single-model pipeline unchanged",
+    )
     nextrace.add_argument("--device", choices=["cpu", "auto", "cuda"], default="auto")
     nextrace.add_argument(
         "--no-collect", action="store_true", help="Use the retained schedule without a tick"
@@ -208,6 +219,12 @@ def main() -> None:
     nextrace.add_argument("--benchmark-dir", type=Path)
     nextrace.add_argument("--dnf-benchmark-dir", type=Path)
     nextrace.add_argument("--root", type=Path, default=Path.cwd())
+    cutoff_eval = subcommands.add_parser(
+        "evaluate-cutoffs", help="Run the frozen cutoff-specific v3 Gold evaluation"
+    )
+    cutoff_eval.add_argument("--contracts", choices=CUTOFFS, nargs="+", default=list(CUTOFFS))
+    cutoff_eval.add_argument("--seed", type=int, default=42)
+    cutoff_eval.add_argument("--root", type=Path, default=Path.cwd())
     args = parser.parse_args()
     paths = StoragePaths(getattr(args, "root", Path.cwd()))
     report: IngestReport | EnrichmentReport
@@ -287,21 +304,45 @@ def main() -> None:
             if result.get("status") == "error":
                 raise SystemExit(1)
             return
+        if args.command == "evaluate-cutoffs":
+            summary = evaluate_cutoffs(
+                paths.root,
+                contracts=tuple(args.contracts),
+                seed=args.seed,
+                progress=lambda message: print(message, flush=True),
+            )
+            print(json.dumps(summary, indent=2))
+            return
         if args.command == "predict-next-race":
             if not args.no_collect:
                 tick = scheduler_tick(paths.root, season=args.season)
                 print(f"collector: {tick.get('status')} {tick.get('error', '')}".rstrip())
-            prediction = predict_next_race(
-                paths.root,
-                season=args.season,
-                simulations=args.simulations,
-                seed=args.seed,
-                draws=args.draws,
-                championship_orders=args.championship_orders,
-                device=args.device,
-                gold_dir=args.benchmark_dir,
-                dnf_dir=args.dnf_benchmark_dir,
-            )
+            if args.methodology == "c52b674":
+                prediction = predict_next_race_c52b674(
+                    paths.root,
+                    season=args.season,
+                    simulations=args.simulations,
+                    seed=args.seed,
+                    draws=args.draws,
+                    championship_orders=args.championship_orders,
+                    device=args.device,
+                    gold_dir=args.benchmark_dir,
+                    dnf_dir=args.dnf_benchmark_dir,
+                )
+            else:
+                prediction = predict_next_race(
+                    paths.root,
+                    season=args.season,
+                    simulations=args.simulations,
+                    seed=args.seed,
+                    draws=args.draws,
+                    worlds=args.worlds,
+                    orders_per_world=args.orders_per_world,
+                    device=args.device,
+                    gold_dir=args.benchmark_dir,
+                    dnf_dir=args.dnf_benchmark_dir,
+                    progress=lambda message: print(message, flush=True),
+                )
             print(prediction["report"])
             print(f"status: {prediction['status']}")
             print(f"event: {prediction['event_id']}")

@@ -86,12 +86,16 @@ def main() -> None:
     with httpx.Client(
         timeout=30, follow_redirects=False, headers={"User-Agent": "f1-ml-predictor/0.1.0"}
     ) as client:
-        sessions = {
-            year: retain(
-                client, f"{OPENF1}/sessions?year={year}&session_name=Race", pace_seconds=2.1
-            )
-            for year in sorted({int(race["event_id"][7:11]) for race in races})
-        }
+        sessions: dict[int, dict[str, Any] | None] = {}
+        for year in sorted({int(race["event_id"][7:11]) for race in races}):
+            try:
+                sessions[year] = retain(
+                    client, f"{OPENF1}/sessions?year={year}&session_name=Race", pace_seconds=2.1
+                )
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code != 404:
+                    raise
+                sessions[year] = None
         for race in races:
             event = race["event_id"]
             season = int(event[7:11])
@@ -112,12 +116,15 @@ def main() -> None:
                     round_number,
                 ):
                     raise ValueError("Jolpica result event identity differs")
+                season_sessions = sessions[season]
+                if season_sessions is None:
+                    raise ValueError("OpenF1 has no race sessions for this season")
                 start = datetime.fromisoformat(
                     source_race["date"] + "T" + source_race["time"].replace("Z", "+00:00")
                 )
                 matches = [
                     session
-                    for session in payload(sessions[season])
+                    for session in payload(season_sessions)
                     if session["session_name"] == "Race"
                     and session["year"] == season
                     and not session.get("is_cancelled", False)
@@ -136,7 +143,7 @@ def main() -> None:
                     {
                         "status": "captured",
                         "jolpica": jolpica,
-                        "openf1_sessions": sessions[season],
+                        "openf1_sessions": season_sessions,
                         "openf1_session_key": session["session_key"],
                         "openf1_session_result": openf1,
                         "jolpica_race_start_utc": start.isoformat(),

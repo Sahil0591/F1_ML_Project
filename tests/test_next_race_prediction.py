@@ -23,6 +23,7 @@ from f1_ml_predictor.prediction.history import (
     choose_position_backend,
     load_gold_version,
 )
+from f1_ml_predictor.prediction.legacy import predict_next_race_c52b674 as predict_next_race
 from f1_ml_predictor.prediction.live_features import (
     PRE_QUALIFYING,
     ScheduledEvent,
@@ -32,7 +33,6 @@ from f1_ml_predictor.prediction.live_features import (
     freeze_snapshot,
     load_schedule,
 )
-from f1_ml_predictor.prediction.pipeline import predict_next_race
 from f1_ml_predictor.prediction.race import fit_composed_model
 from f1_ml_predictor.prediction.season import (
     points_rules,

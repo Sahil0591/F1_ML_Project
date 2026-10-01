@@ -1,6 +1,44 @@
 # F1 ML Predictor Project Plan
 
-Status: Phases 1 through 7 and Phase 9 simulation infrastructure are delivered. Historical Gold now contains 95 post-qualifying races and 1,927 driver-race observations. The audited championship scoring benchmark has 1,621 rows with point-in-time driver and constructor totals; its frozen evaluation has 92 paired outer test races. The separate audited binary DNF benchmark retains 29 races, with 547 known labels and 26 paired test races. Task-specific model selection remains `no_selection` because of baseline regressions or uncertain paired improvement. Historical Gold eligibility remains open to evidence-based upgrades; each experiment binds an immutable benchmark version. A historical held-out race has a `development_only` prediction artifact, and `predict-next-race` now publishes `development_only` next-race and season predictions. Validated race and championship forecasts still require prospective independent confirmation. The Windows prospective task remains disabled pending a local credential for signed-out network access; manual collection remains available. Updated 2026-10-01.
+Status: Phases 1 through 7 and Phase 9 simulation infrastructure are delivered. Historical Gold now contains 95 post-qualifying races and 1,927 driver-race observations. The audited championship scoring benchmark has 1,621 rows with point-in-time driver and constructor totals; its frozen evaluation has 92 paired outer test races. The separate audited binary DNF benchmark retains 29 races, with 547 known labels and 26 paired test races. Task-specific model selection remains `no_selection` because of baseline regressions or uncertain paired improvement. Historical Gold eligibility remains open to evidence-based upgrades; each experiment binds an immutable benchmark version. A historical held-out race has a `development_only` prediction artifact, and `predict-next-race` publishes `development_only` next-race and season predictions under cutoff-specific protocol v3, where the calibrated ensemble is the development primary at every cutoff and winner and podium remain `no_selection`. Validated race and championship forecasts still require prospective independent confirmation. The Windows prospective task remains disabled pending a local credential for signed-out network access; manual collection remains available. Updated 2026-10-01.
+
+## Cutoff-specific development methodology milestone
+
+The c52b674 Round 16 forecast was reproduced exactly at its cutoff and preserved
+as a committed regression fixture. Its audit found a single CatBoost model reused
+before qualifying with qualifying hidden, a race temperature of 0.5 at the edge of
+its grid chosen on one race, a field-wide 12.3% DNF from qualifying-only DNF
+inputs, and season titles from one fixed strength state.
+
+Each weekend cutoff now has its own feature contract, historical dataset,
+chronological evaluation, calibration and selection under the frozen
+[protocol v3](EVALUATION_PROTOCOL_V3.md). Pre-weekend history is rebuilt at
+scheduled first practice from audited data published before it. Candidates
+include logistic, Ridge and Plackett-Luce strengths that drive the same coherent
+sampler as boosting, plus calibrated ensembles. Calibration (temperature and
+mixing with a DNF-aware uniform race order) and model choice are prequential.
+
+On 92 outer Gold races the calibrated all-candidate ensemble is primary at every
+cutoff. Its winner log loss beats the logistic baseline by 0.12 (pre-weekend),
+0.16 (post-practice), 0.14 (post-qualifying) and 0.17 (pre-race), but every
+race-bootstrap interval includes zero, so winner and podium stay `no_selection`.
+Finish MAE passes the frozen paired gate at three cutoffs. No outer winner
+received under 1%. Calibration flattened most candidates (temperature 1.4).
+
+The audited binary DNF labels were extended from 547 to 1,506 with unchanged
+agreement rules and a corrected race-number join; the base rate still beats
+driver and constructor reliability models out of fold, so DNF stays field-wide
+and is reported as such. Within-season residual correlation shows no persistent
+strength the refreshed form features miss; season uncertainty instead uses
+validated form drift for stale forecasts, sampled as shared worlds. Unseen
+circuits, feature ranges, missingness and distance are reported as OOD status.
+The rerun 2026 Round 16 pre-weekend forecast (Sepang, unseen in Gold, OOD
+flagged) spreads win probability across eight realistic contenders: Russell 22%,
+Norris 14%, Leclerc 13%, Antonelli 11%, Hamilton 11%, Piastri 10%, Verstappen 8%,
+Hadjar 6%. Development WDC odds are Antonelli 77% and Russell 17%, against 98%
+and 1% in c52b674; with strength held fixed the new race model alone gives 90%,
+and validated form drift accounts for the rest. Every movement is attributed in
+the run's comparison report. See [development predictions](DEVELOPMENT_PREDICTIONS.md).
 
 ## Development prediction pipeline milestone
 

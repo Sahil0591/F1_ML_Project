@@ -14,7 +14,9 @@ import pyarrow.parquet as pq
 from f1_ml_predictor.benchmarks.builder import _safe_file, build_benchmarks
 from f1_ml_predictor.trust.outcomes import OUTCOME_SCHEMA, DnfCategory, validate_audited_outcomes
 
-AUDIT_VERSION = "binary-dnf-v1"
+# v2 joins OpenF1 on the race car number. v1 used Jolpica's present-day permanent
+# number, which misses drivers who raced under another number (for example #1).
+AUDIT_VERSION = "binary-dnf-v2"
 
 
 def _canonical(value: Any) -> bytes:
@@ -124,12 +126,8 @@ def build_binary_dnf_benchmark(root: Path, capture_path: Path) -> dict[str, Any]
                 raise ValueError("DNF Jolpica race identity mismatch")
             results = jolpica[0]["Results"]
             by_driver = {item["Driver"]["driverId"]: item for item in results}
-            by_number = {
-                int(item["Driver"]["permanentNumber"]): item
-                for item in results
-                if item["Driver"].get("permanentNumber")
-            }
-            numbered = sum(bool(item["Driver"].get("permanentNumber")) for item in results)
+            by_number = {int(item["number"]): item for item in results if item.get("number")}
+            numbered = sum(bool(item.get("number")) for item in results)
             if len(by_driver) != len(results) or len(by_number) != numbered:
                 raise ValueError("DNF Jolpica driver identities are duplicated")
             openf1_rows = _payload(root, capture_race["openf1_session_result"])
@@ -151,8 +149,8 @@ def build_binary_dnf_benchmark(root: Path, capture_path: Path) -> dict[str, Any]
         for row in final.to_pylist():
             jolpica_row = by_driver.get(row["driver_id"])
             number = (
-                int(jolpica_row["Driver"]["permanentNumber"])
-                if jolpica_row is not None and jolpica_row["Driver"].get("permanentNumber")
+                int(jolpica_row["number"])
+                if jolpica_row is not None and jolpica_row.get("number")
                 else None
             )
             openf1_row = by_openf1.get(number)

@@ -44,3 +44,27 @@ requires a new audit and outcome version.
 The final 29-race comparison evaluates DNF on 494 paired test driver rows. DNS,
 DSQ and unknown rows are excluded from DNF fitting and scoring. Cause
 classification remains deferred. See [regression audit](BASELINE_REGRESSION_AUDIT.md).
+
+## Expansion to the 95-race Gold cohort (binary-dnf-v2)
+
+The same three-source audit was rerun for the current 95-race registry. Agreement
+rules are unchanged. The OpenF1 join now uses the race car number from the
+Jolpica race result. Version 1 used Jolpica's present-day permanent driver
+number, which misses drivers who raced under another number (Verstappen raced as
+#1 while his current permanent number is 3) and collided for 24 races. OpenF1 has
+no 2022 race sessions, so every 2022 row stays unknown rather than guessed.
+
+| Decision | Driver-race observations | Binary target |
+| --- | ---: | --- |
+| Three-source retired agreement | 188 | true |
+| Three-source finished agreement | 1,318 | false |
+| Source missing (2022 and unmatched rows) | 393 | unknown |
+| DNS | 15 | unknown |
+| DSQ | 8 | unknown |
+| Disagreements or ambiguous FIA rows | 5 | unknown |
+
+The new version `dataset-d03ac00851ddc46b2ab0e4631c1bc287ebe17f720a0b993e59ca6d24ee0b33f3`
+(capture `4fc98575...`) has 1,506 known labels. The 29-race version 1 benchmark
+and its comparison runs are unchanged. The labels feed DNF training targets and
+point-in-time driver, constructor and circuit DNF rates in the cutoff contracts;
+see [protocol v3](EVALUATION_PROTOCOL_V3.md).

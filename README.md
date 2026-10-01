@@ -120,20 +120,21 @@ for calibration, selection, artifact, GPU, and distribution limitations.
 
 ## Development Predictions
 
-Generate a development prediction for the next race and a development WDC/WCC
-simulation with:
-
 ```powershell
+.\.venv\Scripts\python.exe -m f1_ml_predictor evaluate-cutoffs
 .\.venv\Scripts\python.exe -m f1_ml_predictor predict-next-race
 ```
 
-The command ticks the prospective collector, freezes a point-in-time snapshot,
-fits task-specific development models on the latest immutable Gold versions and
-writes a prediction, race distributions, a season simulation, a provenance
-manifest and `report.md` under `data/predictions/development/next_race/`. Before
-qualifying the run is labelled `pre_qualifying`; rerun it after qualifying to use
-the certified post-qualifying capture. Every output is `development_only` and is
-not a validated forecast. See [development predictions](docs/DEVELOPMENT_PREDICTIONS.md).
+`evaluate-cutoffs` runs the frozen cutoff-specific protocol v3 for the
+`pre_weekend`, `post_practice`, `post_qualifying` and `pre_race` contracts.
+`predict-next-race` ticks the prospective collector, picks the contract for the
+current cutoff, freezes a point-in-time snapshot, and publishes calibrated race
+probabilities, a development WDC/WCC simulation with model-uncertainty worlds, OOD
+and sharpness diagnostics, and `report.md` under
+`data/predictions/development/next_race/`. Rerun it after qualifying to switch to
+the post-qualifying contract. Every output is `development_only`, not a validated
+forecast. See [development predictions](docs/DEVELOPMENT_PREDICTIONS.md) and
+[protocol v3](docs/EVALUATION_PROTOCOL_V3.md).
 
 ## Graphify
 
