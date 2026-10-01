@@ -24,6 +24,11 @@ from threadpoolctl import threadpool_limits
 from f1_ml_predictor.benchmarks.builder import BENCHMARK_FEATURE_COLUMNS, file_sha256
 from f1_ml_predictor.benchmarks.enrichment import ENRICHMENT_FEATURE_COLUMNS, ENRICHMENT_VERSION
 from f1_ml_predictor.benchmarks.rolling import ROLLING_FEATURE_COLUMNS
+from f1_ml_predictor.benchmarks.scoring import (
+    NEW_FEATURE_COLUMNS,
+    SCORING_VERSION,
+    verify_scoring_manifest,
+)
 from f1_ml_predictor.models.protocol import (
     PRELIMINARY_PAIRED_EVENTS,
     PROTOCOL,
@@ -138,10 +143,16 @@ def _feature_columns(rows: list[dict[str, Any]]) -> tuple[str, ...]:
         raise ValueError("historical enrichment has an incomplete predictor schema")
     if enriched and not present:
         raise ValueError("historical enrichment requires Gold rolling predictors")
+    scoring = set(rows[0]) & set(NEW_FEATURE_COLUMNS) if rows else set()
+    if scoring and scoring != set(NEW_FEATURE_COLUMNS):
+        raise ValueError("historical scoring has an incomplete predictor schema")
+    if scoring and not enriched:
+        raise ValueError("historical scoring requires Gold enrichment predictors")
     return (
         *BENCHMARK_FEATURE_COLUMNS,
         *(ROLLING_FEATURE_COLUMNS if present else ()),
         *(ENRICHMENT_FEATURE_COLUMNS if enriched else ()),
+        *(NEW_FEATURE_COLUMNS if scoring else ()),
     )
 
 
@@ -588,6 +599,7 @@ def run_backtest_files(
     table = pq.read_table(dataset_path)
     manifest_path = dataset_path.parent / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    verify_scoring_manifest(dataset_path.parent, manifest)
     record = manifest["datasets"][tier.value]
     if record["path"] != dataset_path.name or record["sha256"] != file_sha256(dataset_path):
         raise ValueError("benchmark dataset does not match its manifest")
@@ -600,6 +612,11 @@ def run_backtest_files(
         or (
             manifest.get("version") == 3
             and manifest.get("enrichment_version") == ENRICHMENT_VERSION
+        )
+        or (
+            manifest.get("version") == 4
+            and manifest.get("scoring_version") == SCORING_VERSION
+            and isinstance(manifest.get("scoring_ledger_sha256"), str)
         )
     ):
         raise ValueError("historical predictors require a versioned benchmark manifest")
@@ -615,8 +632,12 @@ def run_backtest_files(
         "gold_race_count": len(manifest["datasets"].get("Gold", {}).get("events", [])),
         "driver_race_count": manifest["datasets"].get("Gold", {}).get("rows", 0),
         "feature_schema_version": manifest.get(
-            "enrichment_version", manifest.get("rolling_version", "benchmark-feature-v2")
+            "scoring_version",
+            manifest.get(
+                "enrichment_version", manifest.get("rolling_version", "benchmark-feature-v2")
+            ),
         ),
+        "scoring_ledger_sha256": manifest.get("scoring_ledger_sha256"),
         "evaluation_protocol_version": PROTOCOL["version"],
         "model_type": "heuristic_logistic_ridge_baselines",
         "model_parameters": {

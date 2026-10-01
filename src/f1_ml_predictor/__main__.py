@@ -10,6 +10,7 @@ from pathlib import Path
 from f1_ml_predictor.benchmarks.builder import build_benchmarks
 from f1_ml_predictor.benchmarks.enrichment import build_gold_enrichment
 from f1_ml_predictor.benchmarks.rolling import build_gold_rolling
+from f1_ml_predictor.benchmarks.scoring import build_gold_scoring
 from f1_ml_predictor.benchmarks.versioning import archive_benchmark
 from f1_ml_predictor.features.manifest import load_feature_request
 from f1_ml_predictor.features.snapshot import build_snapshot
@@ -127,6 +128,13 @@ def main() -> None:
     enrichment.add_argument("--catalog", type=Path)
     enrichment.add_argument("--grid-audit", type=Path)
     enrichment.add_argument("--practice-audit", type=Path)
+    scoring = subcommands.add_parser(
+        "build-gold-scoring", help="Freeze audited point-in-time Gold scoring features"
+    )
+    scoring.add_argument("--root", type=Path, default=Path.cwd())
+    scoring.add_argument("--benchmark-dir", type=Path, required=True)
+    scoring.add_argument("--rules", type=Path)
+    scoring.add_argument("--event-points", type=Path)
     winter = subcommands.add_parser("audit-winter", help="Audit a bounded direct-publication pool")
     winter.add_argument("catalog", type=Path)
     winter.add_argument("--root", type=Path, default=Path.cwd())
@@ -223,6 +231,16 @@ def main() -> None:
                         args.catalog,
                         args.grid_audit,
                         args.practice_audit,
+                    ),
+                    indent=2,
+                )
+            )
+            return
+        if args.command == "build-gold-scoring":
+            print(
+                json.dumps(
+                    build_gold_scoring(
+                        paths.root, args.benchmark_dir, args.rules, args.event_points
                     ),
                     indent=2,
                 )
