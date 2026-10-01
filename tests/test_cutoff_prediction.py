@@ -470,6 +470,14 @@ def test_contract_rows_use_only_published_history_and_weekend_values(workspace: 
     assert a1["recent_finish_mean_3"] == pytest.approx(sum(finishes) / len(finishes))
     assert a1["circuit_seen_before"] == 1
     assert a1["driver_dnf_observations_any_10"] == 9
+    # Strength features: a1 is the strongest synthetic driver in the strongest car.
+    assert a1["driver_elo_events"] == 9
+    assert a1["constructor_elo"] == max(row["constructor_elo"] for row in rows)
+    assert a1["driver_teammate_qualifying_h2h_10"] is not None
+    assert a1["driver_similar_circuit_delta"] is None
+    assert reasons["a1"]["missing_reasons"]["driver_similar_circuit_delta"] == (
+        "circuit_unprofiled"
+    )
     weekend = {
         driver: {
             "practice_position": 1.0,

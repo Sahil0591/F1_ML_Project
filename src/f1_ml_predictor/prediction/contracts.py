@@ -30,10 +30,18 @@ from f1_ml_predictor.identifiers import EventId
 from f1_ml_predictor.prediction.history import GoldVersion
 from f1_ml_predictor.prediction.protocol import CUTOFFS
 from f1_ml_predictor.prediction.schedules import Weekend
+from f1_ml_predictor.prediction.strength_features import (
+    CIRCUIT_PROFILES,
+    STRENGTH_COUNTS,
+    STRENGTH_NUMERIC,
+    elo_ratings,
+    similar_circuit_delta,
+    teammate_head_to_head,
+)
 from f1_ml_predictor.scoring.ledger import ScoringLedger
 from f1_ml_predictor.time import require_known_by, require_utc
 
-CONTRACT_VERSION = "cutoff-contracts-v1"
+CONTRACT_VERSION = "cutoff-contracts-v2"
 HISTORY_NUMERIC = (
     "recent_finish_mean_3",
     "recent_finish_mean_5",
@@ -51,6 +59,7 @@ HISTORY_NUMERIC = (
     *POINT_FEATURES,
     "driver_circuit_finish_mean",
     "circuit_dnf_rate",
+    *STRENGTH_NUMERIC,
 )
 HISTORY_COUNTS = (
     "history_count_3",
@@ -63,6 +72,7 @@ HISTORY_COUNTS = (
     "circuit_dnf_observations",
     "circuit_seen_before",
     "sprint_weekend",
+    *STRENGTH_COUNTS,
 )
 PRACTICE_NUMERIC = tuple(_PRACTICE_FEATURES)
 QUALIFYING_NUMERIC = (
@@ -229,6 +239,9 @@ def history_features(
     ]
     weekend = history.weekends.get(event)
     sprint = int(weekend is not None and weekend.sprint is not None)
+    driver_elo, constructor_elo, elo_events = elo_ratings(
+        [history.by_event[name] for name in prior], cutoff
+    )
     values: dict[str, dict[str, Any]] = {}
     reasons: dict[str, dict[str, Any]] = {}
     for row in current:
@@ -277,6 +290,12 @@ def history_features(
             for item in history.by_event[name]
             if item["driver_id"] == driver and item["label_position"] is not None
         ]
+        team_history = [
+            (item["circuit_id"], float(item["label_position"]))
+            for name in latest_first
+            for item in history.by_event[name]
+            if item["constructor_id"] == constructor and item["label_position"] is not None
+        ]
         points = standings[driver]
         record: dict[str, Any] = {
             "recent_finish_mean_3": rolling["recent_finish_mean_3"],
@@ -299,6 +318,25 @@ def history_features(
             "circuit_dnf_observations": len(circuit_dnf),
             "circuit_seen_before": int(bool(circuit_events)),
             "sprint_weekend": sprint,
+            "driver_elo": (driver_elo[driver] - 1500.0 if driver in driver_elo else None),
+            "constructor_elo": (
+                constructor_elo[constructor] - 1500.0 if constructor in constructor_elo else None
+            ),
+            "driver_elo_events": elo_events.get(driver, 0),
+            "driver_teammate_qualifying_h2h_10": teammate_head_to_head(
+                appearances, history.by_event
+            ),
+            "driver_similar_circuit_delta": similar_circuit_delta(
+                [
+                    (item["circuit_id"], float(item["label_position"]))
+                    for item in appearances
+                    if item["label_position"] is not None
+                ],
+                circuit_id,
+            ),
+            "constructor_similar_circuit_delta": similar_circuit_delta(
+                team_history, circuit_id, limit=80
+            ),
         }
         for name in (
             "constructor_average_finish_last_3",
@@ -321,6 +359,9 @@ def history_features(
             for name in HISTORY_NUMERIC
             if record[name] is None
         }
+        if circuit_id not in CIRCUIT_PROFILES:
+            for name in ("driver_similar_circuit_delta", "constructor_similar_circuit_delta"):
+                missing[name] = "circuit_unprofiled"
         if not circuit_events:
             missing["driver_circuit_finish_mean"] = "circuit_unseen_in_gold_history"
             missing["circuit_dnf_rate"] = "circuit_unseen_in_gold_history"
@@ -492,7 +533,8 @@ def build_contract_datasets(
     clocks = practice_clocks(history.version)
     output = (
         root
-        / "data/benchmarks/gold_cutoff_contracts_v1"
+        / "data/benchmarks"
+        / f"gold_{CONTRACT_VERSION.replace('-', '_')}"
         / history.version.manifest_sha256
         / dnf_version.manifest_sha256
     )

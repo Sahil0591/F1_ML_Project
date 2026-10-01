@@ -12,14 +12,15 @@ proved unidentifiable (see below); that draft output was discarded.
 
 ## Cutoff contracts
 
-Each cutoff has its own feature contract (`cutoff-contracts-v1`). History
+Each cutoff has its own feature contract (`cutoff-contracts-v2`; v2 adds the strength
+features below to v1). History
 predictors are recomputed at the contract cutoff from audited Gold outcomes,
 audited binary DNF labels and the scoring ledger. Only values published before
 the cutoff are read.
 
 | Contract | Historical cutoff | Predictors |
 | --- | --- | --- |
-| `pre_weekend` | scheduled first practice start | same-season rolling finishes; cross-season driver finish and qualifying form; driver and constructor audited DNF rates; constructor finish, qualifying and teammate form; championship points and positions; circuit history and attrition; whether the circuit was seen before; sprint format |
+| `pre_weekend` | scheduled first practice start | same-season rolling finishes; cross-season driver finish and qualifying form; driver and constructor audited DNF rates; constructor finish, qualifying and teammate form; championship points and positions; circuit history and attrition; whether the circuit was seen before; sprint format; pairwise driver and constructor Elo; teammate qualifying head-to-head; similarity-weighted driver and constructor finish deltas at the most similar profiled circuits |
 | `post_practice` | scheduled qualifying start | pre-weekend plus audited FIA practice classification, only when published before qualifying |
 | `post_qualifying` | audited Gold post-qualifying cutoff | post-practice plus qualifying position, last-session time and teammate delta |
 | `pre_race` | audited Gold post-qualifying cutoff | post-qualifying plus official grids published before the cutoff |
@@ -28,6 +29,28 @@ Historical session times come from retained Jolpica season schedules. They place
 the cutoff only and are never predictors. A live run hides any predictor that no
 driver has at its cutoff from training as well, and is evaluated with the same
 predictors hidden.
+
+### Strength features (v2)
+
+Adapted from open-source F1 predictors and computed from the same audited
+history, so they obey the same cutoff rules:
+
+- `driver_elo`, `constructor_elo`, `driver_elo_events`: pairwise Elo over
+  classified, non-retired finishers (after Malek1414/f1-predictions). Expected
+  scores use driver plus constructor rating; team-mate pairs count double for
+  drivers and not at all for constructors. Ratings regress towards 1500 between
+  seasons (drivers keep 75%, constructors 50%, or 20% in regulation-reset
+  seasons). A retirement is only excluded once its audited DNF label is
+  published before the cutoff.
+- `driver_teammate_qualifying_h2h_10`: share of the latest ten appearances in
+  which the driver out-qualified the team-mate (after MynosIII/F1Predictor).
+- `driver_similar_circuit_delta`, `constructor_similar_circuit_delta`: finish
+  relative to the entity's own recent mean at the five most similar circuits,
+  weighted by similarity of a hand-curated profile (length, turns, street
+  circuit, downforce level) in `prediction/strength_features.py` (after
+  MynosIII/F1Predictor). This gives unseen circuits such as Sepang a track-type
+  signal. Circuits without a profile leave these features missing with reason
+  `circuit_unprofiled`.
 
 ## Candidates, baselines and folds
 
