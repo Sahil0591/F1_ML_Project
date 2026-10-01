@@ -117,6 +117,28 @@ Future independent races must confirm it. Only Gold can support primary accuracy
 claims; Silver and Development remain exploratory. Empty tiers produce no metrics,
 no fitted model, and no selected backend.
 
+## Ranking objective assessment
+
+CatBoost supports grouped ranking objectives such as PairLogit and YetiRank,
+LightGBM's ranker takes ordered group sizes, and XGBoost's ranker takes race
+query IDs. Each could use a race as a query under the same chronological folds
+([CatBoost](https://catboost.ai/docs/en/concepts/loss-functions-ranking),
+[LightGBM](https://lightgbm.readthedocs.io/en/stable/pythonapi/lightgbm.LGBMRanker.html),
+[XGBoost](https://xgboost.readthedocs.io/en/stable/tutorials/learning_to_rank.html)).
+Their scores would still need earlier-history calibration through the joint race
+sampler before they could supply win, podium, or finish probabilities.
+
+The 92-race paired cohort has 1,867 prediction rows but only 1,623 known finish
+positions. Dropping unknown positions makes some training race groups incomplete;
+assigning them last place would invent an outcome. The current logistic baseline
+also beats every tested boosting position regressor on finish MAE. A ranking
+objective is therefore a diagnostic candidate, not a justified selected backend
+in this version. Before adding one, specify how censored positions enter grouped
+training, keep every outer race intact, compare all three rankers with the same
+paired folds and baselines, and check finish MAE, ranking quality, probability
+calibration, and race-bootstrap uncertainty. Any choice from those folds needs
+future independent confirmation.
+
 ## Artifacts and provenance
 
 Hardware reports go to `models/experiments/hardware.json`. New tier comparison
