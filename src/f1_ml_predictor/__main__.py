@@ -30,6 +30,7 @@ from f1_ml_predictor.models.development import publish_development_fold
 from f1_ml_predictor.models.hardware import inspect_hardware
 from f1_ml_predictor.models.probabilistic import run_probabilistic_files
 from f1_ml_predictor.paths import StoragePaths
+from f1_ml_predictor.prediction.pipeline import predict_next_race
 from f1_ml_predictor.sources.jolpica import JolpicaClient
 from f1_ml_predictor.sources.open_meteo import OpenMeteoClient
 from f1_ml_predictor.sources.openf1 import OpenF1Client
@@ -192,6 +193,21 @@ def main() -> None:
     development.add_argument("--event-id")
     development.add_argument("--output", type=Path)
     development.add_argument("--root", type=Path, default=Path.cwd())
+    nextrace = subcommands.add_parser(
+        "predict-next-race", help="Publish development-only next race and title predictions"
+    )
+    nextrace.add_argument("--season", type=int)
+    nextrace.add_argument("--simulations", type=int, default=100000)
+    nextrace.add_argument("--seed", type=int, default=42)
+    nextrace.add_argument("--draws", type=int, default=65536)
+    nextrace.add_argument("--championship-orders", type=int, default=8192)
+    nextrace.add_argument("--device", choices=["cpu", "auto", "cuda"], default="auto")
+    nextrace.add_argument(
+        "--no-collect", action="store_true", help="Use the retained schedule without a tick"
+    )
+    nextrace.add_argument("--benchmark-dir", type=Path)
+    nextrace.add_argument("--dnf-benchmark-dir", type=Path)
+    nextrace.add_argument("--root", type=Path, default=Path.cwd())
     args = parser.parse_args()
     paths = StoragePaths(getattr(args, "root", Path.cwd()))
     report: IngestReport | EnrichmentReport
@@ -270,6 +286,27 @@ def main() -> None:
             print(json.dumps(result, indent=2))
             if result.get("status") == "error":
                 raise SystemExit(1)
+            return
+        if args.command == "predict-next-race":
+            if not args.no_collect:
+                tick = scheduler_tick(paths.root, season=args.season)
+                print(f"collector: {tick.get('status')} {tick.get('error', '')}".rstrip())
+            prediction = predict_next_race(
+                paths.root,
+                season=args.season,
+                simulations=args.simulations,
+                seed=args.seed,
+                draws=args.draws,
+                championship_orders=args.championship_orders,
+                device=args.device,
+                gold_dir=args.benchmark_dir,
+                dnf_dir=args.dnf_benchmark_dir,
+            )
+            print(prediction["report"])
+            print(f"status: {prediction['status']}")
+            print(f"event: {prediction['event_id']}")
+            print(f"cutoff: {prediction['cutoff_kind']} {prediction['prediction_timestamp_utc']}")
+            print(f"path: {prediction['run_dir']}")
             return
         if args.command == "collection-status":
             print(json.dumps(scheduler_status(paths.root), indent=2))

@@ -39,7 +39,9 @@ The latest eligible earlier events form the calibration window, selected by
 Fit events must be strictly earlier, with complete labels available by the
 earliest calibration prediction timestamp. Calibration labels must be available by the outer test
 cutoff. Median imputation fits only on the fit events and remains frozen for
-calibration and test prediction. There is no refit on the calibration race.
+calibration and test prediction. If every predictor is constant on
+the fit rows, for example when cutoff-matched features hide qualifying in the
+earliest folds, the fold is skipped as insufficient history instead of fitting. There is no refit on the calibration race.
 
 A position regressor learns observed audited position divided by field size.
 Unknown positions do not become invented retirement labels. A DNF classifier

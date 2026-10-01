@@ -66,8 +66,10 @@ range require a new contract and review.
 
 ## Results and limits
 
-Results include separate WDC and WCC probabilities, mean final points, and
-unresolved top-points tie mass. `title_probability` means a sole highest-points
+Results include separate WDC and WCC probabilities, mean final points,
+final position distributions, and unresolved top-points tie mass. Entities tied
+on points share the tied positions equally in the position distribution, so
+every row and position column sums to one without invented countback. `title_probability` means a sole highest-points
 finisher. `tied_for_title_probability` records each entity's participation in
 an unresolved tie. For either title, sole-title probabilities plus the single
 `unresolved_tie_probability` sum to one. Participation probabilities can sum

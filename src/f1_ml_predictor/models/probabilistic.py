@@ -256,6 +256,8 @@ def fit_race_model(
     start = time.perf_counter()
     with threadpool_limits(limits=1):
         imputer.fit(_matrix(rows, train))
+        if not np.ptp(imputer.transform(_matrix(rows, position_train)), axis=0).any():
+            return None
         try:
             position_model, dnf_model = fit_models(chosen)
         except Exception as exc:

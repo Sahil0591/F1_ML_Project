@@ -47,6 +47,69 @@ def _event(event_id: str) -> tuple[int, int]:
     return int(parts[0][7:]), int(parts[1][6:])
 
 
+def rolling_driver_features(
+    events: dict[tuple[int, int], list[dict[str, Any]]],
+    outcomes: dict[tuple[int, int], str],
+    season: int,
+    round_number: int,
+    driver_id: str,
+    cutoff: Any,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Derive one driver's windows from complete audited prior rounds of one season.
+
+    ``events`` maps audited Gold events to their rows. The target event itself is
+    never read, so the same rule serves historical rows and live snapshots.
+    """
+    require_utc(cutoff, "rolling cutoff")
+    features: dict[str, Any] = {}
+    proofs: dict[str, Any] = {}
+    for window in WINDOWS:
+        prior = [(season, previous) for previous in range(round_number - window, round_number)]
+        complete = all(key[1] > 0 and key in events for key in prior)
+        historical = [historic for key in prior for historic in events.get(key, [])]
+        available = complete and all(
+            historic["label_final_audited"] is True
+            and historic["label_audit_reference"]
+            and historic["label_available_at"] is not None
+            and historic["label_available_at"] < cutoff
+            for historic in historical
+        )
+        if available:
+            for historic in historical:
+                require_known_by(historic["label_available_at"], cutoff)
+        driver_rows = (
+            [historic for historic in historical if historic["driver_id"] == driver_id]
+            if available
+            else []
+        )
+        positions = [
+            float(item["label_position"])
+            for item in driver_rows
+            if item["label_position"] is not None
+        ]
+        dnf = [item["label_dnf"] for item in driver_rows]
+        features[f"recent_finish_mean_{window}"] = mean(positions) if positions else None
+        features[f"recent_dnf_rate_{window}"] = (
+            mean(float(value) for value in dnf)
+            if dnf and all(isinstance(value, bool) for value in dnf)
+            else None
+        )
+        features[f"history_count_{window}"] = len(driver_rows)
+        proofs[str(window)] = {
+            "complete": bool(available),
+            "source_events": [
+                {
+                    "event_id": f"season={key[0]}/round={key[1]:02d}",
+                    "outcome_sha256": outcomes[key],
+                }
+                for key in prior
+                if key in events
+            ],
+            "driver_observations": len(driver_rows),
+        }
+    return features, proofs
+
+
 def build_gold_rolling(
     root: Path, benchmark_dir: Path | None = None, catalog_path: Path | None = None
 ) -> dict[str, Any]:
@@ -95,64 +158,20 @@ def _build_gold_rolling_locked(
     result = []
     for (season, round_number), rows in sorted(events.items()):
         for row in sorted(rows, key=lambda item: item["driver_id"]):
-            cutoff = row["prediction_timestamp"]
-            require_utc(cutoff, "rolling cutoff")
+            values, proofs = rolling_driver_features(
+                events,
+                outcomes,
+                season,
+                round_number,
+                row["driver_id"],
+                row["prediction_timestamp"],
+            )
             features: dict[str, Any] = {
                 "event_id": row["event_id"],
                 "driver_id": row["driver_id"],
-                "prediction_timestamp": cutoff,
+                "prediction_timestamp": row["prediction_timestamp"],
+                **values,
             }
-            proofs: dict[str, Any] = {}
-            for window in WINDOWS:
-                prior = [
-                    (season, previous) for previous in range(round_number - window, round_number)
-                ]
-                complete = all(key[1] > 0 and key in events for key in prior)
-                historical = [historic for key in prior for historic in events.get(key, [])]
-                available = complete and all(
-                    historic["label_final_audited"] is True
-                    and historic["label_audit_reference"]
-                    and historic["label_available_at"] is not None
-                    and historic["label_available_at"] < cutoff
-                    for historic in historical
-                )
-                if available:
-                    for historic in historical:
-                        require_known_by(historic["label_available_at"], cutoff)
-                driver_rows = (
-                    [
-                        historic
-                        for historic in historical
-                        if historic["driver_id"] == row["driver_id"]
-                    ]
-                    if available
-                    else []
-                )
-                positions = [
-                    float(item["label_position"])
-                    for item in driver_rows
-                    if item["label_position"] is not None
-                ]
-                dnf = [item["label_dnf"] for item in driver_rows]
-                features[f"recent_finish_mean_{window}"] = mean(positions) if positions else None
-                features[f"recent_dnf_rate_{window}"] = (
-                    mean(float(value) for value in dnf)
-                    if dnf and all(isinstance(value, bool) for value in dnf)
-                    else None
-                )
-                features[f"history_count_{window}"] = len(driver_rows)
-                proofs[str(window)] = {
-                    "complete": bool(available),
-                    "source_events": [
-                        {
-                            "event_id": f"season={key[0]}/round={key[1]:02d}",
-                            "outcome_sha256": outcomes[key],
-                        }
-                        for key in prior
-                        if key in events
-                    ],
-                    "driver_observations": len(driver_rows),
-                }
             features["provenance"] = _canonical(proofs).decode()
             result.append(features)
     table = pa.Table.from_pylist(result, schema=ROLLING_SCHEMA)

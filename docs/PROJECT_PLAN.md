@@ -1,6 +1,27 @@
 # F1 ML Predictor Project Plan
 
-Status: Phases 1 through 7 and Phase 9 simulation infrastructure are delivered. Historical Gold now contains 95 post-qualifying races and 1,927 driver-race observations. The audited championship scoring benchmark has 1,621 rows with point-in-time driver and constructor totals; its frozen evaluation has 92 paired outer test races. The separate audited binary DNF benchmark retains 29 races, with 547 known labels and 26 paired test races. Task-specific model selection remains `no_selection` because of baseline regressions or uncertain paired improvement. Historical Gold eligibility remains open to evidence-based upgrades; each experiment binds an immutable benchmark version. A historical held-out race has a `development_only` prediction artifact. Validated race and championship forecasts still require prospective independent confirmation. The Windows prospective task remains disabled pending a local credential for signed-out network access; manual collection remains available. Updated 2026-10-01.
+Status: Phases 1 through 7 and Phase 9 simulation infrastructure are delivered. Historical Gold now contains 95 post-qualifying races and 1,927 driver-race observations. The audited championship scoring benchmark has 1,621 rows with point-in-time driver and constructor totals; its frozen evaluation has 92 paired outer test races. The separate audited binary DNF benchmark retains 29 races, with 547 known labels and 26 paired test races. Task-specific model selection remains `no_selection` because of baseline regressions or uncertain paired improvement. Historical Gold eligibility remains open to evidence-based upgrades; each experiment binds an immutable benchmark version. A historical held-out race has a `development_only` prediction artifact, and `predict-next-race` now publishes `development_only` next-race and season predictions. Validated race and championship forecasts still require prospective independent confirmation. The Windows prospective task remains disabled pending a local credential for signed-out network access; manual collection remains available. Updated 2026-10-01.
+
+## Development prediction pipeline milestone
+
+`predict-next-race` finds the next race from a fresh collector schedule
+observation and prefers a certified post-qualifying capture. Before qualifying,
+it publishes a clearly labelled `pre_qualifying` run at the run time instead.
+It freezes a content-addressed snapshot built with the Gold rolling,
+constructor-form and scoring-ledger rules from audited history published before
+the cutoff. It fits development candidates on the latest immutable Gold
+versions because every task remains `no_selection`. The position model is the
+joint backend with the best mean rank on winner, podium and finish losses in the
+frozen comparison. DNF comes from the separate audited binary DNF version, so it
+is independent of pace. Predictors unavailable at the cutoff are hidden from
+training as well as prediction. A cached cutoff-matched diagnostic evaluation
+and the existing baselines are reported alongside. The existing joint sampler
+and championship simulator supply race distributions and development WDC/WCC
+probabilities, expected points and final position distributions. The run fails
+closed unless coherence, cutoff, immutable dataset, sample provenance and
+`development_only` labelling checks pass. See
+[development predictions](DEVELOPMENT_PREDICTIONS.md). The first run covers 2026
+round 16 before qualifying. None of these outputs is a validated forecast.
 
 ## Audited championship scoring milestone
 

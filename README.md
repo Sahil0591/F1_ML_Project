@@ -118,6 +118,23 @@ only when the workload and measured speed justify GPU training. CPU fallback and
 CUDA-independent offline tests remain supported. See [modeling](docs/MODELING.md)
 for calibration, selection, artifact, GPU, and distribution limitations.
 
+## Development Predictions
+
+Generate a development prediction for the next race and a development WDC/WCC
+simulation with:
+
+```powershell
+.\.venv\Scripts\python.exe -m f1_ml_predictor predict-next-race
+```
+
+The command ticks the prospective collector, freezes a point-in-time snapshot,
+fits task-specific development models on the latest immutable Gold versions and
+writes a prediction, race distributions, a season simulation, a provenance
+manifest and `report.md` under `data/predictions/development/next_race/`. Before
+qualifying the run is labelled `pre_qualifying`; rerun it after qualifying to use
+the certified post-qualifying capture. Every output is `development_only` and is
+not a validated forecast. See [development predictions](docs/DEVELOPMENT_PREDICTIONS.md).
+
 ## Graphify
 
 Graphify is configured through a git post-commit hook. After each commit, the hook updates the local knowledge graph outputs in `graphify-out/`.

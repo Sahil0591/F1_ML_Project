@@ -312,12 +312,18 @@ class ValidationEvidence:
 
 @dataclass(frozen=True, slots=True)
 class TitleProbabilities:
-    """Sole-title probability and unresolved tie mass, without invented countback."""
+    """Sole-title probability and unresolved tie mass, without invented countback.
+
+    ``final_position_probability`` lists each entity's probability of finishing
+    first, second and so on. Entities tied on points share the tied positions
+    equally, so every row and every position column sums to one.
+    """
 
     title_probability: Mapping[str, float]
     tied_for_title_probability: Mapping[str, float]
     unresolved_tie_probability: float
     mean_final_points: Mapping[str, float]
+    final_position_probability: Mapping[str, tuple[float, ...]] = MappingProxyType({})
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -325,6 +331,10 @@ class TitleProbabilities:
             "tied_for_title_probability": dict(self.tied_for_title_probability),
             "unresolved_tie_probability": self.unresolved_tie_probability,
             "mean_final_points": dict(self.mean_final_points),
+            "final_position_probability": {
+                identifier: list(values)
+                for identifier, values in self.final_position_probability.items()
+            },
         }
 
 
@@ -369,6 +379,7 @@ def _summary(
     tied: list[int],
     unresolved: int,
     totals: list[int],
+    places: list[list[Fraction]],
     simulations: int,
     scale: int,
 ) -> TitleProbabilities:
@@ -392,7 +403,28 @@ def _summary(
                 for identifier, total in zip(identifiers, totals, strict=True)
             }
         ),
+        final_position_probability=MappingProxyType(
+            {
+                identifier: tuple(float(value / simulations) for value in row)
+                for identifier, row in zip(identifiers, places, strict=True)
+            }
+        ),
     )
+
+
+def _record_places(final: list[int], places: list[list[Fraction]]) -> None:
+    """Split tied championship positions evenly instead of inventing countback."""
+    ordered = sorted(range(len(final)), key=lambda index: -final[index])
+    start = 0
+    while start < len(ordered):
+        end = start
+        while end + 1 < len(ordered) and final[ordered[end + 1]] == final[ordered[start]]:
+            end += 1
+        share = Fraction(1, end - start + 1)
+        for index in ordered[start : end + 1]:
+            for position in range(start, end + 1):
+                places[index][position] += share
+        start = end + 1
 
 
 def simulate_championship(
@@ -526,6 +558,8 @@ def simulate_championship(
     rng = random.Random(seed)
     driver_wins, driver_ties, driver_totals = ([0] * len(driver_ids) for _ in range(3))
     team_wins, team_ties, team_totals = ([0] * len(constructor_ids) for _ in range(3))
+    driver_places = [[Fraction(0)] * len(driver_ids) for _ in driver_ids]
+    team_places = [[Fraction(0)] * len(constructor_ids) for _ in constructor_ids]
     driver_unresolved = team_unresolved = 0
     for _ in range(simulations):
         final_drivers = current_drivers.copy()
@@ -534,6 +568,8 @@ def simulate_championship(
             for driver_index, team_index, points in samples[rng.randrange(len(samples))]:
                 final_drivers[driver_index] += points
                 final_teams[team_index] += points
+        _record_places(final_drivers, driver_places)
+        _record_places(final_teams, team_places)
         for final, wins, ties, totals, kind in (
             (final_drivers, driver_wins, driver_ties, driver_totals, "driver"),
             (final_teams, team_wins, team_ties, team_totals, "constructor"),
@@ -597,11 +633,19 @@ def simulate_championship(
             driver_ties,
             driver_unresolved,
             driver_totals,
+            driver_places,
             simulations,
             scale,
         ),
         wcc=_summary(
-            constructor_ids, team_wins, team_ties, team_unresolved, team_totals, simulations, scale
+            constructor_ids,
+            team_wins,
+            team_ties,
+            team_unresolved,
+            team_totals,
+            team_places,
+            simulations,
+            scale,
         ),
         provenance=MappingProxyType(provenance),
         limitations=limitations,
