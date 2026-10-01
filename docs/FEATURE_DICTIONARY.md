@@ -67,6 +67,38 @@ event metadata. Modern aliases avoid overstating what summaries measure:
 `constructor_recent_classification_mean`. Their older columns remain for compatibility,
 but should not be interpreted as race pace or degradation estimates.
 
+## Historical Gold enrichment
+
+The version 3 Gold benchmark extends the frozen rolling benchmark without changing
+the snapshot feature contract above. Its added columns use the same post-qualifying
+cutoff. `constructor_average_finish_last_3`, `_5`, and `_10` average classified
+positions of drivers belonging to the canonical constructor in the indicated
+contiguous prior same-season rounds. Each has a corresponding
+`constructor_finish_observations_last_N` count. A missing or unaudited round makes
+the whole window missing. `constructor_qualifying_form` averages that constructor's
+published qualifying positions in the prior five rounds, with an observation count.
+`constructor_teammate_aggregated_form` averages prior classified positions of the
+current roster's teammate drivers, including their earlier constructors, with an
+observation count. Transfers do not retroactively change constructor results.
+`constructor_dnf_rate` uses only explicit prior Boolean audited labels; the current
+95-race cohort has none.
+
+`practice_position` is the printed rank in the latest eligible FIA practice
+classification. `best_lap_gap_to_fastest` is the driver's printed best lap less the
+fastest printed lap in that session, in seconds. `teammate_practice_delta` compares
+printed best laps of current roster teammates. `session_relative_rank` is
+`(practice_position - 1) / (field_size - 1)`. These are session observations and
+carry no fuel correction. FIA registry publication plus one minute is the
+conservative availability bound; exact registry and PDF bytes are retained.
+
+Historical `grid_position` is read only from an eligible FIA provisional or final
+starting grid document. `grid_status`, `pit_lane_start`, `start_type`, and exact
+document provenance are retained. A later grid publication cannot populate the
+post-qualifying row. Driver and constructor points, championship positions, gaps,
+and constructor points windows stay null pending a complete audited scoring ledger
+covering race and sprint awards and revisions. Each added numeric feature has a
+missing flag; window features preserve observation counts and per-row reasons.
+
 ## Manifest and CLI
 
 Run `python -m f1_ml_predictor build-snapshot <manifest.json> --root <workspace>`.

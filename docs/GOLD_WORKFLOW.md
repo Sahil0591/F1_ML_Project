@@ -298,3 +298,30 @@ Archived forecasts stay omitted until exact operational run bytes and historical
 release evidence are available. Open-Meteo [Single Runs documentation](https://open-meteo.com/en/docs/single-runs-api)
 distinguishes initialization from release. Hindcasts and stitched historical
 weather do not establish a past race-time forecast.
+
+## Historical feature enrichment of the 95-race cohort
+
+Run the FIA grid and practice audits against the retained five-season Gold
+coverage report, then freeze a new version of the rolling Gold benchmark. The
+audit package requires `pip install -e ".[audit]"`. Use the paths returned by the
+two audit commands for `--grid-audit` and `--practice-audit`. The evaluation
+scripts take the paths of their preceding frozen run reports and predictions.
+
+```powershell
+.\.venv\Scripts\python.exe scripts/audit-historical-grids.py data/benchmarks/historical_audit/five-year-coverage-1edd2fde9683b88fddb9bf1aeb1ffa22e0109d92c39988cc55f68637aaf5aace.json
+.\.venv\Scripts\python.exe scripts/audit-historical-practice.py data/benchmarks/historical_audit/five-year-coverage-1edd2fde9683b88fddb9bf1aeb1ffa22e0109d92c39988cc55f68637aaf5aace.json
+.\.venv\Scripts\python.exe -m f1_ml_predictor build-gold-enrichment --grid-audit data/benchmarks/historical_audit/grid-audit-SHA256.json --practice-audit data/benchmarks/historical_audit/practice-audit-SHA256.json
+.\.venv\Scripts\python.exe -m f1_ml_predictor compare-models --tier Gold --benchmark-dir ENRICHED_BENCHMARK_DIR --device cpu
+.\.venv\Scripts\python.exe scripts/run-enrichment-ablations.py ENRICHED_BENCHMARK_DIR FULL_REPORT FULL_PREDICTIONS
+.\.venv\Scripts\python.exe scripts/compare-gold-enrichment.py PREVIOUS_REPORT PREVIOUS_PREDICTIONS FULL_REPORT FULL_PREDICTIONS
+.\.venv\Scripts\python.exe scripts/compare-enrichment-groups.py ABLATION_SUMMARY
+```
+
+The audit paths and dataset are content addressed. Existing Gold versions and
+model runs remain unchanged. The build checks source and audit hashes, replays
+PDF parsing, and rejects publication after the target cutoff. `grid_status` and
+pit-lane starts remain distinct. The post-qualifying cohort stays intact. A
+separate provisional-grid cohort would need its own later cutoffs and frozen
+evaluation rather than relabeling these rows. See the [coverage and evaluation
+report](GOLD_HISTORICAL_ENRICHMENT_2026-10-01.md) for the exact version, missing
+reasons, and paired ablations.

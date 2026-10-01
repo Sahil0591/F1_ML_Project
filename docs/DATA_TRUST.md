@@ -54,6 +54,16 @@ release. Open-Meteo's model-update metadata distinguishes initialization from
 availability; retrospective release evidence must be independently supported.
 Observed race weather is not a pre-race forecast.
 
+For historical Gold enrichment, FIA practice and grid values require a matching
+retained document-registry row, its publication time, exact PDF hash and cover,
+an unambiguous roster crosswalk, and a bound no later than the target cutoff.
+These inputs remain missing if the latest eligible version is recalled or cannot
+be parsed conservatively. FIA race result ordinals do not encode awarded points:
+season-specific sprint rules, fastest-lap awards, reduced points, and revisions
+require a separately audited scoring ledger. Historical Open-Meteo run archives
+do not establish per-run release times; retrospective FastF1 and OpenF1 practice
+fetches do not establish exact historical availability on their own.
+
 FastF1 and OpenF1 are arbitrated per session, by evidence and stated preference.
 Their incompatible filters are not averaged. Best-lap disagreement above two
 percent is flagged; certified builds quarantine those session features. FastF1

@@ -20,6 +20,7 @@ from sklearn.impute import SimpleImputer
 from threadpoolctl import threadpool_limits
 
 from f1_ml_predictor.benchmarks.builder import BENCHMARK_FEATURE_COLUMNS, file_sha256
+from f1_ml_predictor.benchmarks.enrichment import ENRICHMENT_FEATURE_COLUMNS, ENRICHMENT_VERSION
 from f1_ml_predictor.models.backtest import (
     RollingFold,
     _binary_metrics,
@@ -285,9 +286,13 @@ def fit_race_model(
         else "seeded GPU; floating-point summation may vary",
         "configuration": _estimator_configuration(position_model),
         "feature_columns": list(_feature_columns(rows)),
-        "feature_schema_version": "gold-rolling-v1"
-        if len(_feature_columns(rows)) > len(BENCHMARK_FEATURE_COLUMNS)
-        else "benchmark-feature-v2",
+        "feature_schema_version": ENRICHMENT_VERSION
+        if set(ENRICHMENT_FEATURE_COLUMNS) <= set(rows[0])
+        else (
+            "gold-rolling-v1"
+            if len(_feature_columns(rows)) > len(BENCHMARK_FEATURE_COLUMNS)
+            else "benchmark-feature-v2"
+        ),
         "calibration_method": calibration_method,
         "calibration_event_count_requested": calibration_event_count,
     }
@@ -854,10 +859,14 @@ def run_probabilistic_files(
     detected_features = _feature_columns(table.to_pylist())
     if manifest["feature_columns"] != list(detected_features):
         raise ValueError("benchmark predictor manifest mismatch")
-    if len(detected_features) > len(BENCHMARK_FEATURE_COLUMNS) and (
-        manifest.get("version") != 2 or manifest.get("rolling_version") != "gold-rolling-v1"
+    if len(detected_features) > len(BENCHMARK_FEATURE_COLUMNS) and not (
+        (manifest.get("version") == 2 and manifest.get("rolling_version") == "gold-rolling-v1")
+        or (
+            manifest.get("version") == 3
+            and manifest.get("enrichment_version") == ENRICHMENT_VERSION
+        )
     ):
-        raise ValueError("rolling predictors require a versioned benchmark manifest")
+        raise ValueError("historical predictors require a versioned benchmark manifest")
     if record["rows"] != table.num_rows:
         raise ValueError("benchmark row count mismatch")
     if (
@@ -911,7 +920,9 @@ def run_probabilistic_files(
         "dataset_manifest_hash": result["benchmark_manifest_sha256"],
         "gold_race_count": len(manifest["datasets"].get("Gold", {}).get("events", [])),
         "driver_race_count": manifest["datasets"].get("Gold", {}).get("rows", 0),
-        "feature_schema_version": manifest.get("rolling_version", "benchmark-feature-v2"),
+        "feature_schema_version": manifest.get(
+            "enrichment_version", manifest.get("rolling_version", "benchmark-feature-v2")
+        ),
         "evaluation_protocol_version": PROTOCOL["version"],
         "model_type": "joint_race_model",
         "model_parameters": {
