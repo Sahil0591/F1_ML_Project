@@ -3,7 +3,7 @@
 import hashlib
 import json
 
-PROTOCOL_VERSION = "gold-chronological-v1"
+PROTOCOL_VERSION = "gold-chronological-v2"
 PRELIMINARY_PAIRED_EVENTS = 15
 SELECTION_PAIRED_EVENTS = 25
 
@@ -16,7 +16,11 @@ PROTOCOL = {
     "paired_comparison": "identical event and driver observations for every backend and baseline",
     "minimum_preliminary_paired_events": PRELIMINARY_PAIRED_EVENTS,
     "minimum_selection_paired_events": SELECTION_PAIRED_EVENTS,
-    "selection": "all task metrics evaluated, no baseline regressions, then lowest winner log loss",
+    "selection": (
+        "task-specific Gold selection requires 25 paired races, all task metrics evaluated, "
+        "no task baseline regressions and race-bootstrap primary-loss improvement "
+        "versus both baselines"
+    ),
     "confirmation": "future independent races required after provisional selection",
 }
 PROTOCOL_SHA256 = hashlib.sha256(

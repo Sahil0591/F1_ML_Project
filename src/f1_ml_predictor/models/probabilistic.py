@@ -5,9 +5,10 @@ import json
 import math
 import subprocess
 import time
+import uuid
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -443,6 +444,80 @@ def select_candidate(
     }
 
 
+def select_task_candidates(
+    comparisons: dict[str, Any],
+    *,
+    tier: BenchmarkTier,
+    eligible_events: int,
+    minimum_events: int = SELECTION_PAIRED_EVENTS,
+) -> dict[str, Any]:
+    """Apply independent task gates to paired Gold comparisons."""
+    primary = {
+        "winner": "winner_log_loss",
+        "podium": "podium_brier",
+        "dnf": "dnf_brier",
+        "finishing_position": "position_mae",
+    }
+    loss_key = {
+        "winner": "log_loss",
+        "podium": "brier_score",
+        "dnf": "brier_score",
+        "finishing_position": "mean_absolute_error",
+    }
+    result = {}
+    for task, uncertainty_key in primary.items():
+        qualified = []
+        reasons = {}
+        observed = []
+        for backend, comparison in comparisons.items():
+            paired = len(set(comparison.get("paired_event_ids", [])))
+            metrics = comparison["metrics"][task]
+            if metrics.get("status") == "evaluated":
+                observed.append((metrics[loss_key[task]], backend))
+            regressions = [item for item in comparison["regressions"] if item["task"] == task]
+            intervals = [
+                comparison["paired_uncertainty"][baseline][uncertainty_key]
+                for baseline in ("heuristic", "logistic")
+            ]
+            if (
+                tier != BenchmarkTier.GOLD
+                or eligible_events < minimum_events
+                or paired < minimum_events
+            ):
+                reasons[backend] = "insufficient paired Gold races"
+            elif metrics.get("status") != "evaluated":
+                reasons[backend] = "task metrics unavailable"
+            elif regressions:
+                reasons[backend] = "task baseline regression"
+            elif any(
+                item.get("status") != "estimated" or item["bootstrap_95_percent_interval"][1] >= 0
+                for item in intervals
+            ):
+                reasons[backend] = "paired improvement uncertain"
+            else:
+                qualified.append((metrics[loss_key[task]], backend))
+        if comparisons:
+            first = next(iter(comparisons.values()))
+            for baseline in ("heuristic", "logistic"):
+                metrics = first["baselines"][baseline][task]
+                if metrics.get("status") == "evaluated":
+                    observed.append((metrics[loss_key[task]], baseline))
+        selected = min(qualified)[1] if qualified else None
+        result[task] = {
+            "status": "provisional" if selected else "no_selection",
+            "selected_backend": selected,
+            "minimum_paired_events": minimum_events,
+            "observed_lowest_loss": (
+                {"model": min(observed)[1], "value": min(observed)[0], "metric": loss_key[task]}
+                if observed
+                else None
+            ),
+            "reasons_by_backend": reasons,
+            "confirmation": "future independent validation required" if selected else None,
+        }
+    return result
+
+
 def _validate_rows(table: pa.Table, tier: BenchmarkTier) -> list[dict[str, Any]]:
     if not isinstance(tier, BenchmarkTier):
         raise ValueError("tier must be explicit")
@@ -609,6 +684,7 @@ def run_probabilistic_backtest(
             reports.append(report)
     comparisons: dict[str, Any] = {}
     selections: dict[str, Any] = {}
+    task_selections: dict[str, Any] = {}
     for kind in sorted({row["cutoff_kind"] for row in predictions}):
         by_backend = {
             backend: [
@@ -689,6 +765,9 @@ def run_probabilistic_backtest(
         selections[kind] = select_candidate(
             kind_comparisons, tier=tier, eligible_events=eligible_events
         )
+        task_selections[kind] = select_task_candidates(
+            kind_comparisons, tier=tier, eligible_events=eligible_events
+        )
     return {
         "status": "evaluated" if predictions else "insufficient_data",
         "tier": tier.value,
@@ -741,6 +820,7 @@ def run_probabilistic_backtest(
             "selected_backend": None,
             "reason": "no evaluable chronological calibration/test cohorts",
         },
+        "task_selection": task_selections,
         "predictions": predictions,
         "distribution_policy": (
             "independent sampled DNF; PL ordering within finishers and retirees; "
@@ -760,6 +840,7 @@ def run_probabilistic_files(
     tier: BenchmarkTier,
     report_path: Path,
     prediction_path: Path,
+    run_id: str | None = None,
     **settings: Any,
 ) -> dict[str, Any]:
     manifest_path = dataset_path.parent / "manifest.json"
@@ -779,6 +860,13 @@ def run_probabilistic_files(
         raise ValueError("rolling predictors require a versioned benchmark manifest")
     if record["rows"] != table.num_rows:
         raise ValueError("benchmark row count mismatch")
+    if (
+        report_path.exists()
+        or prediction_path.exists()
+        or (report_path.parent.exists() and any(report_path.parent.iterdir()))
+    ):
+        raise ValueError("model run artifacts already exist")
+    run_id = run_id or uuid.uuid4().hex
     result = run_probabilistic_backtest(
         table, tier, model_dir=report_path.parent / "fitted", **settings
     )
@@ -795,6 +883,72 @@ def run_probabilistic_files(
     }
     result["benchmark_dataset_sha256"] = record["sha256"]
     result["benchmark_manifest_sha256"] = file_sha256(manifest_path)
+    if manifest.get("selection_eligible") is False:
+        result["primary_accuracy_claim_allowed"] = False
+        result["diagnostic_only"] = True
+        result["selection"] = {
+            kind: {
+                "status": "deferred",
+                "selected_backend": None,
+                "reason": "diagnostic feature ablation is not selection eligible",
+            }
+            for kind in result["comparisons"]
+        }
+        result["task_selection"] = {
+            kind: {
+                task: {
+                    "status": "no_selection",
+                    "selected_backend": None,
+                    "reason": "diagnostic feature ablation is not selection eligible",
+                }
+                for task in ("winner", "podium", "dnf", "finishing_position")
+            }
+            for kind in result["comparisons"]
+        }
+    result["run_metadata"] = {
+        "run_id": run_id,
+        "dataset_version": "dataset-" + result["benchmark_manifest_sha256"],
+        "dataset_manifest_hash": result["benchmark_manifest_sha256"],
+        "gold_race_count": len(manifest["datasets"].get("Gold", {}).get("events", [])),
+        "driver_race_count": manifest["datasets"].get("Gold", {}).get("rows", 0),
+        "feature_schema_version": manifest.get("rolling_version", "benchmark-feature-v2"),
+        "evaluation_protocol_version": PROTOCOL["version"],
+        "model_type": "joint_race_model",
+        "model_parameters": {
+            "backends": list(settings.get("backends", BACKENDS)),
+            "min_train_events": settings.get("min_train_events", 2),
+            "draws": settings.get("draws", 4096),
+            "calibration_events": settings.get("calibration_event_count", 1),
+            "diagnostic_ablation": manifest.get("diagnostic_ablation"),
+            "estimator_configurations": {
+                fold["backend"]: fold["configuration"]
+                for fold in result["folds"]
+                if fold.get("configuration") is not None
+            },
+        },
+        "training_cutoff": "per_fold",
+        "folds": [
+            {
+                "event_id": fold["event_id"],
+                "backend": fold["backend"],
+                "test_cutoff": fold["prediction_timestamp"],
+                "training_cutoff": fold.get("calibration_prediction_timestamp"),
+                "fit_label_available_at_max": fold.get("fit_label_availability_max"),
+                "calibration_label_available_at_max": fold.get(
+                    "calibration_label_availability_max"
+                ),
+            }
+            for fold in result["folds"]
+        ],
+        "calibration_method": settings.get("calibration_method", "sigmoid"),
+        "random_seed": settings.get("seed", 42),
+        "dependency_versions": result["libraries"],
+        "CPU_or_GPU": sorted(
+            {fold["device"] for fold in result["folds"] if fold.get("device") is not None}
+        ),
+        "metrics": result["comparisons"],
+        "created_at": datetime.now(UTC).isoformat(),
+    }
     predictions = result.pop("predictions")
     result["prediction_rows"] = len(predictions)
     prediction_path.parent.mkdir(parents=True, exist_ok=True)

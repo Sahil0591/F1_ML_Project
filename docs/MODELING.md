@@ -100,15 +100,16 @@ categorical log loss, Brier score, top-1/top-3 accuracy, marginal calibration bi
 podium and DNF log loss/Brier/calibration, expected-position MAE, ranked probability
 score, and pairwise ranking accuracy among observed positions.
 
-Selection is separate for each named cutoff. The frozen
-[Gold evaluation protocol](EVALUATION_PROTOCOL_V1.md) requires 15 distinct paired
-Gold test races for preliminary comparison and at least 25 eligible Gold races
-with 25 distinct paired outer test races for selection, evaluated metrics for every
-task, and no recorded regression
-against either baseline in winner log loss/Brier/top-N accuracy, podium/DNF log
-loss/Brier, or position MAE. Missing comparison metrics also block selection.
-Among passing candidates, lowest winner log loss wins. This strict default can
-retain deferred selection; all regressions remain visible for later review.
+Selection is separate for each named cutoff and task. The current
+[Gold evaluation protocol v2](EVALUATION_PROTOCOL_V2.md) requires 15 distinct
+paired Gold test races for preliminary comparison, and 25 eligible and paired
+races for provisional task selection. Each task needs evaluated metrics, no
+task-specific baseline regression, and a race-bootstrap primary-loss improvement
+whose 95% interval excludes zero against both baselines. Winner, podium, binary
+DNF and finishing position can name different backends or `no_selection`.
+Earlier results still follow the frozen [v1 protocol](EVALUATION_PROTOCOL_V1.md).
+The legacy all-task `selection` field remains for comparison with old reports;
+`task_selection` is the current task-level decision.
 
 A selected configuration is provisional. Choosing it on outer comparison scores
 does not make those scores an unbiased estimate of the selected model's accuracy.
@@ -118,14 +119,17 @@ no fitted model, and no selected backend.
 
 ## Artifacts and provenance
 
-Hardware reports go to `models/experiments/hardware.json`. Tier comparison reports
-go to `models/experiments/<tier>/comparison.json`; fitted fold models go to its
-`fitted` directory. Prediction Parquet goes to
-`data/predictions/probabilistic/<tier>.parquet`. All remain ignored by git.
+Hardware reports go to `models/experiments/hardware.json`. New tier comparison
+reports go to `models/experiments/<tier>/dataset-<manifest hash>/runs/<run_id>/comparison.json`;
+fitted fold models sit under that run. Matching prediction Parquet goes to
+`data/predictions/probabilistic/dataset-<manifest hash>/runs/<run_id>/<tier>.parquet`.
+All generated artifacts remain ignored by git. Each benchmark has immutable
+`versions/dataset-<full manifest SHA-256>/` copies of its manifest, coverage and
+tier Parquet bytes, plus race status history and a mutable current pointer.
 
 The file evaluator verifies the dataset's declared name, SHA-256, row count,
 predictor list, and coverage hash against the Phase 6 manifest before fitting.
-Reports bind dataset and manifest hashes, prediction and fitted-artifact hashes,
+Reports bind dataset version, run ID, dataset and manifest hashes, prediction and fitted-artifact hashes,
 model-source hashes, git commit, library versions, seed, draw count, fit/calibration
 events and row indices, label-availability maxima, model parameters, calibration
 losses/status, elapsed fit time, and actual CPU/GPU device and fallback reason.
@@ -134,9 +138,11 @@ An estimator's NaN missing-value parameter is serialized as the explicit typed
 marker `{"type": "float", "value": "NaN"}`. Metrics still require finite strict
 JSON values; this encoding applies only to backend configuration.
 
-The first eight-race Gold Core evaluation and observation counts are recorded in
-[Gold workflow](GOLD_WORKFLOW.md). Four CPU backends completed the same five paired
-test races. Selection remains deferred, with no validated championship model.
+The first eight-race Gold Core evaluation is a historical checkpoint recorded in
+[Gold workflow](GOLD_WORKFLOW.md). The current 95-race comparison has 92 paired
+outer test races; the separate audited binary DNF comparison has 26. Every task
+still records `no_selection`. See [project plan](PROJECT_PLAN.md) for current
+metrics, feature coverage, calibration and development prediction status.
 
 ## GPU detection and measured policy
 

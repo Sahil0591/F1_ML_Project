@@ -2,12 +2,14 @@
 
 import argparse
 import json
+import uuid
 from dataclasses import asdict
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-from f1_ml_predictor.benchmarks.builder import build_benchmarks, file_sha256
+from f1_ml_predictor.benchmarks.builder import build_benchmarks
 from f1_ml_predictor.benchmarks.rolling import build_gold_rolling
+from f1_ml_predictor.benchmarks.versioning import archive_benchmark
 from f1_ml_predictor.features.manifest import load_feature_request
 from f1_ml_predictor.features.snapshot import build_snapshot
 from f1_ml_predictor.features.storage import persist_snapshot
@@ -22,6 +24,7 @@ from f1_ml_predictor.ingestion.enrichment import (
 from f1_ml_predictor.ingestion.jolpica import IngestReport, JolpicaSeasonIngestor
 from f1_ml_predictor.models.backtest import run_backtest_files
 from f1_ml_predictor.models.boosting import BACKENDS
+from f1_ml_predictor.models.development import publish_development_fold
 from f1_ml_predictor.models.hardware import inspect_hardware
 from f1_ml_predictor.models.probabilistic import run_probabilistic_files
 from f1_ml_predictor.paths import StoragePaths
@@ -162,6 +165,16 @@ def main() -> None:
     stronger.add_argument("--device", choices=["cpu", "auto", "cuda"], default="auto")
     stronger.add_argument("--root", type=Path, default=Path.cwd())
     stronger.add_argument("--benchmark-dir", type=Path)
+    development = subcommands.add_parser(
+        "publish-development", help="Publish one label-free historical outer-fold prediction"
+    )
+    development.add_argument("report", type=Path)
+    development.add_argument("predictions", type=Path)
+    development.add_argument("benchmark_dir", type=Path)
+    development.add_argument("--backend", choices=BACKENDS, required=True)
+    development.add_argument("--event-id")
+    development.add_argument("--output", type=Path)
+    development.add_argument("--root", type=Path, default=Path.cwd())
     args = parser.parse_args()
     paths = StoragePaths(getattr(args, "root", Path.cwd()))
     report: IngestReport | EnrichmentReport
@@ -236,14 +249,36 @@ def main() -> None:
             print(f"backends: {list(result['backends'])}")
             print(f"path: {output}")
             return
+        if args.command == "publish-development":
+            metadata = json.loads(args.report.read_text(encoding="utf-8"))["run_metadata"]
+            output = args.output or (
+                paths.predictions
+                / "development"
+                / metadata["dataset_version"]
+                / metadata["run_id"]
+                / f"{args.backend}.parquet"
+            )
+            publication = publish_development_fold(
+                args.report,
+                args.predictions,
+                args.benchmark_dir,
+                output,
+                backend=args.backend,
+                event_id=args.event_id,
+            )
+            print(f"status: {publication['status']}")
+            print(f"event: {publication['historical_heldout_event']}")
+            print(f"path: {output}")
+            return
         if args.command == "compare-models":
             tier = BenchmarkTier(args.tier)
             benchmark_dir = args.benchmark_dir or paths.benchmarks
-            cohort = (
-                Path("dataset-" + file_sha256(benchmark_dir / "manifest.json")[:16])
-                if args.benchmark_dir is not None
-                else Path()
-            )
+            benchmark_snapshot = archive_benchmark(benchmark_dir)
+            if benchmark_snapshot is None:
+                raise ValueError("benchmark manifest is missing")
+            benchmark_dir = benchmark_snapshot["path"]
+            cohort = Path(benchmark_snapshot["dataset_version"])
+            run_id = uuid.uuid4().hex
             hardware_path = paths.models / "experiments" / "hardware.json"
             hardware_report = (
                 json.loads(hardware_path.read_text(encoding="utf-8"))
@@ -251,13 +286,25 @@ def main() -> None:
                 else None
             )
             report_path = (
-                paths.models / "experiments" / tier.value.lower() / cohort / "comparison.json"
+                paths.models
+                / "experiments"
+                / tier.value.lower()
+                / cohort
+                / "runs"
+                / run_id
+                / "comparison.json"
             )
             result = run_probabilistic_files(
                 benchmark_dir / f"{tier.value.lower()}.parquet",
                 tier,
                 report_path,
-                paths.predictions / "probabilistic" / cohort / f"{tier.value.lower()}.parquet",
+                paths.predictions
+                / "probabilistic"
+                / cohort
+                / "runs"
+                / run_id
+                / f"{tier.value.lower()}.parquet",
+                run_id=run_id,
                 backends=tuple(args.backends),
                 min_train_events=args.min_train_events,
                 seed=args.seed,
@@ -288,22 +335,35 @@ def main() -> None:
         if args.command == "backtest":
             tier = BenchmarkTier(args.tier)
             benchmark_dir = args.benchmark_dir or paths.benchmarks
-            cohort = (
-                Path("dataset-" + file_sha256(benchmark_dir / "manifest.json")[:16])
-                if args.benchmark_dir is not None
-                else Path()
+            benchmark_snapshot = archive_benchmark(benchmark_dir)
+            if benchmark_snapshot is None:
+                raise ValueError("benchmark manifest is missing")
+            benchmark_dir = benchmark_snapshot["path"]
+            cohort = Path(benchmark_snapshot["dataset_version"])
+            run_id = uuid.uuid4().hex
+            baseline_report = (
+                paths.models / "backtests" / cohort / "runs" / run_id / f"{tier.value.lower()}.json"
+            )
+            baseline_predictions = (
+                paths.predictions
+                / "backtests"
+                / cohort
+                / "runs"
+                / run_id
+                / f"{tier.value.lower()}.parquet"
             )
             result = run_backtest_files(
                 benchmark_dir / f"{tier.value.lower()}.parquet",
                 tier,
-                paths.models / "backtests" / cohort / f"{tier.value.lower()}.json",
-                paths.predictions / "backtests" / cohort / f"{tier.value.lower()}.parquet",
+                baseline_report,
+                baseline_predictions,
                 min_train_events=args.min_train_events,
                 seed=args.seed,
+                run_id=run_id,
             )
             print(f"status: {result['status']}")
             print(f"prediction_rows: {result['prediction_rows']}")
-            print(f"metrics: {paths.models / 'backtests' / cohort / f'{tier.value.lower()}.json'}")
+            print(f"metrics: {baseline_report}")
             return
         if args.command == "build-snapshot":
             inputs, cutoff = load_feature_request(args.manifest, paths.root)

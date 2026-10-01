@@ -11,6 +11,7 @@ from f1_ml_predictor.trust.candidates import FIA_ROOT, _inspect_registry, discov
 
 def test_legacy_registry_resolves_exact_event_and_rejects_other_pdf_event() -> None:
     item = {"season": 2023, "round": 1, "event_name": "Bahrain Grand Prix"}
+
     def row(event: str, title: str, stamp: str) -> str:
         return (
             '<li class="document-row"><a href="/sites/default/files/decision-document/'

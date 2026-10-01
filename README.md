@@ -103,8 +103,13 @@ fixture checks are not performance claims.
 XGBoost, LightGBM, and CatBoost configurations on chronological race folds. An earlier
 race calibrates DNF probabilities and race-order temperature. Winner, podium, DNF,
 and finish distributions come from one seeded joint simulation. Paired baseline
-comparisons record regressions; model selection remains deferred when coverage is
-insufficient. Current Gold still returns zero predictions and no accuracy metrics.
+comparisons record regressions and race-bootstrap intervals. The current 95-race
+Gold benchmark supports 92 paired outer test races. Audited binary DNF is a
+separate 29-race version. Each task currently remains `no_selection` because of
+baseline regressions or uncertain improvement, and validated forecasts stay gated.
+Benchmark manifests and data are copied to immutable `versions/dataset-<hash>`
+directories, while each model run gets a unique run ID. `publish-development`
+exports a coherent, label-free historical outer-fold race as `development_only`.
 
 Optional backends can be installed with `pip install -e ".[xgboost,catboost,lightgbm]"`.
 `model-hardware --workload-rows 32000` checks actual driver/runtime/library support and

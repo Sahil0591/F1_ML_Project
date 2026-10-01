@@ -1,6 +1,65 @@
 # F1 ML Predictor Project Plan
 
-Status: Phases 1 through 7 complete; Phase 8 infrastructure and Gold Core evaluation continue. Historical Gold coverage is 29 races, 594 driver-race observations and 24 unique drivers. The frozen four-backend comparison has 26 identical paired test races. A separate retrospective binary DNF audit has 547 known labels, including 67 DNFs; DNS, DSQ and disagreements stay unknown. The Windows prospective task remains disabled after terminal popups; a windowless replacement is prepared and requires a local Windows credential for signed-out network access. Manual collection remains available. Independent Phase 9 simulation infrastructure is delivered. The versioned evaluation protocol's 25 paired-race floor is met, but material baseline regressions remain, so the selected model is `no_selection`. Validated championship forecasts and model explanations remain gated by race model selection and independent confirmation. Updated 2026-09-30.
+Status: Phases 1 through 7 and Phase 9 simulation infrastructure are delivered. Historical Gold now contains 95 post-qualifying races and 1,927 driver-race observations. The current rolling benchmark has 92 identical paired outer test races across four boosting backends; its binary DNF labels are unknown. The separate audited binary DNF benchmark retains 29 races, with 547 known labels and 26 paired test races. Task-specific model selection remains `no_selection` because of baseline regressions or uncertain paired improvement. Historical Gold eligibility remains open to evidence-based upgrades; each experiment binds an immutable benchmark version. A historical held-out race has a `development_only` prediction artifact. Validated race and championship forecasts still require prospective independent confirmation. The Windows prospective task remains disabled pending a local credential for signed-out network access; manual collection remains available. Updated 2026-09-30.
+
+## Evolving Gold and reproducible model runs
+
+The Gold registry is not permanently frozen. Before and after a benchmark rebuild,
+the writer verifies and copies the exact manifest, coverage report and tier Parquet
+bytes into `data/benchmarks/<benchmark>/versions/dataset-<full manifest SHA-256>/`.
+Each version has a race-level `race_status.json` with prior status and evidence
+references. An `excluded_to_gold` transition is explicit when an excluded race gains
+Gold evidence. The mutable `versions/current.json` pointer identifies the latest
+snapshot; earlier versions and their eligibility decisions stay intact. A new
+version is staged and verified before its directory is published, so an
+interrupted copy cannot expose a partial benchmark as a valid model input.
+
+Every CLI baseline or probabilistic comparison reads a verified snapshot and writes
+to a unique `runs/<run_id>` directory. The report records dataset version and
+manifest hash, Gold and driver-race counts, feature and evaluation protocol versions,
+model settings, per-fold fit/calibration cutoffs, random seed, dependency versions,
+actual CPU/GPU device, metrics and creation time. Old run files are never reused.
+The original 95-race rolling benchmark remains the input for the current comparison;
+future Gold upgrades create a new version and a new run. Historical source and
+prediction hashes remain in the run report. A newly selected version must be frozen
+before prospective testing; future outcomes cannot tune that version.
+
+The current 95-race version has manifest SHA-256
+`6d854400f69fc0c0724626d26544124dc4705b6653e9b1377670c41acedebd94`.
+Its [version-2 comparison](../models/experiments/gold/dataset-6d854400f69fc0c0724626d26544124dc4705b6653e9b1377670c41acedebd94/runs/a0fb69d0ee4c47199b4405551484f79d/comparison.json)
+has 92 paired races. Logistic has the lowest observed winner log loss (1.363),
+podium log loss (0.250) and finish MAE (2.713). CatBoost, the strongest boosting
+backend on those tasks, records 1.445, 0.253 and 3.045 respectively. The 29-race
+[audited DNF comparison](../models/experiments/gold/dataset-be0704f0618d608743ce3bf89adf033305a52b43b421d6d6fdcefaa912caae0f/runs/6216cd9ee42d452993c1d80e6f6f7249/comparison.json)
+has 26 paired races and 494 known DNF test labels. Logistic has the lowest DNF
+Brier score (0.1114); differences from boosting are small and paired intervals
+overlap zero. CatBoost has the lowest observed winner loss on that smaller version,
+but a top-1 baseline regression prevents provisional winner selection. The separate
+versions must not be pooled into one reported test score.
+
+Seven cumulative [feature ablations](../models/experiments/gold/ablations/df1c47d8ed4dc1a7b55c85e9617633c205521e96f5d291ca5cb68d0ffb0d5ee6/summary.json)
+use the same 92 outer races and preserve missingness. Qualifying position is present
+for 1,905 of 1,927 rows; grid, constructor, championship, practice and weather
+predictors are absent throughout this version. Rolling finish windows are present
+for 1,163, 884 and 457 rows at lengths 3, 5 and 10. The recent-form group improves
+CatBoost rank MAE versus qualifying only by about 0.05 with a race-bootstrap 95%
+interval of about 0.02 to 0.09 lower error, while its winner-loss change remains
+uncertain. Teammate features give a small HistGradientBoosting rank improvement.
+Groups with no coverage yield identical predictions. These are exploratory feature
+diagnostics, not a protocol change selected on final held-out races.
+
+The [95-race reliability audit](../models/experiments/gold/dataset-6d854400f69fc0c0724626d26544124dc4705b6653e9b1377670c41acedebd94/runs/a0fb69d0ee4c47199b4405551484f79d/calibration_audit_v2.json)
+keeps podium tail failures visible. The [paired DNF calibration audit](../models/experiments/gold/calibration/sigmoid-vs-isotonic-29.json)
+tests sigmoid and isotonic with six earlier calibration races and identical outer
+folds. Isotonic fits fewer folds; its Brier differences have intervals spanning
+zero, so there is no calibration switch. The existing Gumbel/Plackett-Luce joint
+sampler supplies winner, podium and finishing marginals from complete orders while
+DNF is a separate probability. A published [development-only held-out prediction](../data/predictions/development/dataset-be0704f0618d608743ce3bf89adf033305a52b43b421d6d6fdcefaa912caae0f/6216cd9ee42d452993c1d80e6f6f7249/catboost.parquet)
+for 2026 round 15 has no outcome columns and passes probability coherence and
+roster checks. It is retrospective and does not count as prospective validation.
+CatBoost, LightGBM and XGBoost ranking objectives remain candidates for a future
+version only if they beat the current rank baseline on the same chronological
+race groups without using later outcomes.
 
 ## Product and prediction contract
 
@@ -64,8 +123,8 @@ Commit subjects describe the delivered engineering capability. Commit bodies exp
 ## Remaining roadmap policy
 
 Run two data tracks concurrently. Expand the historical candidate pool by direct
-publication/version evidence and audit strongest candidates first. Target at
-least 20 Gold Core races, preferably 25 to 40. Gold Core can
+publication/version evidence and audit strongest excluded candidates first. Gold
+eligibility may rise beyond the current 95-race version. Gold Core can
 omit unverifiable optional inputs. Gold Full can grow through richer prospective
 captures and is not a prerequisite for baseline evaluation. Expand the initial
 eight Core races for the post-qualifying cohort without relaxing evidence

@@ -3,9 +3,10 @@
 import hashlib
 import json
 import math
+import uuid
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -486,6 +487,12 @@ def run_backtest(
                 "cutoff_kind": fold.cutoff_kind,
                 "prediction_timestamp": fold.prediction_timestamp.isoformat(),
                 "train_events": list(fold.train_events),
+                "training_label_available_at_max": max(
+                    rows[index]["label_available_at"] for index in fold.train_indices
+                ).isoformat(),
+                "training_cutoff": max(
+                    rows[index]["label_available_at"] for index in fold.train_indices
+                ).isoformat(),
                 "test_rows": len(fold.test_indices),
                 "model_status": {**task_status, "position": position_status},
             }
@@ -570,6 +577,7 @@ def run_backtest_files(
     *,
     min_train_events: int = 2,
     seed: int = 42,
+    run_id: str | None = None,
 ) -> dict[str, Any]:
     table = pq.read_table(dataset_path)
     manifest_path = dataset_path.parent / "manifest.json"
@@ -585,18 +593,43 @@ def run_backtest_files(
         manifest.get("version") != 2 or manifest.get("rolling_version") != "gold-rolling-v1"
     ):
         raise ValueError("rolling predictors require a versioned benchmark manifest")
+    if report_path.exists() or prediction_path.exists():
+        raise ValueError("baseline run artifacts already exist")
     result = run_backtest(table, tier, min_train_events=min_train_events, seed=seed)
     result["benchmark_dataset_sha256"] = file_sha256(dataset_path)
     result["benchmark_manifest_sha256"] = file_sha256(manifest_path)
+    result["run_metadata"] = {
+        "run_id": run_id or uuid.uuid4().hex,
+        "dataset_version": "dataset-" + result["benchmark_manifest_sha256"],
+        "dataset_manifest_hash": result["benchmark_manifest_sha256"],
+        "gold_race_count": len(manifest["datasets"].get("Gold", {}).get("events", [])),
+        "driver_race_count": manifest["datasets"].get("Gold", {}).get("rows", 0),
+        "feature_schema_version": manifest.get("rolling_version", "benchmark-feature-v2"),
+        "evaluation_protocol_version": PROTOCOL["version"],
+        "model_type": "heuristic_logistic_ridge_baselines",
+        "model_parameters": {
+            "estimators": result.get("estimators"),
+            "min_train_events": min_train_events,
+        },
+        "training_cutoff": "per_fold",
+        "folds": result["folds"],
+        "calibration_method": "none",
+        "random_seed": seed,
+        "dependency_versions": {"scikit-learn": sklearn.__version__, "numpy": np.__version__},
+        "CPU_or_GPU": ["cpu"],
+        "metrics": result["metrics"],
+        "created_at": datetime.now(UTC).isoformat(),
+    }
     report_path.parent.mkdir(parents=True, exist_ok=True)
     prediction_path.parent.mkdir(parents=True, exist_ok=True)
     predictions = result.pop("predictions")
     result["prediction_rows"] = len(predictions)
+    pq.write_table(pa.Table.from_pylist(predictions, schema=_OUTPUT_SCHEMA), prediction_path)
+    result["prediction_sha256"] = file_sha256(prediction_path)
     report_path.write_text(
         json.dumps(result, sort_keys=True, separators=(",", ":"), allow_nan=False),
         encoding="utf-8",
     )
-    pq.write_table(pa.Table.from_pylist(predictions, schema=_OUTPUT_SCHEMA), prediction_path)
     return result
 
 

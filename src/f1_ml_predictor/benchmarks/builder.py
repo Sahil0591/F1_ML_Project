@@ -410,6 +410,9 @@ def _assemble_rows(
 
 def build_benchmarks(root: Path, output: Path, catalog_path: Path | None = None) -> dict[str, Any]:
     """Write tier Parquet files, an inclusion manifest and race coverage report."""
+    from f1_ml_predictor.benchmarks.versioning import archive_benchmark
+
+    archive_benchmark(output)
     races = _load_catalog(catalog_path) if catalog_path else discover_local_races(root)
     outputs: dict[BenchmarkTier, list[dict[str, Any]]] = {tier: [] for tier in _TIERS}
     coverage = []
@@ -551,4 +554,5 @@ def build_benchmarks(root: Path, output: Path, catalog_path: Path | None = None)
         "datasets": datasets,
     }
     (output / "manifest.json").write_bytes(_canonical_json(manifest))
+    archive_benchmark(output)
     return report
