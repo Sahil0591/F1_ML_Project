@@ -142,11 +142,13 @@ def scoring_gate_notes(ledger: ScoringLedger, event: EventId, cutoff: datetime) 
         latest = max(versions, key=lambda version: version.effective_at)
         if (
             not latest.complete
-            or latest.revision_status not in {"audited", "revised"}
+            or latest.revision_status not in {"audited", "revised", "disputed"}
             or any(entry.total_points is None for entry in latest.entries)
         ):
             notes.append(f"round {number} points are {latest.revision_status} at the cutoff")
             break
+        if latest.revision_status == "disputed":
+            notes.append(f"round {number} uses published points still under appeal")
     return notes
 
 

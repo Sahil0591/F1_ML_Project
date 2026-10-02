@@ -21,7 +21,7 @@ _SHA = re.compile(r"[0-9a-f]{64}\Z")
 _COMPONENTS = ("race_points", "sprint_points", "bonus_points", "adjustment_points")
 _STATUSES = {"audited", "revised", "unknown", "disputed"}
 _WINDOWS = (3, 5, 10)
-SCORING_LEDGER_VERSION = "fia-timeline-v3"
+SCORING_LEDGER_VERSION = "fia-timeline-v4"
 
 
 def _object(value: Any, fields: set[str], label: str) -> dict[str, Any]:
@@ -139,13 +139,16 @@ class ScoringLedger:
     ) -> dict[str, dict[str, float | str | None]]:
         """Return features for a roster, or a missing reason for each field.
 
-        All earlier rounds must have a complete, audited version effective before
-        the cutoff. A later correction replaces the earlier entire event version.
+        All earlier rounds must have a complete version effective before the cutoff.
+        A later correction replaces the earlier entire event version. A round under
+        appeal contributes its published totals and is named in ``points_status``;
+        unknown values still leave every field missing.
         """
         require_utc(cutoff, "prediction cutoff")
         rule = self.rule_for(event)
         reasons = "scoring_rule_missing_or_uncertain"
         selected: list[EventVersion] = []
+        disputed: list[str] = []
         if rule is not None and rule.revision_status in {"audited", "revised"}:
             reasons = "audited_prior_event_missing_or_uncertain"
             for number in range(1, event.round):
@@ -162,10 +165,16 @@ class ScoringLedger:
                 if not versions:
                     break
                 latest = max(versions, key=lambda version: version.effective_at)
-                if not latest.complete or latest.revision_status not in {"audited", "revised"}:
+                if not latest.complete or latest.revision_status not in {
+                    "audited",
+                    "revised",
+                    "disputed",
+                }:
                     break
                 if any(entry.total_points is None for entry in latest.entries):
                     break
+                if latest.revision_status == "disputed":
+                    disputed.append(latest.event.partition())
                 selected.append(latest)
             else:
                 reasons = ""
@@ -184,8 +193,10 @@ class ScoringLedger:
         )
         if reasons:
             return {
-                driver: {**dict.fromkeys(names), "missing_reason": reasons} for driver in drivers
+                driver: {**dict.fromkeys(names), "missing_reason": reasons, "points_status": None}
+                for driver in drivers
             }
+        points_status = "published_pending_appeal:" + ",".join(disputed) if disputed else "audited"
         driver_totals: dict[str, float] = dict.fromkeys(drivers, 0.0)
         constructor_totals: dict[str, float] = dict.fromkeys(drivers.values(), 0.0)
         driver_places: dict[str, dict[int, int]] = defaultdict(dict)
@@ -322,6 +333,7 @@ class ScoringLedger:
                     for window in _WINDOWS
                 },
                 "missing_reason": None,
+                "points_status": points_status,
                 "constructor_missing_reason": (
                     None if constructor_contested else "constructor_championship_not_contested"
                 ),

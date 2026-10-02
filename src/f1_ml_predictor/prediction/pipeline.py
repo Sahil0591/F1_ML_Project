@@ -521,6 +521,16 @@ def predict_next_race(
         roster=roster,
         weekend=weekend_values,
     )
+    appeals = {
+        str(item["points_status"]).removeprefix("published_pending_appeal:")
+        for item in reasons.values()
+        if str(item.get("points_status")).startswith("published_pending_appeal:")
+    }
+    for events_under_appeal in sorted(appeals):
+        notes.append(
+            "championship point features use published points still under appeal for "
+            + events_under_appeal
+        )
     common: dict[str, Any] = {
         "cutoff": cutoff,
         "seed": seed,

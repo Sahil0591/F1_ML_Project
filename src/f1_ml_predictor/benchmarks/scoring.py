@@ -221,6 +221,7 @@ def build_gold_scoring(
                         "feature_available_at": updated["feature_timestamp"].isoformat(),
                         "scoring_ledger_sha256": ledger.sha256,
                         "source_event_versions": history,
+                        "points_status": values["points_status"],
                         "missing_reasons": missing,
                     }
                 )

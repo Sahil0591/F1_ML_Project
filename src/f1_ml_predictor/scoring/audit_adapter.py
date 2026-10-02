@@ -19,6 +19,7 @@ from f1_ml_predictor.scoring.ledger import (
 )
 
 _SHA = re.compile(r"[0-9a-f]{64}\Z")
+_SEASON_ROUND_LIMIT = 99
 _REDUCED = (
     "race_reduced_col1_2laps_to_lt25pct",
     "race_reduced_col2_25_to_lt50pct",
@@ -98,11 +99,15 @@ def _rules(
                 root, f"data/raw/fia_audit/objects/{source['sha256']}.pdf", source["sha256"]
             )
             sources.append({"reference": source["url"], "sha256": source["sha256"]})
+        # The regulation is in force for the whole season, so the rule also covers
+        # rounds that have no published points yet, including the next race.
+        if not str(regime["effective_to"]).startswith(f"{season}-"):
+            raise ValueError("season scoring regulation does not run to the season end")
         by_season[season] = (
             ScoringRule(
                 season=season,
                 first_round=1,
-                last_round=max(row["round"] for row in intervals),
+                last_round=_SEASON_ROUND_LIMIT,
                 race_points=race,
                 sprint_points=sprint,
                 reduced_race_points=reduced,

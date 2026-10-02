@@ -20,7 +20,7 @@ from f1_ml_predictor.benchmarks.scoring import (
 )
 from f1_ml_predictor.benchmarks.versioning import archive_benchmark
 from f1_ml_predictor.identifiers import EventId
-from f1_ml_predictor.scoring.ledger import _digest, load_scoring_ledger
+from f1_ml_predictor.scoring.ledger import ScoringLedger, _digest, load_scoring_ledger
 
 SOURCE = {"reference": "synthetic:fixture", "sha256": "a" * 64}
 
@@ -232,17 +232,26 @@ def test_midseason_rule_change_and_uncertain_revision(tmp_path: Path) -> None:
     ledger = _load(tmp_path, rules, events)
     assert ledger.rule_for(EventId(2021, 1)).first_round == 1
     assert ledger.rule_for(EventId(2021, 2)).first_round == 2
-    events["events"][2]["revision_status"] = "disputed"
-    for entry in events["events"][2]["entries"]:
-        entry["revision_status"] = "disputed"
-        entry.update(
-            _hashed({key: value for key, value in entry.items() if key != "evidence_hash"})
+
+    def mark(status: str) -> ScoringLedger:
+        events["events"][2]["revision_status"] = status
+        for entry in events["events"][2]["entries"]:
+            entry["revision_status"] = status
+            entry.update(
+                _hashed({key: value for key, value in entry.items() if key != "evidence_hash"})
+            )
+        events["events"][2] = _hashed(
+            {key: value for key, value in events["events"][2].items() if key != "evidence_hash"}
         )
-    events["events"][2] = _hashed(
-        {key: value for key, value in events["events"][2].items() if key != "evidence_hash"}
+        return _load(tmp_path, rules, events)
+
+    appealed = mark("disputed").standings_before(
+        EventId(2021, 3), datetime(2021, 1, 16, tzinfo=UTC), {"alpha": "blue"}
     )
-    ledger = _load(tmp_path, rules, events)
-    missing = ledger.standings_before(
+    assert appealed["alpha"]["driver_points_before_race"] == 26.0
+    assert appealed["alpha"]["missing_reason"] is None
+    assert appealed["alpha"]["points_status"] == "published_pending_appeal:season=2021/round=02"
+    missing = mark("unknown").standings_before(
         EventId(2021, 3), datetime(2021, 1, 16, tzinfo=UTC), {"alpha": "blue"}
     )
     assert missing["alpha"]["driver_points_before_race"] is None
@@ -410,6 +419,7 @@ def _native_fixture(tmp_path: Path) -> tuple[Path, Path]:
         "season": 2022,
         "constructor_scoring": "sum of both cars",
         "fastest_lap_rule": "No fastest-lap point",
+        "effective_to": "2022-12-31",
         "evidence_source": {
             "first_issue_in_force": regulation_source,
             "last_issue_checked": regulation_source,
@@ -547,9 +557,7 @@ def test_native_conflicting_classification_withholds_countback(tmp_path: Path) -
 @pytest.mark.parametrize(
     "damage", ["document_hash", "collection_hash", "missing_driver", "disputed"]
 )
-def test_native_audit_rejects_damage_and_keeps_disputes_missing(
-    tmp_path: Path, damage: str
-) -> None:
+def test_native_audit_rejects_damage_and_flags_disputes(tmp_path: Path, damage: str) -> None:
     rules_path, evidence_path = _native_fixture(tmp_path)
     evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
     if damage == "document_hash":
@@ -563,12 +571,14 @@ def test_native_audit_rejects_damage_and_keeps_disputes_missing(
     evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
     if damage == "disputed":
         ledger = load_scoring_ledger(rules_path, evidence_path)
-        ledger = replace(ledger, rules={2022: (replace(ledger.rules[2022][0], last_round=2),)})
+        # The season rule reaches rounds with no published points, such as the next race.
+        assert ledger.rule_for(EventId(2022, 3)) is not None
         row = ledger.standings_before(
             EventId(2022, 2), datetime(2022, 1, 9, tzinfo=UTC), {"alpha": "red"}
         )["alpha"]
-        assert row["driver_points_before_race"] is None
-        assert row["missing_reason"] == "audited_prior_event_missing_or_uncertain"
+        assert row["driver_points_before_race"] is not None
+        assert row["missing_reason"] is None
+        assert row["points_status"] == "published_pending_appeal:season=2022/round=01"
     else:
         with pytest.raises(ValueError):
             load_scoring_ledger(rules_path, evidence_path)

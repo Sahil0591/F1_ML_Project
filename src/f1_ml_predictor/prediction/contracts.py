@@ -368,6 +368,7 @@ def history_features(
         values[driver] = record
         reasons[driver] = {
             "missing_reasons": dict(sorted(missing.items())),
+            "points_status": points.get("points_status"),
             "rolling_windows": proofs,
         }
     if standings and next(iter(standings.values())).get("missing_reason") is None:
