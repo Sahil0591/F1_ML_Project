@@ -427,6 +427,18 @@ def test_pre_weekend_pipeline_is_coherent_ood_aware_and_development_only(workspa
     race = json.loads((run / "race_distribution.json").read_text(encoding="utf-8"))
     _check_race(race["drivers"])
     assert race["validation_status"] == "development_only"
+    drivers = race["drivers"]
+    # Clean-race positions are a permutation average with no retirements trailing.
+    assert sum(item["clean_expected_position"] for item in drivers) == pytest.approx(
+        sum(range(1, len(drivers) + 1))
+    )
+    favourite = max(drivers, key=lambda item: item["winner_probability"])
+    assert favourite["clean_expected_position"] < favourite["expected_position"]
+    order = sorted(drivers, key=lambda item: item["predicted_position"])
+    assert [item["predicted_position"] for item in order] == list(range(1, len(drivers) + 1))
+    assert [item["clean_expected_position"] for item in order] == sorted(
+        item["clean_expected_position"] for item in drivers
+    )
     championship = json.loads((run / "championship.json").read_text(encoding="utf-8"))
     assert championship["validation_status"] == "development_only"
     sessions = [(item["event_id"], item["session"]) for item in championship["sessions"]]

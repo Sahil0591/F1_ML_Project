@@ -191,13 +191,29 @@ class ContractModel:
         return result
 
     def distribution(
-        self, rows: list[dict[str, Any]], components: list[Any], *, draws: int, seed: int
+        self,
+        rows: list[dict[str, Any]],
+        components: list[Any],
+        *,
+        draws: int,
+        seed: int,
+        clean: bool = False,
     ) -> dict[str, Any]:
         dnf = self.dnf.predict(rows)
         rng = np.random.default_rng(seed)
         order, retired = sample_mixture(components, dnf, draws=draws, rng=rng)
         values = marginals(order, retired)
         values["dnf_model"] = dnf
+        if clean:
+            # Same seed consumes the same random stream, so these are the same draws
+            # with every retirement switched off: the order of a race nobody retires from.
+            no_dnf = np.zeros_like(dnf)
+            clean_order, clean_retired = sample_mixture(
+                components, no_dnf, draws=draws, rng=np.random.default_rng(seed)
+            )
+            clean_values = marginals(clean_order, clean_retired)
+            values["clean_finish"] = clean_values["finish"]
+            values["clean_expected"] = clean_values["expected"]
         return values
 
 
@@ -226,6 +242,18 @@ def _race_table(
                 "winner_draws": int(round(values["winner"][index] * draws)),
             }
         )
+        if "clean_expected" in values:
+            table[-1]["clean_expected_position"] = float(values["clean_expected"][index])
+            table[-1]["clean_most_likely_position"] = (
+                int(np.argmax(values["clean_finish"][index])) + 1
+            )
+    if "clean_expected" in values:
+        # One P1..Pn order: clean-race expectation, ties broken by win probability.
+        ranked = sorted(
+            table, key=lambda item: (item["clean_expected_position"], -item["winner_probability"])
+        )
+        for position, item in enumerate(ranked, 1):
+            item["predicted_position"] = position
     _check_race(table)
     return table
 
@@ -554,7 +582,9 @@ def predict_next_race(
             root, history, datasets, "pre_weekend", pre_rows, progress=progress, **common
         )
     unseen = not bool(rows[0]["circuit_seen_before"])
-    final = model.distribution(rows, model.components(rows, unseen), draws=draws, seed=seed)
+    final = model.distribution(
+        rows, model.components(rows, unseen), draws=draws, seed=seed, clean=True
+    )
     race = _race_table(rows, final, draws)
     stages = {
         "uncalibrated": model.distribution(

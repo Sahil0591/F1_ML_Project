@@ -223,7 +223,9 @@ def render_report(
     lines.append(
         f"Small values keep their precision; `0 of {draws} draws` means the event never occurred "
         "in the joint draws. Logistic is the baseline; the experimental column is the best "
-        "single boosting candidate."
+        "single boosting candidate. Expected averages every draw, with retirements placed "
+        "last; clean race is the same draws with no retirements, so it reads as a finishing "
+        "position."
     )
     lines.append("")
     lines += _table(
@@ -234,6 +236,7 @@ def render_report(
             "Podium",
             "DNF",
             "Expected",
+            "Clean race",
             "80% range",
             "Logistic win",
             f"{experimental} win",
@@ -246,6 +249,7 @@ def render_report(
                 probability(item["podium_probability"], draws),
                 probability(item["dnf_model_probability"]),
                 _num(item["expected_position"], 2),
+                _num(item.get("clean_expected_position"), 2),
                 f"P{item['position_interval_80'][0]}-P{item['position_interval_80'][1]}",
                 probability(baselines["logistic"][item["driver_id"]]["winner"]),
                 probability(stages[f"candidate_{experimental}"][item["driver_id"]]["win"], draws),
@@ -254,16 +258,49 @@ def render_report(
         ],
     )
     lines += ["", "## Predicted finishing order", ""]
-    lines.append(
-        "By expected position. Sampled retirements trail finishers, so this is a modelled "
-        "order, not an FIA classification."
-    )
-    lines.append("")
-    for rank, item in enumerate(sorted(race["drivers"], key=lambda x: x["expected_position"]), 1):
+    if all("predicted_position" in item for item in race["drivers"]):
         lines.append(
-            f"{rank}. {item['driver_id']} ({item['constructor_id']}), expected "
-            f"{item['expected_position']:.2f}, most likely P{item['most_likely_position']}"
+            "P1 to P{} by clean-race expected position (the same draws with no retirements). "
+            "This is a modelled order, not an FIA classification; the win and podium "
+            "probabilities above say how likely each place really is.".format(len(race["drivers"]))
         )
+        lines.append("")
+        lines += _table(
+            [
+                "Pos",
+                "Driver",
+                "Team",
+                "Clean race expected",
+                "Clean race most likely",
+                "Expected with retirements",
+                "Win",
+            ],
+            [
+                [
+                    f"P{item['predicted_position']}",
+                    item["driver_id"],
+                    item["constructor_id"],
+                    _num(item["clean_expected_position"], 2),
+                    f"P{item['clean_most_likely_position']}",
+                    _num(item["expected_position"], 2),
+                    probability(item["winner_probability"], draws),
+                ]
+                for item in sorted(race["drivers"], key=lambda x: x["predicted_position"])
+            ],
+        )
+    else:
+        lines.append(
+            "By expected position. Sampled retirements trail finishers, so this is a modelled "
+            "order, not an FIA classification."
+        )
+        lines.append("")
+        for rank, item in enumerate(
+            sorted(race["drivers"], key=lambda x: x["expected_position"]), 1
+        ):
+            lines.append(
+                f"{rank}. {item['driver_id']} ({item['constructor_id']}), expected "
+                f"{item['expected_position']:.2f}, most likely P{item['most_likely_position']}"
+            )
     dnf_eval = manifest["evaluation"]["dnf"]
     dnf_values = {round(item["dnf_model_probability"], 6) for item in race["drivers"]}
     lines += ["", "## DNF", ""]
