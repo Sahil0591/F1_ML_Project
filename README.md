@@ -136,6 +136,26 @@ the post-qualifying contract. Every output is `development_only`, not a validate
 forecast. See [development predictions](docs/DEVELOPMENT_PREDICTIONS.md) and
 [protocol v3](docs/EVALUATION_PROTOCOL_V3.md).
 
+## Web Frontend
+
+```powershell
+.\.venv\Scripts\python.exe -m f1_ml_predictor export-web
+cd web
+npm install
+npm run dev
+```
+
+`export-web` verifies the hashes and probability contracts of every
+cutoff-specific run under `data/predictions/development/next_race/` and writes
+display-ready JSON to `web/public/data/` (index, one file per race and cutoff,
+and one season file). The Vite, React and TypeScript app in `web/` renders the
+P1 to P22 predicted order, race probabilities, the projected Drivers and
+Constructors Championships, actual results from the existing Jolpica ingestion
+and model details. It never computes predictions. `npm run build` writes a static
+site to `web/dist`; `npm run typecheck`, `npm run lint` and `npm run test` are the
+frontend checks. Routes, the artifact flow, derived fields and deployment notes
+are in [web frontend](docs/WEB_FRONTEND.md).
+
 ## Graphify
 
 Graphify is configured through a git post-commit hook. After each commit, the hook updates the local knowledge graph outputs in `graphify-out/`.

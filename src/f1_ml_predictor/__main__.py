@@ -33,6 +33,7 @@ from f1_ml_predictor.paths import StoragePaths
 from f1_ml_predictor.prediction.legacy import predict_next_race_c52b674
 from f1_ml_predictor.prediction.pipeline import predict_next_race
 from f1_ml_predictor.prediction.protocol import CUTOFFS
+from f1_ml_predictor.prediction.web_export import write_export
 from f1_ml_predictor.prediction.workspace import evaluate_cutoffs
 from f1_ml_predictor.sources.jolpica import JolpicaClient
 from f1_ml_predictor.sources.open_meteo import OpenMeteoClient
@@ -225,6 +226,11 @@ def main() -> None:
     cutoff_eval.add_argument("--contracts", choices=CUTOFFS, nargs="+", default=list(CUTOFFS))
     cutoff_eval.add_argument("--seed", type=int, default=42)
     cutoff_eval.add_argument("--root", type=Path, default=Path.cwd())
+    web = subcommands.add_parser(
+        "export-web", help="Export verified development predictions as web app JSON"
+    )
+    web.add_argument("--output", type=Path, help="Defaults to web/public/data")
+    web.add_argument("--root", type=Path, default=Path.cwd())
     args = parser.parse_args()
     paths = StoragePaths(getattr(args, "root", Path.cwd()))
     report: IngestReport | EnrichmentReport
@@ -348,6 +354,9 @@ def main() -> None:
             print(f"event: {prediction['event_id']}")
             print(f"cutoff: {prediction['cutoff_kind']} {prediction['prediction_timestamp_utc']}")
             print(f"path: {prediction['run_dir']}")
+            return
+        if args.command == "export-web":
+            print(json.dumps(write_export(paths.root, args.output), indent=2))
             return
         if args.command == "collection-status":
             print(json.dumps(scheduler_status(paths.root), indent=2))

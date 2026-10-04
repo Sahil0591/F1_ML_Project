@@ -1,6 +1,28 @@
 # F1 ML Predictor Project Plan
 
-Status: Phases 1 through 7 and Phase 9 simulation infrastructure are delivered. Historical Gold now contains 95 post-qualifying races and 1,927 driver-race observations. The audited championship scoring benchmark has 1,621 rows with point-in-time driver and constructor totals; its frozen evaluation has 92 paired outer test races. The separate audited binary DNF benchmark retains 29 races, with 547 known labels and 26 paired test races. Task-specific model selection remains `no_selection` because of baseline regressions or uncertain paired improvement. Historical Gold eligibility remains open to evidence-based upgrades; each experiment binds an immutable benchmark version. A historical held-out race has a `development_only` prediction artifact, and `predict-next-race` publishes `development_only` next-race and season predictions under cutoff-specific protocol v3, where the calibrated ensemble is the development primary at every cutoff and winner and podium remain `no_selection`. Validated race and championship forecasts still require prospective independent confirmation. The Windows prospective task remains disabled pending a local credential for signed-out network access; manual collection remains available. Updated 2026-10-01.
+Status: Phases 1 through 7 and Phase 9 simulation infrastructure are delivered. Historical Gold now contains 95 post-qualifying races and 1,927 driver-race observations. The audited championship scoring benchmark has 1,621 rows with point-in-time driver and constructor totals; its frozen evaluation has 92 paired outer test races. The separate audited binary DNF benchmark retains 29 races, with 547 known labels and 26 paired test races. Task-specific model selection remains `no_selection` because of baseline regressions or uncertain paired improvement. Historical Gold eligibility remains open to evidence-based upgrades; each experiment binds an immutable benchmark version. A historical held-out race has a `development_only` prediction artifact, and `predict-next-race` publishes `development_only` next-race and season predictions under cutoff-specific protocol v3, where the calibrated ensemble is the development primary at every cutoff and winner and podium remain `no_selection`. Validated race and championship forecasts still require prospective independent confirmation. The Windows prospective task remains disabled pending a local credential for signed-out network access; manual collection remains available. A React results frontend in `web/` now renders exported development predictions. Updated 2026-10-04.
+
+## Web results frontend milestone
+
+`export-web` turns verified cutoff-specific runs into display-ready JSON under
+`web/public/data/`: it checks every manifest hash, the race and title probability
+contracts and the run's schedule observation, copies prediction values
+unchanged, and reports legacy or invalid runs as excluded. A Vite, React and
+TypeScript app in `web/` renders the 65c35d6 P1 to P22 predicted order, race
+probabilities, the projected WDC and WCC with equal prominence, actual results
+from the existing Jolpica ingestion, browsable cutoff snapshots and model
+details. Pages validate each document against a typed schema and show distinct
+states for missing, malformed and unsupported exports. Completed seasons compare
+audited final standings with the last projection. React holds no prediction
+logic. See [web frontend](WEB_FRONTEND.md).
+
+The first export is the 2026 round 16 pre-weekend run replayed with 65c35d6 code
+at its original cutoff (2026-10-02 09:35 UTC), pinned to the schedule
+observation the original run used. Every pre-existing race and championship
+value matches run `8729b9f` exactly; only the predicted order and clean-race
+fields are new. The page labels it as generated after the race started. A
+round 17 run is blocked until round 16 points reach the audited scoring ledger,
+and Jolpica had not published the round 16 classification at export time.
 
 ## Cutoff-specific development methodology milestone
 
@@ -454,8 +476,9 @@ Verification: 39 deterministic simulation tests and the complete 534-test offlin
 suite passed. Ruff lint and format checks and strict mypy passed for 54 source
 files; diff, generated-artifact and forbidden-punctuation reviews passed before
 commit. Fixtures are engineering checks, with no real WDC/WCC probability claim.
-Validated models, championship calibration, explanations and dashboard integration
-remain on the roadmap rather than being marked complete by fixture tests.
+Validated models, championship calibration and explanations remain on the
+roadmap rather than being marked complete by fixture tests. The web results
+frontend covers the read-only part of Phase 10.
 
 ## Orchestration
 
