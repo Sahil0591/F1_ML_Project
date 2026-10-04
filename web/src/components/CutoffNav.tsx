@@ -1,5 +1,5 @@
 import type { Cutoff, CutoffEntry } from "../data/schema";
-import { cutoffLabel, formatDateTime } from "../format";
+import { cutoffLabel, formatDateTime, isShownCutoff } from "../format";
 
 interface CutoffNavProps {
   cutoffs: CutoffEntry[];
@@ -12,7 +12,7 @@ export function CutoffNav({ cutoffs, active, onSelect }: CutoffNavProps) {
   return (
     <nav className="cutoff-nav" aria-label="Prediction snapshots">
       <ol>
-        {cutoffs.map((entry, index) => {
+        {cutoffs.filter(isShownCutoff).map((entry, index) => {
           const current = entry.cutoff === active;
           return (
             <li key={entry.cutoff}>

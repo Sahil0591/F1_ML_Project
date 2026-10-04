@@ -132,7 +132,8 @@ describe("race page", () => {
     const nav = screen.getByRole("navigation", { name: "Prediction snapshots" });
     const current = within(nav).getByRole("button", { name: /Post-qualifying/ });
     expect(current).toHaveAttribute("aria-current", "true");
-    expect(within(nav).getByRole("button", { name: /Post-practice/ })).toBeDisabled();
+    expect(within(nav).queryByRole("button", { name: /Post-practice/ })).not.toBeInTheDocument();
+    expect(within(nav).getByRole("button", { name: /Pre-race/ })).toBeDisabled();
     await userEvent.click(within(nav).getByRole("button", { name: /Pre-weekend/ }));
     const updated = await screen.findByRole("button", { name: /Pre-weekend.*Viewing/ });
     expect(updated).toHaveAttribute("aria-current", "true");

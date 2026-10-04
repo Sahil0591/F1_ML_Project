@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import type { ExportIndex } from "../data/schema";
-import { cutoffLabel, formatDate } from "../format";
+import { cutoffLabel, formatDate, isShownCutoff } from "../format";
 
 export function PredictionsPage({ index }: { index: ExportIndex }) {
   return (
@@ -55,7 +55,7 @@ export function PredictionsPage({ index }: { index: ExportIndex }) {
                     <td>{formatDate(race.race_start)}</td>
                     <td>
                       <ul className="chips">
-                        {race.cutoffs.map((entry) => (
+                        {race.cutoffs.filter(isShownCutoff).map((entry) => (
                           <li
                             key={entry.cutoff}
                             className={entry.available ? "chip" : "chip chip-off"}

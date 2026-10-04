@@ -69,6 +69,14 @@ export const CUTOFF_LABELS: Record<string, string> = {
   pre_race: "Pre-race",
 };
 
+/**
+ * Practice is not captured live, so post-practice runs are never produced.
+ * Hide that cutoff unless a run for it actually exists.
+ */
+export function isShownCutoff(entry: { cutoff: string; available: boolean }): boolean {
+  return entry.cutoff !== "post_practice" || entry.available;
+}
+
 export function cutoffLabel(cutoff: string): string {
   return CUTOFF_LABELS[cutoff] ?? cutoff.replace(/_/g, " ");
 }
