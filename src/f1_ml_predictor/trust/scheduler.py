@@ -23,6 +23,7 @@ import pyarrow.parquet as pq
 
 from f1_ml_predictor.identifiers import EventId
 from f1_ml_predictor.normalization.jolpica import normalize_qualifying, normalize_schedule
+from f1_ml_predictor.prediction.schedules import weekends
 from f1_ml_predictor.sources.http import JsonSourceClient, SourceError
 from f1_ml_predictor.sources.jolpica import BASE_URL
 from f1_ml_predictor.time import require_utc
@@ -32,6 +33,7 @@ from f1_ml_predictor.trust.collector import collect_weekend
 from f1_ml_predictor.trust.locking import advisory_lock
 from f1_ml_predictor.trust.outcomes import OUTCOME_SCHEMA, validate_audited_outcomes
 from f1_ml_predictor.trust.prospective import load_bundle
+from f1_ml_predictor.trust.sprint_capture import sprint_tick
 
 _LIMITS = ((4, 1.0), (500, 3600.0))
 _DIRECTORY = Path("data/raw/prospective_scheduler")
@@ -326,6 +328,15 @@ def _tick(
             entry["status"] = state["status"] = "schedule_changed_review_required"
             return
         _reconcile(root, entry)
+        if raw.get("Sprint"):
+            # Sprint captures are separate bundles; a sprint failure never blocks the
+            # main qualifying capture.
+            try:
+                entry["sprint"] = sprint_tick(
+                    root, event, weekends(payload)[event], now=now, http_client=http_client
+                )
+            except (ValueError, SourceError, OSError, KeyError, TypeError, httpx.HTTPError) as exc:
+                entry["sprint"] = {"status": "error", "error": str(exc)}
         qualifying = raw.get("Qualifying")
         if not isinstance(qualifying, dict) or not qualifying.get("time"):
             entry["status"] = state["status"] = "qualifying_schedule_missing"

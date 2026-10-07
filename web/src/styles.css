@@ -376,6 +376,10 @@ pre {
   max-width: 18ch;
 }
 
+.hero-session {
+  color: #ff4a58;
+}
+
 .hero-sub {
   margin: 12px 0 0;
   color: var(--dark-ink-2);

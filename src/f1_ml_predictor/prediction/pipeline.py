@@ -60,10 +60,28 @@ from f1_ml_predictor.prediction.season import (
     published_standings,
     remaining_sessions,
 )
+from f1_ml_predictor.prediction.sprint import (
+    SPRINT_ADDENDUM,
+    SPRINT_ADDENDUM_SHA256,
+    SPRINT_CONTRACT,
+    SprintEvent,
+    SprintModel,
+    evaluate_sprints,
+    historical_sprints,
+    latest_jolpica_constructors,
+    sprint_rows,
+)
 from f1_ml_predictor.prediction.workspace import evaluate_contract, load_audited_history
 from f1_ml_predictor.simulation import EventSimulation, simulate_championship
 from f1_ml_predictor.time import require_known_by, require_utc
 from f1_ml_predictor.trust.scheduler import scheduler_status
+from f1_ml_predictor.trust.sprint_capture import (
+    SPRINT_QUALIFYING,
+    SPRINT_RESULT,
+    capture_grid,
+    capture_points,
+    latest_capture,
+)
 
 STATUS = "development_only"
 METHODOLOGY = "cutoff-specific-v3"
@@ -379,13 +397,16 @@ def _season(
     seed: int,
     run_id: str,
     source_hash: str,
+    next_kind: str = "race",
+    sprint_counted: bool = False,
 ) -> tuple[list[EventSimulation], list[dict[str, Any]]]:
     """Event-specific pre-weekend distributions sampled within shared strength worlds.
 
     Each world draws persistent driver offsets and a random-walk drift path; the
-    next race has lag zero, later weekends accumulate per-race drift variance.
+    next race has lag zero, later weekends accumulate per-race drift variance. The
+    published session (``next_kind``, the race or the sprint) uses this run's rows.
     """
-    remaining = remaining_sessions(schedule, target, cutoff)
+    remaining = remaining_sessions(schedule, target, cutoff, sprint_counted=sprint_counted)
     weekends_ahead = sorted({item.event for item, _, _ in remaining}, key=lambda event: event.round)
     lag = {event: index for index, event in enumerate(weekends_ahead)}
     rng = np.random.default_rng((seed, 7))
@@ -397,7 +418,7 @@ def _season(
     shared = sigma > 0 or drift_variance > 0
     events, sessions = [], []
     for item, kind, start in remaining:
-        is_next = item.event == target.event and kind == "race"
+        is_next = item.event == target.event and kind == next_kind
         if is_next:
             rows, owner = next_rows, next_model
         else:
@@ -476,8 +497,16 @@ def predict_next_race(
     now: Callable[[], datetime] | None = None,
     progress: Callable[[str], None] | None = None,
     candidates: tuple[str, ...] = JOINT_CANDIDATES,
+    session: str = "auto",
 ) -> dict[str, Any]:
-    """Freeze a cutoff-specific snapshot and publish development race and title outputs."""
+    """Freeze a cutoff-specific snapshot and publish development race and title outputs.
+
+    ``session`` chooses what is published: ``race``, ``sprint`` (after a captured
+    sprint qualifying and before the sprint) or ``auto``, which publishes the sprint
+    in that window and the race otherwise.
+    """
+    if session not in {"auto", "race", "sprint"}:
+        raise ValueError("session must be auto, race or sprint")
     root = root.resolve()
     clock = (now or (lambda: datetime.now(UTC)))()
     require_utc(clock, "prediction clock")
@@ -508,7 +537,41 @@ def predict_next_race(
         raise ValueError("schedule circuit identities disagree")
     capture = _capture_base(root, state, target, clock)
     notes = []
-    if capture is None:
+    sprint_grid_capture = None
+    if weekend.sprint is not None and clock < weekend.sprint and session != "race":
+        sprint_grid_capture = latest_capture(root, target.event, SPRINT_QUALIFYING, clock)
+    if session == "sprint" and sprint_grid_capture is None:
+        raise ValueError(
+            "no captured sprint qualifying before the sprint; run collect-next-race after "
+            "sprint qualifying"
+        )
+    is_sprint = sprint_grid_capture is not None
+    sprint_grid = None
+    if sprint_grid_capture is not None:
+        assert weekend.sprint is not None
+        contract = SPRINT_CONTRACT
+        sprint_grid = capture_grid(sprint_grid_capture)
+        cutoff = sprint_grid.available_at
+        capture_record = None
+        latest, roster_basis = _latest_roster(history.rows, target.event.season, cutoff)
+        unknown = sorted(set(sprint_grid.positions) - set(latest))
+        fallback = latest_jolpica_constructors(root, target.event, unknown)
+        if set(unknown) - set(fallback):
+            missing = sorted(set(unknown) - set(fallback))
+            raise ValueError(f"sprint qualifying drivers have no known constructor: {missing}")
+        roster = {
+            driver: latest.get(driver) or fallback[driver] for driver in sprint_grid.positions
+        }
+        roster_source = f"captured_sprint_qualifying drivers; constructors from {roster_basis}" + (
+            f"; latest Jolpica entry for {', '.join(unknown)}" if unknown else ""
+        )
+        weekend_values = None
+        notes.append(
+            "sprint calibration and sprint history are Development tier (Jolpica sprint "
+            "results and OpenF1 sprint qualifying, cross-checked against audited FIA sprint "
+            "points); strength models are trained on Gold races"
+        )
+    elif capture is None:
         contract, cutoff, capture_record = "pre_weekend", clock, None
         roster, roster_basis = _latest_roster(history.rows, target.event.season, cutoff)
         roster_source = f"latest_audited_gold_event_roster:{roster_basis}"
@@ -533,6 +596,19 @@ def predict_next_race(
             for driver, row in base.items()
         }
     require_known_by(observed_at, cutoff)
+    current_sprint = None
+    if not is_sprint and weekend.sprint is not None and weekend.sprint <= cutoff:
+        result = latest_capture(root, target.event, SPRINT_RESULT, clock)
+        if result is None:
+            raise ValueError(
+                "this weekend's sprint has run but its result is not captured; run "
+                "collect-next-race"
+            )
+        current_sprint = {
+            "points": capture_points(result),
+            "captured_at": result["captured_at"],
+            "bundle": result["bundle"],
+        }
     hardware_path = root / "models/experiments/hardware.json"
     hardware = (
         json.loads(hardware_path.read_text(encoding="utf-8"))
@@ -540,15 +616,28 @@ def predict_next_race(
         else None
     )
     datasets = build_contract_datasets(root, history, dnf_version, sources)
-    rows, reasons = build_rows(
-        history,
-        contract,
-        event=target.event,
-        circuit_id=target.circuit_id,
-        cutoff=cutoff,
-        roster=roster,
-        weekend=weekend_values,
-    )
+    sprint_details: dict[str, Any] | None = None
+    if is_sprint:
+        assert sprint_grid is not None and weekend.sprint is not None
+        sprints, excluded_sprints = historical_sprints(root, history, clock=cutoff)
+        rows, reasons = sprint_rows(
+            history,
+            SprintEvent(
+                target.event, target.circuit_id, cutoff, weekend.sprint, roster, sprint_grid, {}
+            ),
+            labelled=False,
+        )
+        sprint_details = {"sprints": sprints, "excluded": excluded_sprints}
+    else:
+        rows, reasons = build_rows(
+            history,
+            contract,
+            event=target.event,
+            circuit_id=target.circuit_id,
+            cutoff=cutoff,
+            roster=roster,
+            weekend=weekend_values,
+        )
     appeals = {
         str(item["points_status"]).removeprefix("published_pending_appeal:")
         for item in reasons.values()
@@ -566,7 +655,34 @@ def predict_next_race(
         "hardware": hardware,
         "candidates": candidates,
     }
-    model = ContractModel(root, history, datasets, contract, rows, progress=progress, **common)
+    model: Any
+    if is_sprint:
+        assert sprint_details is not None
+        race_dataset = datasets["post_qualifying"]
+        race_sha = race_dataset["manifest"]["dataset_sha256"]
+        sprint_evaluation, sprint_path = evaluate_sprints(
+            root,
+            history,
+            race_dataset["rows"],
+            race_sha,
+            sprint_details["sprints"],
+            sprint_details["excluded"],
+            seed=seed,
+            candidates=candidates,
+            progress=progress,
+        )
+        model = SprintModel(
+            sprint_evaluation,
+            race_dataset["rows"],
+            sprint_details["sprints"],
+            cutoff=cutoff,
+            seed=seed,
+            candidates=candidates,
+            evaluation_path=sprint_path,
+            dataset_sha256=race_sha,
+        )
+    else:
+        model = ContractModel(root, history, datasets, contract, rows, progress=progress, **common)
     if contract == "pre_weekend":
         pre_model, pre_rows = model, rows
     else:
@@ -650,7 +766,7 @@ def predict_next_race(
     )
     drift_variance = float(drift["per_race_variance"])
     standings, standings_notes, standings_sources = published_standings(
-        history.ledger, target.event, cutoff, roster
+        history.ledger, target.event, cutoff, roster, current_sprint=current_sprint
     )
     season_args: dict[str, Any] = {
         "worlds": worlds,
@@ -658,6 +774,8 @@ def predict_next_race(
         "seed": seed,
         "run_id": run_id,
         "source_hash": model_sha,
+        "next_kind": "sprint" if is_sprint else "race",
+        "sprint_counted": current_sprint is not None,
     }
     events, sessions = _season(
         history,
@@ -744,6 +862,7 @@ def predict_next_race(
         "dnf_dataset_version": dnf_version.dataset_version,
         "feature_contract": CONTRACT_VERSION,
         "evaluation_protocol": PROTOCOL_V3_VERSION,
+        "session": "sprint" if is_sprint else "race",
     }
     by_driver = {row["driver_id"]: index for index, row in enumerate(rows)}
     table_rows = []
@@ -774,6 +893,9 @@ def predict_next_race(
         "event_id": target.event.partition(),
         "race_name": target.race_name,
         "race_start": target.race_start.isoformat(),
+        "session_start": (
+            weekend.sprint if is_sprint and weekend.sprint is not None else target.race_start
+        ).isoformat(),
         "draws": draws,
         "seed": seed,
         "monte_carlo_resolution": 1 / draws,
@@ -900,6 +1022,10 @@ def predict_next_race(
             if weekend.qualifying is None
             else weekend.qualifying.isoformat(),
             "sprint_weekend": weekend.sprint is not None,
+            "sprint_qualifying_start": None
+            if weekend.sprint_qualifying is None
+            else weekend.sprint_qualifying.isoformat(),
+            "sprint_start": None if weekend.sprint is None else weekend.sprint.isoformat(),
         },
         "schedule_source": schedule_source,
         "roster_source": roster_source,
@@ -909,7 +1035,22 @@ def predict_next_race(
         "evidence_tier": {
             "training": "Gold",
             "prediction_snapshot": "Development",
+            **({"sprint_calibration": "Development"} if is_sprint else {}),
         },
+        "sprint": None
+        if sprint_details is None or sprint_grid_capture is None
+        else {
+            "addendum": SPRINT_ADDENDUM["version"],
+            "addendum_sha256": SPRINT_ADDENDUM_SHA256,
+            "grid_capture": sprint_grid_capture["bundle"],
+            "grid_source": None if sprint_grid is None else sprint_grid.source,
+            "historical_sprints": [item.event.partition() for item in sprint_details["sprints"]],
+            "excluded_sprints": sprint_details["excluded"],
+            "sprint_labels_known": model.sprint_labels,
+        },
+        "current_sprint_points": None
+        if current_sprint is None
+        else {"bundle": current_sprint["bundle"], "captured_at": current_sprint["captured_at"]},
         "dataset": {
             "gold": history.version.dataset_version,
             "gold_manifest_sha256": history.version.manifest_sha256,

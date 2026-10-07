@@ -15,7 +15,12 @@ ELIGIBILITY_POLICY = "all_entered_engineering_assumption"
 
 
 def published_standings(
-    ledger: ScoringLedger, target: EventId, cutoff: datetime, roster: dict[str, str]
+    ledger: ScoringLedger,
+    target: EventId,
+    cutoff: datetime,
+    roster: dict[str, str],
+    *,
+    current_sprint: dict[str, Any] | None = None,
 ) -> tuple[CurrentStandings, list[str], list[dict[str, Any]]]:
     """Sum the latest published FIA points of every earlier round before the cutoff.
 
@@ -59,6 +64,31 @@ def published_standings(
                 "effective_at": latest.effective_at.isoformat(),
                 "revision_status": latest.revision_status,
                 "evidence_hash": latest.evidence_hash,
+            }
+        )
+    if current_sprint is not None:
+        # The current round's sprint has run but its FIA points belong to an event
+        # version that is only complete after the race. Use the captured sprint
+        # classification, credited to each driver's current constructor.
+        captured = datetime.fromisoformat(current_sprint["captured_at"])
+        if captured > cutoff:
+            raise ValueError("sprint result capture is later than the cutoff")
+        rule = ledger.rule_for(target)
+        team_scoring = rule is None or rule.constructor_scoring == "sum_awarded_entries"
+        for driver, points in current_sprint["points"].items():
+            drivers[driver] += points
+            if team_scoring and driver in roster:
+                constructors[roster[driver]] += points
+        notes.append(
+            f"{target.partition()} sprint points come from the captured Jolpica sprint "
+            "classification (Development) until the FIA after-sprint audit"
+        )
+        used.append(
+            {
+                "event_id": f"{target.partition()}#sprint",
+                "effective_at": captured.isoformat(),
+                "revision_status": "captured_live_development",
+                "evidence_hash": current_sprint["bundle"]["sha256"],
             }
         )
     for driver, constructor in roster.items():
@@ -113,19 +143,29 @@ def points_rules(ledger: ScoringLedger, event: EventId, kind: str) -> tuple[Poin
 
 
 def remaining_sessions(
-    schedule: list[ScheduledEvent], target: ScheduledEvent, cutoff: datetime
+    schedule: list[ScheduledEvent],
+    target: ScheduledEvent,
+    cutoff: datetime,
+    *,
+    sprint_counted: bool = False,
 ) -> list[tuple[ScheduledEvent, str, datetime]]:
-    """List every race and sprint after the cutoff in this season, in time order."""
+    """List every race and sprint after the cutoff in this season, in time order.
+
+    The target weekend's sprint may already have run when its points are counted
+    in the starting standings (``sprint_counted``).
+    """
     sessions = []
     for item in schedule:
         if item.event.season != target.event.season or item.race_start <= cutoff:
             continue
         if item.sprint_start is not None:
             if item.sprint_start <= cutoff:
-                raise ValueError(
-                    f"{item.event.partition()} sprint has run but its points are not audited"
-                )
-            sessions.append((item, "sprint", item.sprint_start))
+                if not (sprint_counted and item.event == target.event):
+                    raise ValueError(
+                        f"{item.event.partition()} sprint has run but its points are not counted"
+                    )
+            else:
+                sessions.append((item, "sprint", item.sprint_start))
         sessions.append((item, "race", item.race_start))
     if not sessions or sessions[0][0].event != target.event:
         raise ValueError("the next race must be the first remaining session")

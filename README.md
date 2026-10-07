@@ -132,7 +132,9 @@ current cutoff, freezes a point-in-time snapshot, and publishes calibrated race
 probabilities, a development WDC/WCC simulation with model-uncertainty worlds, OOD
 and sharpness diagnostics, and `report.md` under
 `data/predictions/development/next_race/`. Rerun it after qualifying to switch to
-the post-qualifying contract. Every output is `development_only`, not a validated
+the post-qualifying contract. On a sprint weekend, a run after sprint qualifying
+publishes a development sprint race prediction instead (see
+[sprint weekends](docs/DEVELOPMENT_PREDICTIONS.md#sprint-weekends)). Every output is `development_only`, not a validated
 forecast. See [development predictions](docs/DEVELOPMENT_PREDICTIONS.md) and
 [protocol v3](docs/EVALUATION_PROTOCOL_V3.md).
 

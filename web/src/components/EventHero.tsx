@@ -29,7 +29,15 @@ export function EventHero({ snapshot }: { snapshot: Snapshot }) {
           {identity.season} <span aria-hidden="true">/</span> Round {identity.round}
           {event.sprint_weekend ? " / Sprint weekend" : ""}
         </p>
-        <h1 id="event-title">{event.race_name}</h1>
+        <h1 id="event-title">
+          {event.race_name}
+          {identity.session === "sprint" ? (
+            <>
+              {" "}
+              <span className="hero-session">Sprint</span>
+            </>
+          ) : null}
+        </h1>
         <dl className="hero-meta">
           <div>
             <dt>Circuit</dt>
@@ -39,6 +47,16 @@ export function EventHero({ snapshot }: { snapshot: Snapshot }) {
             <div>
               <dt>Location</dt>
               <dd>{place}</dd>
+            </div>
+          ) : null}
+          {identity.session === "sprint" && event.sprint_start ? (
+            <div>
+              <dt>Sprint start</dt>
+              <dd>
+                <time dateTime={event.sprint_start} title={formatDateTime(event.sprint_start)}>
+                  {formatDateTime(event.sprint_start)}
+                </time>
+              </dd>
             </div>
           ) : null}
           <div>
@@ -69,7 +87,8 @@ export function EventHero({ snapshot }: { snapshot: Snapshot }) {
         <p className="hero-warning">{snapshot.warning}</p>
         {identity.generated_after_race_start ? (
           <p className="hero-warning">
-            This run was generated after the race started, as a replay at the original cutoff. The
+            This run was generated after the {identity.session === "sprint" ? "sprint" : "race"}{" "}
+            started, as a replay at the original cutoff. The
             pipeline only admits data published before the cutoff
             {snapshot.status.checks_passed ? ", and its leakage checks passed." : "."}
           </p>

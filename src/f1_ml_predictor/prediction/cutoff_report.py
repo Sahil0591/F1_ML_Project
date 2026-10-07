@@ -128,8 +128,33 @@ def render_report(
     drivers = sorted(race["drivers"], key=lambda item: -item["winner_probability"])
     baselines = race["baselines"]
     stages = race["stages"]
+    sprint = manifest.get("session") == "sprint"
+    session = "Sprint" if sprint else "Race"
+    tiers = manifest["evidence_tier"]
+    tier_text = f"training {tiers['training']}, snapshot {tiers['prediction_snapshot']}" + (
+        f", sprint calibration {tiers['sprint_calibration']}"
+        if "sprint_calibration" in tiers
+        else ""
+    )
+    session_rows = (
+        [
+            ["Session", "Sprint"],
+            ["Sprint qualifying (UTC)", str(event.get("sprint_qualifying_start"))],
+            ["Sprint start (UTC)", str(event.get("sprint_start"))],
+            [
+                "Sprint method",
+                "{} (`{}`)".format(
+                    manifest["sprint"]["addendum"], manifest["sprint"]["addendum_sha256"][:12]
+                ),
+            ],
+            ["Sprint grid source", str(manifest["sprint"]["grid_source"])],
+        ]
+        if sprint
+        else []
+    )
     lines = [
-        f"# Development prediction: {event['race_name']}",
+        f"# Development {'sprint ' if sprint else ''}prediction: {event['race_name']}"
+        + (" sprint" if sprint else ""),
         "",
         f"> **{manifest['warning']}**",
         "",
@@ -146,6 +171,7 @@ def render_report(
                 "circuit identifier, not the event title)",
             ],
             ["Race start (UTC)", event["race_start"]],
+            *session_rows,
             ["Cutoff contract", f"`{contract}`"],
             ["prediction_timestamp_utc", manifest["prediction_timestamp_utc"]],
             ["First practice (UTC)", str(event["first_practice"])],
@@ -162,7 +188,7 @@ def render_report(
                 "Evaluation protocol",
                 f"{manifest['protocol']['version']} (`{manifest['protocol']['sha256'][:12]}`)",
             ],
-            ["Evidence tier", "training Gold, snapshot Development"],
+            ["Evidence tier", tier_text],
             ["Model run ID", f"`{manifest['model_run_id']}`"],
             ["Primary development model", f"`{primary}` ({', '.join(race['primary_members'])})"],
             ["Baseline", "logistic winner/podium with Ridge finish order"],
@@ -200,8 +226,13 @@ def render_report(
     lines.append(
         f"- Circuit `{circuit['circuit_id']}` unseen in training: "
         f"{'yes' if circuit['unseen_in_training'] else 'no'} "
-        f"({circuit['training_circuits']} training circuits). Circuit history features are "
-        "left missing; no modern Sepang performance is invented."
+        f"({circuit['training_circuits']} training circuits)."
+        + (
+            " Circuit history features are left missing; no performance at this circuit is "
+            "invented."
+            if circuit["unseen_in_training"]
+            else ""
+        )
     )
     lines.append(
         f"- Feature range violations: {len(ood['feature_range_violations'])}; novel "
@@ -219,13 +250,19 @@ def render_report(
             "shared calibration is used."
         )
     )
-    lines += ["", "## Race probabilities", ""]
+    lines += ["", f"## {session} probabilities", ""]
     lines.append(
         f"Small values keep their precision; `0 of {draws} draws` means the event never occurred "
         "in the joint draws. Logistic is the baseline; the experimental column is the best "
         "single boosting candidate. Expected averages every draw, with retirements placed "
         "last; clean race is the same draws with no retirements, so it reads as a finishing "
         "position."
+        + (
+            " Sprint strengths come from race-trained models fed the sprint qualifying "
+            "classification; their calibration was fitted on earlier sprints."
+            if sprint
+            else ""
+        )
     )
     lines.append("")
     lines += _table(
@@ -257,7 +294,7 @@ def render_report(
             for item in drivers
         ],
     )
-    lines += ["", "## Predicted finishing order", ""]
+    lines += ["", f"## Predicted {'sprint ' if sprint else ''}finishing order", ""]
     if all("predicted_position" in item for item in race["drivers"]):
         lines.append(
             "P1 to P{} by clean-race expected position (the same draws with no retirements). "
@@ -319,7 +356,15 @@ def render_report(
         ],
     )
     lines.append("")
-    if len(dnf_values) == 1:
+    if len(dnf_values) == 1 and sprint and dnf_eval["model"] == "prior":
+        lines.append(
+            "**Limitation:** every driver receives the same "
+            f"{probability(next(iter(dnf_values)))}, the smoothed retirement rate of earlier "
+            f"sprints ({manifest['sprint']['sprint_labels_known']} labels). Race-trained "
+            "reliability models did not beat it on sprints out of fold. "
+            "This is a field-wide rate, not an individualized prediction."
+        )
+    elif len(dnf_values) == 1:
         lines.append(
             f"**Limitation:** the selected DNF model is `{dnf_eval['model']}`. Driver-specific "
             "reliability features (driver and constructor audited DNF rates, circuit attrition) "
@@ -330,11 +375,21 @@ def render_report(
     else:
         lines.append("DNF probabilities differ by driver through audited reliability features.")
     lines += ["", "## Historical evidence for this cutoff", ""]
-    lines.append(
-        f"Frozen protocol {manifest['protocol']['version']} on {evaluation['outer_races']} "
-        "chronological outer Gold races, calibrated and selected only on earlier races, with "
-        "this run's unavailable predictors hidden. Lower is better except top-1 accuracy."
-    )
+    if sprint:
+        lines.append(
+            f"Addendum {manifest['sprint']['addendum']} on {evaluation['outer_races']} "
+            "chronological historical sprints (Development tier): race-trained candidates "
+            "applied to each sprint grid, with calibration and the development primary chosen "
+            f"only on earlier sprints. {len(manifest['sprint']['excluded_sprints'])} sprints were "
+            "excluded because their sources disagreed or were missing (listed in the manifest). "
+            "Lower is better except top-1 accuracy."
+        )
+    else:
+        lines.append(
+            f"Frozen protocol {manifest['protocol']['version']} on {evaluation['outer_races']} "
+            "chronological outer Gold races, calibrated and selected only on earlier races, with "
+            "this run's unavailable predictors hidden. Lower is better except top-1 accuracy."
+        )
     lines.append("")
     models = evaluation["models"]
     shown = [primary, "selected_pipeline", *race["primary_members"], experimental]

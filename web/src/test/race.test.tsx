@@ -140,6 +140,43 @@ describe("race page", () => {
     expect(screen.getByRole("button", { name: /Post-qualifying.*Available/ })).not.toBeDisabled();
   });
 
+  it("hides the sprint step when no sprint was predicted", async () => {
+    stubFetch({
+      "2026/round-16/post_qualifying.json": makeSnapshot({ cutoff: "post_qualifying" }),
+    });
+    renderRace();
+    await screen.findByRole("heading", { name: "Fixture Grand Prix" });
+    const nav = screen.getByRole("navigation", { name: "Prediction snapshots" });
+    expect(within(nav).queryByRole("button", { name: /Sprint/ })).not.toBeInTheDocument();
+  });
+
+  it("labels a sprint snapshot as a sprint prediction", async () => {
+    stubFetch({
+      "2026/round-16/post_sprint_qualifying.json": makeSnapshot({
+        cutoff: "post_sprint_qualifying",
+      }),
+    });
+    render(
+      <MemoryRouter initialEntries={["/predictions/2026/16"]}>
+        <Routes>
+          <Route
+            path="/predictions/:season/:round"
+            element={<RacePage index={makeIndex(["post_sprint_qualifying"])} />}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(
+      await screen.findByRole("heading", { name: /Fixture Grand Prix\s*Sprint/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Predicted sprint finishing order" })).toBeVisible();
+    const nav = screen.getByRole("navigation", { name: "Prediction snapshots" });
+    expect(within(nav).getByRole("button", { name: /Sprint.*Viewing/ })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+  });
+
   it("supports keyboard navigation between tabs", async () => {
     stubFetch({
       "2026/round-16/post_qualifying.json": makeSnapshot({ cutoff: "post_qualifying" }),

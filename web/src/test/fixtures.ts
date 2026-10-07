@@ -4,7 +4,7 @@
  */
 import { vi } from "vitest";
 import type { Cutoff, ExportIndex, Season, Snapshot } from "../data/schema";
-import { indexSchema, seasonSchema, snapshotSchema } from "../data/schema";
+import { CUTOFFS, indexSchema, seasonSchema, snapshotSchema } from "../data/schema";
 
 const TEAMS = [
   "alpha",
@@ -76,6 +76,7 @@ export function makeSnapshot(
       season: 2026,
       round: 16,
       cutoff,
+      session: cutoff === "post_sprint_qualifying" ? "sprint" : "race",
       run_id: `run-${cutoff}`,
       methodology: "cutoff-specific-v3",
       validation_status: "development_only",
@@ -280,7 +281,7 @@ export function makeIndex(available: Cutoff[] = ["pre_weekend", "post_qualifying
   return indexSchema.parse({
     schema_version: 1,
     kind: "index",
-    cutoffs: ["pre_weekend", "post_practice", "post_qualifying", "pre_race"],
+    cutoffs: CUTOFFS,
     latest: {
       season: 2026,
       round: 16,
@@ -305,9 +306,10 @@ export function makeIndex(available: Cutoff[] = ["pre_weekend", "post_qualifying
             race_start: "2026-10-04T07:00:00+00:00",
             actual_result_available: false,
             latest_cutoff: available[available.length - 1],
-            cutoffs: (["pre_weekend", "post_practice", "post_qualifying", "pre_race"] as const).map(
+            cutoffs: CUTOFFS.map(
               (cutoff) => ({
                 cutoff,
+                session: cutoff === "post_sprint_qualifying" ? "sprint" : "race",
                 available: available.includes(cutoff),
                 path: available.includes(cutoff) ? `2026/round-16/${cutoff}.json` : null,
                 run_id: available.includes(cutoff) ? `run-${cutoff}` : null,

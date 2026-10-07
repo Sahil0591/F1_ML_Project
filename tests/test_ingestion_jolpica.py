@@ -122,3 +122,34 @@ def test_mocked_http_response_reaches_parquet_with_correct_endpoint(tmp_path: Pa
         ).ingest_season(2024)
     assert report.written_partitions == 4
     assert fixture.calls == ["2024/", "2024/1/qualifying/", "2024/1/results/"]
+
+
+def test_sprint_rounds_also_write_a_sprint_partition(tmp_path: Path) -> None:
+    class SprintClient(FakeClient):
+        def fetch_collection(self, path: str, table_key: str, collection_key: str) -> list[dict]:
+            races = super().fetch_collection(path, table_key, collection_key)
+            race = races[0]
+            if path == "2024/":
+                race["Sprint"] = {"date": "2024-03-01", "time": "10:00:00Z"}
+            elif path.endswith("/sprint/"):
+                race["SprintResults"] = [
+                    {
+                        "Driver": {"driverId": "verstappen"},
+                        "Constructor": {"constructorId": "red_bull"},
+                        "number": "1",
+                        "position": "1",
+                        "grid": "1",
+                        "points": "8",
+                    }
+                ]
+            return races
+
+    client = SprintClient()
+    paths = StoragePaths(tmp_path)
+    report = JolpicaSeasonIngestor(
+        paths, client, now=lambda: datetime(2026, 9, 27, tzinfo=UTC)
+    ).ingest_season(2024)
+    assert client.calls == ["2024/", "2024/1/qualifying/", "2024/1/results/", "2024/1/sprint/"]
+    assert report.written_partitions == 5
+    sprint = pq.ParquetFile(paths.normalized / "season=2024/round=01/sprint.parquet").read()
+    assert sprint["points"][0].as_py() == 8.0

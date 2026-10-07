@@ -7,15 +7,25 @@ import { z } from "zod";
 
 export const SCHEMA_VERSION = 1;
 
-export const CUTOFFS = ["pre_weekend", "post_practice", "post_qualifying", "pre_race"] as const;
+export const CUTOFFS = [
+  "pre_weekend",
+  "post_practice",
+  "post_sprint_qualifying",
+  "post_qualifying",
+  "pre_race",
+] as const;
 export const cutoffSchema = z.enum(CUTOFFS);
 export type Cutoff = z.infer<typeof cutoffSchema>;
+/** Which session a snapshot predicts; the sprint cutoff predicts the sprint race. */
+export const sessionSchema = z.enum(["race", "sprint"]).default("race");
+export type Session = z.infer<typeof sessionSchema>;
 
 const probability = z.number().min(0).max(1);
 const timestamp = z.string().min(1);
 
 export const cutoffEntrySchema = z.object({
   cutoff: cutoffSchema,
+  session: sessionSchema,
   available: z.boolean(),
   path: z.string().nullable(),
   run_id: z.string().nullable(),
@@ -188,6 +198,7 @@ export const snapshotSchema = z.object({
     season: z.number().int(),
     round: z.number().int(),
     cutoff: cutoffSchema,
+    session: sessionSchema,
     run_id: z.string(),
     methodology: z.string(),
     validation_status: z.string(),
@@ -211,6 +222,8 @@ export const snapshotSchema = z.object({
     first_practice: timestamp.nullable(),
     qualifying_start: timestamp.nullable(),
     sprint_weekend: z.boolean(),
+    sprint_qualifying_start: timestamp.nullable().default(null),
+    sprint_start: timestamp.nullable().default(null),
   }),
   status: z.object({
     ood_status: z.string(),

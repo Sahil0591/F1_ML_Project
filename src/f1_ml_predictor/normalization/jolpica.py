@@ -57,6 +57,21 @@ RESULT_SCHEMA = pa.schema(
         pa.field("available_at", _UTC),
     ]
 )
+SPRINT_SCHEMA = pa.schema(
+    [
+        pa.field("event_id", pa.string(), nullable=False),
+        pa.field("driver_id", pa.string(), nullable=False),
+        pa.field("constructor_id", pa.string()),
+        pa.field("number", pa.int16()),
+        pa.field("position", pa.int16()),
+        pa.field("position_text", pa.string()),
+        pa.field("grid", pa.int16()),
+        pa.field("laps", pa.int16()),
+        pa.field("points", pa.float64()),
+        pa.field("status", pa.string()),
+        pa.field("available_at", _UTC),
+    ]
+)
 
 
 def _required_mapping(value: Any, name: str) -> dict[str, Any]:
@@ -214,6 +229,21 @@ def normalize_results(races: list[dict[str, Any]], event: EventId) -> pa.Table:
         row["points"] = _optional_float(source.get("points"), "points")
         row["status"] = source.get("status")
     return pa.Table.from_pylist(rows, schema=RESULT_SCHEMA)
+
+
+def normalize_sprint(races: list[dict[str, Any]], event: EventId) -> pa.Table:
+    """Sprint classification; ``grid`` is the sprint starting grid, not the race grid."""
+    rows = _session_rows(races, event, "SprintResults")
+    for row in rows:
+        source = row.pop("source")
+        row["number"] = _optional_int(source.get("number"), "number")
+        row["position"] = _optional_int(source.get("position"), "position")
+        row["position_text"] = source.get("positionText")
+        row["grid"] = _optional_int(source.get("grid"), "grid")
+        row["laps"] = _optional_int(source.get("laps"), "laps")
+        row["points"] = _optional_float(source.get("points"), "points")
+        row["status"] = source.get("status")
+    return pa.Table.from_pylist(rows, schema=SPRINT_SCHEMA)
 
 
 def normalize_entries(qualifying: pa.Table, results: pa.Table) -> pa.Table:

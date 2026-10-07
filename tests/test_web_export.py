@@ -285,10 +285,13 @@ def test_index_lists_every_cutoff_and_never_invents_missing_ones(tmp_path: Path)
     assert [entry["cutoff"] for entry in race["cutoffs"]] == [
         "pre_weekend",
         "post_practice",
+        "post_sprint_qualifying",
         "post_qualifying",
         "pre_race",
     ]
-    assert [entry["available"] for entry in race["cutoffs"]] == [True, False, False, False]
+    sprint = next(entry for entry in race["cutoffs"] if entry["session"] == "sprint")
+    assert sprint["cutoff"] == "post_sprint_qualifying" and sprint["available"] is False
+    assert [entry["available"] for entry in race["cutoffs"]] == [True, False, False, False, False]
     assert race["cutoffs"][1]["path"] is None
     assert index["latest"]["path"] == "2026/round-02/pre_weekend.json"
     assert race["actual_result_available"] is False

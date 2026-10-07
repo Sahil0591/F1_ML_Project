@@ -217,6 +217,12 @@ def main() -> None:
     nextrace.add_argument(
         "--no-collect", action="store_true", help="Use the retained schedule without a tick"
     )
+    nextrace.add_argument(
+        "--session",
+        choices=["auto", "race", "sprint"],
+        default="auto",
+        help="auto publishes the sprint between sprint qualifying and the sprint",
+    )
     nextrace.add_argument("--benchmark-dir", type=Path)
     nextrace.add_argument("--dnf-benchmark-dir", type=Path)
     nextrace.add_argument("--root", type=Path, default=Path.cwd())
@@ -348,6 +354,7 @@ def main() -> None:
                     gold_dir=args.benchmark_dir,
                     dnf_dir=args.dnf_benchmark_dir,
                     progress=lambda message: print(message, flush=True),
+                    session=args.session,
                 )
             print(prediction["report"])
             print(f"status: {prediction['status']}")

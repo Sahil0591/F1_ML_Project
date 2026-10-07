@@ -8,10 +8,12 @@ from f1_ml_predictor.normalization.jolpica import (
     EVENT_SCHEMA,
     QUALIFYING_SCHEMA,
     RESULT_SCHEMA,
+    SPRINT_SCHEMA,
     normalize_entries,
     normalize_qualifying,
     normalize_results,
     normalize_schedule,
+    normalize_sprint,
 )
 
 
@@ -103,3 +105,16 @@ def test_constructor_conflict_is_not_silently_joined() -> None:
     results = normalize_results([{**_race(), "Results": [altered]}], event)
     with pytest.raises(ValueError, match="conflicting constructors"):
         normalize_entries(qualifying, results)
+
+
+def test_sprint_results_keep_car_number_grid_and_unknown_availability() -> None:
+    event = EventId(2024, 1)
+    sprint = normalize_sprint(
+        [{**_race(), "SprintResults": [{**_result(), "number": "1", "points": "8", "grid": "2"}]}],
+        event,
+    )
+    assert sprint.schema == SPRINT_SCHEMA
+    row = sprint.to_pylist()[0]
+    assert (row["number"], row["grid"], row["points"]) == (1, 2, 8.0)
+    assert row["available_at"] is None
+    assert normalize_sprint([{**_race()}], event).num_rows == 0

@@ -158,3 +158,37 @@ season. Simulated results do not update rolling form features; updating features
 along simulated paths was considered and not adopted, because the validated drift
 already measures how far truth moves from a frozen forecast and feature feedback
 would double count it.
+
+## Addendum sprint-dev-v1
+
+Sprint races are predicted at a separate cutoff, `post_sprint_qualifying`. The
+strength candidates are the v3 joint candidates fitted on Gold `post_qualifying`
+race rows whose labels were published by the sprint cutoff. A sprint row is the
+same race contract row with the sprint qualifying classification in the
+qualifying fields (position, lap in the last stage reached, teammate delta);
+practice predictors are hidden because practice is not captured live.
+
+Sprints are shorter and more grid-bound than races, so calibration is not reused
+from races. The unchanged v3 `analyse` runs over sprint out-of-fold records only:
+temperature, prior mixing and the development primary are prequential on earlier
+sprints. The sprint retirement prior is the smoothed rate of earlier sprints; the
+race-trained logistic and histogram DNF models compete with it on out-of-fold
+sprint Brier score. Baselines are the v3 heuristic and logistic models fed the
+sprint rows, and the formal gate is unchanged.
+
+The sprint history is Development tier. Labels come from the Jolpica sprint
+classification; the 2023+ sprint grid comes from OpenF1 sprint qualifying (sprint
+shootout in 2023), and the 2022 grid from Friday qualifying, which set the sprint
+grid that season. Every Jolpica sprint points value must equal the FIA sprint
+points in the audited scoring ledger and every FIA sprint position must match;
+otherwise the sprint is excluded with its reason. The addendum has its own
+SHA-256, and the frozen v3 race evaluations are unaffected.
+
+First evaluation (7 October 2026): 25 sprints assembled, one excluded (2023 Qatar,
+where Jolpica and the FIA after-sprint points disagree on Stroll's position), 24
+outer sprints. The primary (`ridge_pl`) had winner log loss 1.160 against 1.406
+(logistic) and 1.628 (grid heuristic), podium Brier 0.0564 against 0.0680 and
+0.0653, and finish MAE 2.23 against 2.30 and 2.32. The grid heuristic picked the
+winner more often (top-1 0.63 against 0.46), so every task stays `no_selection`
+and sprint predictions are development only. A full FIA Gold audit of sprint
+classifications is planned to replace the Development history.

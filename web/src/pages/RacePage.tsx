@@ -31,7 +31,10 @@ function isTab(value: string | null): value is TabId {
 }
 
 function WeekendEvolution({ race, current }: { race: RaceEntry; current: Snapshot }) {
-  const available = race.cutoffs.filter((entry) => entry.available && entry.path);
+  // A sprint and a Grand Prix are different races, so each has its own evolution.
+  const available = race.cutoffs.filter(
+    (entry) => entry.available && entry.path && entry.session === current.identity.session,
+  );
   const paths = available.map((entry) => entry.path ?? "");
   const key = available.length > 1 ? paths.join("|") : null;
   const snapshots = useResource(key, () => Promise.all(paths.map((path) => loadSnapshot(path))));

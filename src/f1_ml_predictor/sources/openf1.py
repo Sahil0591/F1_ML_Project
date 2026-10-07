@@ -20,7 +20,15 @@ class OpenF1Client(JsonSourceClient):
         return payload
 
     def collection(self, endpoint: str, session_key: int) -> list[dict[str, Any]]:
-        if endpoint not in {"sessions", "laps", "stints", "pit", "weather"}:
+        if endpoint not in {
+            "sessions",
+            "laps",
+            "stints",
+            "pit",
+            "weather",
+            "session_result",
+            "drivers",
+        }:
             raise ValueError("unsupported lightweight OpenF1 endpoint")
         if isinstance(session_key, bool) or not isinstance(session_key, int) or session_key < 1:
             raise ValueError("session_key must be positive")

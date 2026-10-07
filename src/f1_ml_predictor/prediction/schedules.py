@@ -39,6 +39,7 @@ class Weekend:
     qualifying: datetime | None
     sprint: datetime | None
     race: datetime | None
+    sprint_qualifying: datetime | None = None
 
 
 def _start(session: Any) -> datetime | None:
@@ -64,6 +65,8 @@ def weekends(payload: dict[str, Any]) -> dict[EventId, Weekend]:
             _start(race.get("Qualifying")),
             _start(race.get("Sprint")),
             _start({"date": race.get("date"), "time": race.get("time")}),
+            # 2023 called the sprint grid session the Sprint Shootout.
+            _start(race.get("SprintQualifying") or race.get("SprintShootout")),
         )
     return result
 

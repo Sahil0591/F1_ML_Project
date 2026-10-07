@@ -65,16 +65,22 @@ export function formatDateTime(iso: string): string {
 export const CUTOFF_LABELS: Record<string, string> = {
   pre_weekend: "Pre-weekend",
   post_practice: "Post-practice",
+  post_sprint_qualifying: "Sprint",
   post_qualifying: "Post-qualifying",
   pre_race: "Pre-race",
 };
 
 /**
- * Practice is not captured live, so post-practice runs are never produced.
- * Hide that cutoff unless a run for it actually exists.
+ * Practice is not captured live, so post-practice runs are never produced, and only
+ * sprint weekends have a sprint prediction. Hide those cutoffs unless a run exists.
  */
 export function isShownCutoff(entry: { cutoff: string; available: boolean }): boolean {
-  return entry.cutoff !== "post_practice" || entry.available;
+  return (entry.cutoff !== "post_practice" && entry.cutoff !== "post_sprint_qualifying") ||
+    entry.available;
+}
+
+export function sessionLabel(session: string): string {
+  return session === "sprint" ? "Sprint" : "Race";
 }
 
 export function cutoffLabel(cutoff: string): string {

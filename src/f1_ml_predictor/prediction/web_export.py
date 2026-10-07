@@ -30,6 +30,7 @@ from f1_ml_predictor.ingestion.cache import RawCache
 from f1_ml_predictor.prediction.live_features import load_schedule
 from f1_ml_predictor.prediction.protocol import CUTOFFS
 from f1_ml_predictor.prediction.season import published_standings
+from f1_ml_predictor.prediction.sprint import SPRINT_CONTRACT
 from f1_ml_predictor.scoring.ledger import load_scoring_ledger
 
 SCHEMA_VERSION = 1
@@ -37,6 +38,12 @@ SUPPORTED_METHODOLOGY = "cutoff-specific-v3"
 RUNS = Path("data/predictions/development/next_race")
 DEFAULT_OUTPUT = Path("web/public/data")
 _TOLERANCE = 1e-6
+# Weekend order: the sprint snapshot follows practice and precedes main qualifying.
+EXPORT_CUTOFFS = (*CUTOFFS[:2], SPRINT_CONTRACT, *CUTOFFS[2:])
+
+
+def session_of(cutoff: str) -> str:
+    return "sprint" if cutoff == SPRINT_CONTRACT else "race"
 
 
 class ExportError(ValueError):
@@ -110,7 +117,11 @@ def load_run(directory: Path, runs_root: Path) -> Run:
     _require(manifest.get("validation_status") == "development_only", "not development_only")
     _require(manifest.get("validated_forecast") is False, "validated_forecast must be false")
     _require(manifest.get("cutoff_kind") == cutoff, "cutoff differs from the run directory")
-    _require(cutoff in CUTOFFS, f"unknown cutoff {cutoff}")
+    _require(cutoff in EXPORT_CUTOFFS, f"unknown cutoff {cutoff}")
+    _require(
+        manifest.get("session", "race") == session_of(cutoff),
+        "manifest session differs from its cutoff",
+    )
     artifacts = manifest["artifacts"]
     for name, path in (
         ("predictions", directory / "predictions.parquet"),
@@ -283,9 +294,12 @@ def _race_meta(schedule: list[dict[str, Any]], round_: int) -> dict[str, Any]:
     return {"locality": None, "country": None}
 
 
-def _actual_result(root: Path, season: int, round_: int) -> dict[str, Any] | None:
-    """Race classification from the existing Jolpica ingestion, if it has been published."""
-    path = root / f"data/normalized/season={season}/round={round_:02d}/results.parquet"
+def _actual_result(
+    root: Path, season: int, round_: int, session: str = "race"
+) -> dict[str, Any] | None:
+    """Race or sprint classification from the existing Jolpica ingestion, if published."""
+    name = "sprint.parquet" if session == "sprint" else "results.parquet"
+    path = root / f"data/normalized/season={season}/round={round_:02d}/{name}"
     if not path.exists():
         return None
     table = pq.read_table(path)
@@ -558,8 +572,10 @@ def snapshot(root: Path, run: Run, names: Names, schedule: list[dict[str, Any]])
     drivers = _driver_rows(run, names)
     ood = manifest["ood"]
     dnf_values = {round(item["dnf_model_probability"], 6) for item in drivers}
-    actual = _actual_result(root, run.season, run.round)
+    session = session_of(run.cutoff)
+    actual = _actual_result(root, run.season, run.round, session)
     dataset = manifest["dataset"]
+    session_start = event.get("sprint_start") if session == "sprint" else event["race_start"]
     return {
         "schema_version": SCHEMA_VERSION,
         "kind": "race_snapshot",
@@ -567,6 +583,7 @@ def snapshot(root: Path, run: Run, names: Names, schedule: list[dict[str, Any]])
             "season": run.season,
             "round": run.round,
             "cutoff": run.cutoff,
+            "session": session,
             "run_id": run.run_id,
             "methodology": manifest["methodology"],
             "validation_status": manifest["validation_status"],
@@ -576,7 +593,7 @@ def snapshot(root: Path, run: Run, names: Names, schedule: list[dict[str, Any]])
             "created_at": manifest["created_at"],
             # A replay at an earlier cutoff is honest only if the page says when it was made.
             "generated_after_race_start": datetime.fromisoformat(manifest["created_at"])
-            > datetime.fromisoformat(event["race_start"]),
+            > datetime.fromisoformat(session_start or event["race_start"]),
             "git_commit": manifest.get("git_commit"),
             "source_directory": run.directory.relative_to(root).as_posix(),
         },
@@ -591,6 +608,8 @@ def snapshot(root: Path, run: Run, names: Names, schedule: list[dict[str, Any]])
             "first_practice": event["first_practice"],
             "qualifying_start": event["qualifying_start"],
             "sprint_weekend": event["sprint_weekend"],
+            "sprint_qualifying_start": event.get("sprint_qualifying_start"),
+            "sprint_start": event.get("sprint_start"),
         },
         "status": {
             "ood_status": ood["status"],
@@ -753,7 +772,7 @@ def build_export(root: Path, *, now: datetime | None = None) -> dict[str, dict[s
         for round_ in sorted({key[1] for key in keys}):
             available = {key[2]: snapshots[key] for key in keys if key[1] == round_}
             first = next(iter(available.values()))
-            ordered = [cutoff for cutoff in CUTOFFS if cutoff in available]
+            ordered = [cutoff for cutoff in EXPORT_CUTOFFS if cutoff in available]
             races.append(
                 {
                     "season": season,
@@ -769,6 +788,7 @@ def build_export(root: Path, *, now: datetime | None = None) -> dict[str, dict[s
                     "cutoffs": [
                         {
                             "cutoff": cutoff,
+                            "session": session_of(cutoff),
                             "available": cutoff in available,
                             "path": _path(season, round_, cutoff) if cutoff in available else None,
                             "run_id": available[cutoff]["identity"]["run_id"]
@@ -786,7 +806,7 @@ def build_export(root: Path, *, now: datetime | None = None) -> dict[str, dict[s
                             else False,
                             "superseded_run_ids": superseded.get((season, round_, cutoff), []),
                         }
-                        for cutoff in CUTOFFS
+                        for cutoff in EXPORT_CUTOFFS
                     ],
                 }
             )
@@ -852,7 +872,7 @@ def build_export(root: Path, *, now: datetime | None = None) -> dict[str, dict[s
     outputs["index.json"] = {
         "schema_version": SCHEMA_VERSION,
         "kind": "index",
-        "cutoffs": list(CUTOFFS),
+        "cutoffs": list(EXPORT_CUTOFFS),
         "latest": {
             "season": latest_key[0],
             "round": latest_key[1],

@@ -127,3 +127,30 @@ and no regressions, and even then it needs future independent races before any
 forecast is called validated. Championship outputs would also need the
 simulator's validation evidence and explicit points classification. This command
 never sets those flags.
+
+## Sprint weekends
+
+On a sprint weekend `predict-next-race` publishes a sprint race prediction between
+sprint qualifying and the sprint, and the Grand Prix prediction otherwise
+(`--session auto`, the default; `--session race` or `--session sprint` forces one).
+
+1. After sprint qualifying, run `predict-next-race`. Its collector tick freezes the
+   OpenF1 sprint qualifying result once it is nonempty, mapped to canonical drivers
+   through the session's own driver list and the Jolpica season codes. The run uses
+   the `post_sprint_qualifying` cutoff and addendum
+   [sprint-dev-v1](EVALUATION_PROTOCOL_V3.md#addendum-sprint-dev-v1), and writes to
+   `data/predictions/development/next_race/<event>/post_sprint_qualifying/<run id>/`.
+   A driver who set no sprint qualifying time keeps a missing grid position. A
+   driver missing from the latest audited roster takes the constructor of their
+   latest Jolpica entry this season, and the roster source says so.
+2. After the sprint, run `collect-next-race`. It freezes the Jolpica sprint
+   classification (polled from 45 minutes after the scheduled sprint start). Later
+   Grand Prix runs add those sprint points to the starting standings, marked
+   Development in the notes until the FIA after-sprint audit, and the season
+   simulation no longer samples that sprint. Without this capture a Grand Prix run
+   after the sprint stops rather than drop the points.
+
+Sprint captures are immutable, hash-named bundles under
+`data/raw/prospective_sprint/<event>/`; the observation clock is the availability
+time. The sprint result does not yet feed the Grand Prix model; that waits for a
+Gold sprint history.

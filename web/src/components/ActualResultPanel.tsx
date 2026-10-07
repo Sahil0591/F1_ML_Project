@@ -27,7 +27,8 @@ export function ActualResultPanel({ snapshot }: { snapshot: Snapshot }) {
     return (
       <EmptyState title="Actual result not yet available">
         <p>
-          The race classification appears here once the project&rsquo;s Jolpica ingestion has
+          The {snapshot.identity.session === "sprint" ? "sprint" : "race"} classification
+          appears here once the project&rsquo;s Jolpica ingestion has
           published it and the export is rerun. Predictions are never edited after the fact.
         </p>
       </EmptyState>
@@ -36,6 +37,7 @@ export function ActualResultPanel({ snapshot }: { snapshot: Snapshot }) {
   const { summary } = result;
   const byId = new Map(result.classification.map((row) => [row.driver_id, row]));
   const name = (id: string | null) => (id ? (byId.get(id)?.driver_name ?? id) : "n/a");
+  const before = snapshot.identity.session === "sprint" ? "Pre-sprint" : "Pre-race";
   return (
     <section aria-labelledby="result-title">
       <div className="section-head">
@@ -54,7 +56,7 @@ export function ActualResultPanel({ snapshot }: { snapshot: Snapshot }) {
             {summary.winner_probability !== null ? (
               <span className="summary-sub" title={exact(summary.winner_probability)}>
                 {" "}
-                pre-race win chance {formatProbability(summary.winner_probability, snapshot.race.draws)}
+                {before.toLowerCase()} win chance {formatProbability(summary.winner_probability, snapshot.race.draws)}
               </span>
             ) : null}
           </dd>
@@ -127,7 +129,9 @@ export function ActualResultPanel({ snapshot }: { snapshot: Snapshot }) {
       </dl>
       <div className="table-scroll" tabIndex={0} role="region" aria-labelledby="result-title">
         <table className="results-table">
-          <caption className="visually-hidden">Race classification with pre-race predictions</caption>
+          <caption className="visually-hidden">
+            Classification with {before.toLowerCase()} predictions
+          </caption>
           <thead>
             <tr>
               <th scope="col" className="col-pos sticky-col">
@@ -145,10 +149,10 @@ export function ActualResultPanel({ snapshot }: { snapshot: Snapshot }) {
               <th scope="col">Team</th>
               <th scope="col">Result</th>
               <th scope="col" className="num">
-                Pre-race Win Chance
+                {before} Win Chance
               </th>
               <th scope="col" className="num">
-                Pre-race Podium Chance
+                {before} Podium Chance
               </th>
             </tr>
           </thead>

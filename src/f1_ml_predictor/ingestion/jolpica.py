@@ -18,6 +18,7 @@ from f1_ml_predictor.normalization.jolpica import (
     normalize_qualifying,
     normalize_results,
     normalize_schedule,
+    normalize_sprint,
 )
 from f1_ml_predictor.paths import StoragePaths
 from f1_ml_predictor.sources.jolpica import JolpicaClient
@@ -67,6 +68,9 @@ class JolpicaSeasonIngestor:
         prefix = f"season={season}"
         schedule = self._collection(f"{prefix}/schedule", f"{season}/", should_refresh, report)
         events = normalize_schedule(schedule.items, season)
+        sprint_rounds = {
+            int(race["round"]) for race in schedule.items if isinstance(race.get("Sprint"), dict)
+        }
         report.events = events.num_rows
         self._write_partition(
             events,
@@ -101,6 +105,19 @@ class JolpicaSeasonIngestor:
                 f"{qualifying.sha256}:{results.sha256}".encode("ascii")
             ).hexdigest()
             self._write_partition(entries_table, base / "entries.parquet", combined_hash, report)
+            if event.round in sprint_rounds:
+                sprint = self._collection(
+                    f"{event_prefix}/sprint",
+                    f"{season}/{event.round}/sprint/",
+                    should_refresh,
+                    report,
+                )
+                self._write_partition(
+                    normalize_sprint(sprint.items, event),
+                    base / "sprint.parquet",
+                    sprint.sha256,
+                    report,
+                )
         return report
 
     @staticmethod

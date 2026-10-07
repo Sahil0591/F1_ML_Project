@@ -9,6 +9,7 @@ function positionClass(position: number | null): string {
 
 export function PredictedOrderTable({ snapshot }: { snapshot: Snapshot }) {
   const { race } = snapshot;
+  const sprint = snapshot.identity.session === "sprint";
   if (!race.predicted_order_available) {
     return (
       <EmptyState title="Predicted order not in this snapshot">
@@ -26,7 +27,7 @@ export function PredictedOrderTable({ snapshot }: { snapshot: Snapshot }) {
   return (
     <section aria-labelledby="order-title">
       <div className="section-head">
-        <h2 id="order-title">Predicted finishing order</h2>
+        <h2 id="order-title">Predicted {sprint ? "sprint " : ""}finishing order</h2>
         <p className="section-lede">
           P1 to P{drivers.length} ranked by clean-race expected position, with win probability as
           the tie break. This is a modelled order, not an FIA classification or a deterministic
@@ -118,10 +119,11 @@ export function RaceProbabilitiesTable({ snapshot }: { snapshot: Snapshot }) {
     (a, b) => b.winner_probability - a.winner_probability || a.expected_position - b.expected_position,
   );
   const fieldWide = race.dnf_field_wide ? drivers[0]?.dnf_model_probability : undefined;
+  const sprint = snapshot.identity.session === "sprint";
   return (
     <section aria-labelledby="prob-title">
       <div className="section-head">
-        <h2 id="prob-title">Race probabilities</h2>
+        <h2 id="prob-title">{sprint ? "Sprint" : "Race"} probabilities</h2>
         <p className="section-lede">
           From {race.draws.toLocaleString("en-GB")} joint simulated races. Expected includes
           retirement outcomes; Clean Race removes retirements from the same simulated draws. Small
