@@ -49,7 +49,7 @@ FIA_SEASON_PATHS = {
     2026: "season-2026-2072",
 }
 # The audit is frozen at this instant; later events are out of scope.
-AUDIT_AS_OF = datetime(2026, 10, 1, tzinfo=UTC)
+AUDIT_AS_OF = datetime(2026, 10, 7, tzinfo=UTC)
 JOLPICA = "https://api.jolpi.ca/ergast/f1"
 F1_RESULTS = "https://www.formula1.com/en/results"
 FIA_REGULATIONS = "https://www.fia.com/regulation/category/110"
@@ -137,6 +137,23 @@ def _norm(value: str) -> str:
     folded = unicodedata.normalize("NFKD", value)
     folded = "".join(char for char in folded if not unicodedata.combining(char))
     return " ".join(folded.replace("-", " ").split()).casefold()
+
+
+_RELOCATED_EVENT = re.compile(r"^(?P<base>.+? Grand Prix) in \S.*$")
+
+
+def _name_variants(name: str) -> list[str]:
+    """The Jolpica name, then the original event name for a relocated event.
+
+    A relocated event such as "Bahrain Grand Prix in Malaysia" keeps its original
+    name on the FIA registry and on formula1.com.
+    """
+    match = _RELOCATED_EVENT.match(name)
+    return [name, match["base"]] if match else [name]
+
+
+def _event_codes(name: str) -> set[str]:
+    return set().union(*(EVENT_CODES.get(variant, set()) for variant in _name_variants(name)))
 
 
 def _surname_key(value: str) -> str:
@@ -299,8 +316,17 @@ def collect(root: Path) -> Path:
         for race in completed + upcoming:
             round_number = int(race["round"])
             name = race["raceName"]
-            fia_name = EXTRA_FIA_EVENT_NAMES.get((season, name), name)
-            matches = [url for text, url in fia_events.items() if _norm(text) == _norm(fia_name)]
+            candidates = list(
+                dict.fromkeys(
+                    [EXTRA_FIA_EVENT_NAMES.get((season, name), name), *_name_variants(name)]
+                )
+            )
+            fia_name, matches = candidates[0], []
+            for candidate in candidates:
+                found = [url for text, url in fia_events.items() if _norm(text) == _norm(candidate)]
+                if len(found) == 1:
+                    fia_name, matches = candidate, found
+                    break
             event: dict[str, Any] = {
                 "season": season,
                 "round": round_number,
@@ -351,7 +377,10 @@ def collect(root: Path) -> Path:
                     continue
                 url = f"{JOLPICA}/{season}/{round_number}/{kind}.json?limit=100"
                 event[f"jolpica_{kind}"] = _retain_jolpica(root, _get(client, url, pause=0.5))
-            slug = F1_SLUGS.get(name)
+            slug = next(
+                (F1_SLUGS[variant] for variant in _name_variants(name) if variant in F1_SLUGS),
+                None,
+            )
             if slug in f1_paths:
                 race_url = f"https://www.formula1.com{f1_paths[slug]}"
                 pages: dict[str, Any] = {
@@ -667,14 +696,14 @@ def _align(codes: list[str], rounds: list[dict[str, Any]]) -> dict[int, int]:
     table = [[0] * (m + 1) for _ in range(n + 1)]
     for i in range(n - 1, -1, -1):
         for j in range(m - 1, -1, -1):
-            if codes[i] in EVENT_CODES.get(rounds[j]["event_name"], set()):
+            if codes[i] in _event_codes(rounds[j]["event_name"]):
                 table[i][j] = 1 + table[i + 1][j + 1]
             else:
                 table[i][j] = max(table[i + 1][j], table[i][j + 1])
     mapping, i, j = {}, 0, 0
     while i < n and j < m:
         if (
-            codes[i] in EVENT_CODES.get(rounds[j]["event_name"], set())
+            codes[i] in _event_codes(rounds[j]["event_name"])
             and table[i][j] == 1 + table[i + 1][j + 1]
         ):
             mapping[i] = rounds[j]["round"]
