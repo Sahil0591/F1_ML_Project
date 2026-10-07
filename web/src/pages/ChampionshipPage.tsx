@@ -201,10 +201,14 @@ export function ChampionshipPage({ index }: { index: ExportIndex }) {
   const latest = snapshot.data;
   return (
     <main id="main" className="page">
-      <section className="hero hero-compact" aria-labelledby="season-title">
+      <section
+        className="hero hero-compact hero-championship"
+        aria-labelledby="season-title"
+        data-season={data.season}
+      >
         <div className="hero-inner">
           <p className="hero-kicker">
-            {data.season} season <span aria-hidden="true">/</span> {data.total_rounds} rounds
+            Season {data.season} <span aria-hidden="true">/</span> {data.total_rounds} rounds
           </p>
           <h1 id="season-title">{data.season} Championship forecast</h1>
           <p className="hero-sub">
@@ -223,6 +227,13 @@ export function ChampionshipPage({ index }: { index: ExportIndex }) {
           <p className="hero-warning">{latest.warning}</p>
         </div>
       </section>
+      <nav className="results-nav" aria-label="Championship sections">
+        <span className="results-nav-label">Season view</span>
+        <a href="#wdc-standings">Drivers</a>
+        <a href="#wcc-standings">Constructors</a>
+        <a href="#evolution-title">Forecast history</a>
+        <a href="#season-results-title">Season results</a>
+      </nav>
       <div className="title-grid">
         <ChampionshipTable kind="wdc" championship={latest.championship} />
         <ChampionshipTable kind="wcc" championship={latest.championship} />

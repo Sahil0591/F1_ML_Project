@@ -16,7 +16,7 @@ const TITLES: Record<TitleKind, { heading: string; chance: string; entity: strin
 
 function PointsCell({ value }: { value: number }) {
   return (
-    <td className="num" title={exact(value)} data-value={exact(value)}>
+    <td className="num points-cell" title={exact(value)} data-value={exact(value)}>
       {formatPoints(value)}
     </td>
   );
@@ -62,7 +62,12 @@ export function ChampionshipTable({ kind, championship, headingLevel = 2 }: Cham
   const Heading = headingLevel === 2 ? "h2" : "h3";
   const headingId = `${kind}-title`;
   return (
-    <section aria-labelledby={headingId} className="championship" data-testid={`${kind}-section`}>
+    <section
+      id={`${kind}-standings`}
+      aria-labelledby={headingId}
+      className="championship"
+      data-testid={`${kind}-section`}
+    >
       <div className="section-head">
         <Heading id={headingId}>{copy.heading}</Heading>
         <p className="section-lede">
@@ -75,7 +80,7 @@ export function ChampionshipTable({ kind, championship, headingLevel = 2 }: Cham
       </div>
       <Contenders entries={entries} kind={kind} />
       <div className="table-scroll" tabIndex={0} role="region" aria-labelledby={headingId}>
-        <table className="results-table">
+        <table className="results-table standings-table">
           <caption className="visually-hidden">{copy.heading}</caption>
           <thead>
             <tr>
