@@ -36,6 +36,7 @@ from f1_ml_predictor.prediction.contracts import (
     CONTRACT_VERSION,
     GRID_NUMERIC,
     QUALIFYING_NUMERIC,
+    SPRINT_NUMERIC,
     AuditedHistory,
     build_contract_datasets,
     build_rows,
@@ -61,12 +62,12 @@ from f1_ml_predictor.prediction.season import (
     remaining_sessions,
 )
 from f1_ml_predictor.prediction.sprint import (
-    SPRINT_ADDENDUM,
-    SPRINT_ADDENDUM_SHA256,
     SPRINT_CONTRACT,
     SprintEvent,
     SprintModel,
+    addendum_for,
     evaluate_sprints,
+    gold_sprints,
     historical_sprints,
     latest_jolpica_constructors,
     sprint_rows,
@@ -80,6 +81,7 @@ from f1_ml_predictor.trust.sprint_capture import (
     SPRINT_RESULT,
     capture_grid,
     capture_points,
+    captured_sprint_values,
     latest_capture,
 )
 
@@ -95,7 +97,7 @@ _OUTPUT_ROOT = Path("data/predictions/development/next_race")
 BOOTSTRAP_REPLICATES = 20
 # Missing by the nature of the event (an unseen circuit), with flags well represented
 # in training; these are never hidden even when every live driver lacks them.
-STRUCTURAL_MISSING = ("driver_circuit_finish_mean", "circuit_dnf_rate")
+STRUCTURAL_MISSING = ("driver_circuit_finish_mean", "circuit_dnf_rate", *SPRINT_NUMERIC)
 SENSITIVITY_SIMULATIONS = 20000
 
 
@@ -566,11 +568,6 @@ def predict_next_race(
             f"; latest Jolpica entry for {', '.join(unknown)}" if unknown else ""
         )
         weekend_values = None
-        notes.append(
-            "sprint calibration and sprint history are Development tier (Jolpica sprint "
-            "results and OpenF1 sprint qualifying, cross-checked against audited FIA sprint "
-            "points); strength models are trained on Gold races"
-        )
     elif capture is None:
         contract, cutoff, capture_record = "pre_weekend", clock, None
         roster, roster_basis = _latest_roster(history.rows, target.event.season, cutoff)
@@ -595,6 +592,13 @@ def predict_next_race(
             }
             for driver, row in base.items()
         }
+        if weekend.sprint is not None and weekend.sprint <= cutoff:
+            live_sprint = captured_sprint_values(
+                latest_capture(root, target.event, SPRINT_QUALIFYING, cutoff),
+                latest_capture(root, target.event, SPRINT_RESULT, cutoff),
+            )
+            for driver, values in weekend_values.items():
+                values.update(live_sprint.get(driver, {}))
     require_known_by(observed_at, cutoff)
     current_sprint = None
     if not is_sprint and weekend.sprint is not None and weekend.sprint <= cutoff:
@@ -619,7 +623,23 @@ def predict_next_race(
     sprint_details: dict[str, Any] | None = None
     if is_sprint:
         assert sprint_grid is not None and weekend.sprint is not None
-        sprints, excluded_sprints = historical_sprints(root, history, clock=cutoff)
+        gold = gold_sprints(root, history, clock=cutoff)
+        if gold is not None:
+            sprints, excluded_sprints, sprint_source = gold
+            sprint_tier = "Gold"
+            notes.append(
+                "sprint calibration uses the FIA-audited Gold sprint history; strength models "
+                "are trained on Gold races"
+            )
+        else:
+            sprints, excluded_sprints = historical_sprints(root, history, clock=cutoff)
+            sprint_source = {"kind": "development_jolpica_openf1"}
+            sprint_tier = "Development"
+            notes.append(
+                "sprint calibration and sprint history are Development tier (Jolpica sprint "
+                "results and OpenF1 sprint qualifying, cross-checked against audited FIA sprint "
+                "points); strength models are trained on Gold races"
+            )
         rows, reasons = sprint_rows(
             history,
             SprintEvent(
@@ -627,7 +647,12 @@ def predict_next_race(
             ),
             labelled=False,
         )
-        sprint_details = {"sprints": sprints, "excluded": excluded_sprints}
+        sprint_details = {
+            "sprints": sprints,
+            "excluded": excluded_sprints,
+            "tier": sprint_tier,
+            "source": sprint_source,
+        }
     else:
         rows, reasons = build_rows(
             history,
@@ -670,6 +695,7 @@ def predict_next_race(
             seed=seed,
             candidates=candidates,
             progress=progress,
+            tier=sprint_details["tier"],
         )
         model = SprintModel(
             sprint_evaluation,
@@ -1035,13 +1061,19 @@ def predict_next_race(
         "evidence_tier": {
             "training": "Gold",
             "prediction_snapshot": "Development",
-            **({"sprint_calibration": "Development"} if is_sprint else {}),
+            **(
+                {"sprint_calibration": sprint_details["tier"]}
+                if is_sprint and sprint_details is not None
+                else {}
+            ),
         },
         "sprint": None
         if sprint_details is None or sprint_grid_capture is None
         else {
-            "addendum": SPRINT_ADDENDUM["version"],
-            "addendum_sha256": SPRINT_ADDENDUM_SHA256,
+            "addendum": addendum_for(sprint_details["tier"])[0]["version"],
+            "addendum_sha256": addendum_for(sprint_details["tier"])[1],
+            "history_tier": sprint_details["tier"],
+            "history_source": sprint_details["source"],
             "grid_capture": sprint_grid_capture["bundle"],
             "grid_source": None if sprint_grid is None else sprint_grid.source,
             "historical_sprints": [item.event.partition() for item in sprint_details["sprints"]],

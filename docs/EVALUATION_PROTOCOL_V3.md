@@ -12,7 +12,8 @@ proved unidentifiable (see below); that draft output was discarded.
 
 ## Cutoff contracts
 
-Each cutoff has its own feature contract (`cutoff-contracts-v2`; v2 adds the strength
+Each cutoff has its own feature contract (`cutoff-contracts-v3`; v3 adds same-weekend
+sprint values to the post-qualifying contracts, v2 added the strength
 features below to v1). History
 predictors are recomputed at the contract cutoff from audited Gold outcomes,
 audited binary DNF labels and the scoring ledger. Only values published before
@@ -22,7 +23,7 @@ the cutoff are read.
 | --- | --- | --- |
 | `pre_weekend` | scheduled first practice start | same-season rolling finishes; cross-season driver finish and qualifying form; driver and constructor audited DNF rates; constructor finish, qualifying and teammate form; championship points and positions; circuit history and attrition; whether the circuit was seen before; sprint format; pairwise driver and constructor Elo; teammate qualifying head-to-head; similarity-weighted driver and constructor finish deltas at the most similar profiled circuits |
 | `post_practice` | scheduled qualifying start | pre-weekend plus audited FIA practice classification, only when published before qualifying |
-| `post_qualifying` | audited Gold post-qualifying cutoff | post-practice plus qualifying position, last-session time and teammate delta |
+| `post_qualifying` | audited Gold post-qualifying cutoff | post-practice plus qualifying position, last-session time and teammate delta; on sprint weekends the Gold sprint qualifying position, sprint position and whether the driver was classified, each only when published before the cutoff (v3) |
 | `pre_race` | audited Gold post-qualifying cutoff | post-qualifying plus official grids published before the cutoff |
 
 Historical session times come from retained Jolpica season schedules. They place
@@ -192,3 +193,57 @@ outer sprints. The primary (`ridge_pl`) had winner log loss 1.160 against 1.406
 winner more often (top-1 0.63 against 0.46), so every task stays `no_selection`
 and sprint predictions are development only. A full FIA Gold audit of sprint
 classifications is planned to replace the Development history.
+
+## Addendum sprint-gold-v1
+
+`build-gold-sprints` audits sprint history directly from FIA documents
+(`trust/sprint_gold.py`). For each completed sprint weekend it reads the retained
+FIA event registry and:
+
+- takes the sprint grid from the first non-recalled sprint qualifying
+  classification (2024+), sprint shootout classification (2023) or, in 2022, the
+  main qualifying classification, which set the sprint grid. Its availability is the
+  registry publication clock read as the later UTC bound plus one minute;
+- requires that grid to be published before the earliest sprint starting grid,
+  which the FIA issues before the start;
+- labels from the latest non-recalled Final Sprint Classification, and excludes the
+  weekend if a later sprint ruling (decision, infringement, penalty, review) could
+  amend it. Late re-uploads of grid documents and championship points are not
+  rulings;
+- checks every classified position against the audited FIA sprint points, and
+  labels retirements only on FIA, Jolpica and OpenF1 agreement under the unchanged
+  binary DNF rule. A classified driver who set no sprint qualifying time keeps a
+  missing grid position; a grid driver missing from the classification excludes the
+  weekend.
+
+First version (7 October 2026): 23 of 26 sprints, 470 driver rows, 402 audited
+retirement labels. Excluded: 2023 Azerbaijan (a grid driver is absent from the
+classification), 2025 China (the PDF layout splits a driver name, so the table is not
+parsed) and 2025 São Paulo (a corrected sprint infringement after the final
+classification). 2023 Qatar, excluded by the Development cross-check, is included:
+the FIA classification agrees with the audited FIA points, and Jolpica differed.
+
+Sprint calibration (addendum `sprint-dev-v1` settings) now runs on this Gold history
+when a Gold sprint version exists, as `sprint-gold-v1` with its own SHA-256. On 22
+outer sprints with the v2 race contract the primary (`ridge_pl`) had winner log loss
+1.313 against 1.572 (logistic) and 1.628 (grid heuristic), podium Brier 0.0599
+against 0.0673 and 0.0667, and finish MAE 2.34 against 2.35 and 2.32. The heuristic
+again picked more winners, so sprint tasks stay `no_selection`. With 402 labels the
+logistic retirement model beat the flat sprint rate out of fold.
+
+### Sprint values in the race contracts (cutoff-contracts-v3)
+
+Since 2024 the sprint runs before Grand Prix qualifying, so the `post_qualifying`
+and `pre_race` contracts add the Gold sprint qualifying position, sprint position and
+a classified flag, each gated on its own publication clock. Earlier formats and
+non-sprint weekends leave them missing; the sprint model hides them because they
+describe the sprint it predicts. A separate post-sprint race cutoff was not added: it
+would change the frozen v3 cutoff list for a window of a few hours.
+
+The paired check used the same v3 dataset with the sprint values hidden (the v2
+feature set), on the same 92 outer races, folds and seed. Thirteen evaluated sprint
+weekends carry values. The `ensemble_all` primary moved from winner log loss 1.2315
+to 1.2245, podium Brier 0.07135 to 0.07126 and finish MAE 2.643 to 2.641 at
+`post_qualifying`, and from 1.2276 to 1.2247, 0.07125 to 0.07135 and 2.640 to 2.637
+at `pre_race`. Formal gates were identical. The changes are within noise for 13
+weekends; v3 was kept because it was never materially worse.

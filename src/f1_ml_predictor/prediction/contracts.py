@@ -41,7 +41,7 @@ from f1_ml_predictor.prediction.strength_features import (
 from f1_ml_predictor.scoring.ledger import ScoringLedger
 from f1_ml_predictor.time import require_known_by, require_utc
 
-CONTRACT_VERSION = "cutoff-contracts-v2"
+CONTRACT_VERSION = "cutoff-contracts-v3"
 HISTORY_NUMERIC = (
     "recent_finish_mean_3",
     "recent_finish_mean_5",
@@ -81,11 +81,15 @@ QUALIFYING_NUMERIC = (
     "teammate_qualifying_position_delta",
 )
 GRID_NUMERIC = ("grid_position",)
+# Same-weekend sprint values (v3). Since 2024 the sprint precedes Grand Prix
+# qualifying, so the post-qualifying cutoffs see it; earlier formats and non-sprint
+# weekends leave them missing, which the sprint_weekend count disambiguates.
+SPRINT_NUMERIC = ("sprint_qualifying_position", "sprint_position", "sprint_classified")
 _WEEKEND = {
     "pre_weekend": (),
     "post_practice": PRACTICE_NUMERIC,
-    "post_qualifying": (*PRACTICE_NUMERIC, *QUALIFYING_NUMERIC),
-    "pre_race": (*PRACTICE_NUMERIC, *QUALIFYING_NUMERIC, *GRID_NUMERIC),
+    "post_qualifying": (*PRACTICE_NUMERIC, *QUALIFYING_NUMERIC, *SPRINT_NUMERIC),
+    "pre_race": (*PRACTICE_NUMERIC, *QUALIFYING_NUMERIC, *GRID_NUMERIC, *SPRINT_NUMERIC),
 }
 DNF_FEATURES = (
     "driver_dnf_rate_any_10",
@@ -155,6 +159,9 @@ class AuditedHistory:
     ledger: ScoringLedger
     weekends: dict[EventId, Weekend]
     dnf_labels: dict[tuple[str, str], tuple[bool, datetime]]
+    # Gold sprint rows by event and driver, and the sprint version's manifest hash.
+    sprints: dict[str, dict[str, dict[str, Any]]] = field(default_factory=dict)
+    sprint_version: str | None = None
     rows: list[dict[str, Any]] = field(init=False)
     by_event: dict[str, list[dict[str, Any]]] = field(init=False)
     order: list[str] = field(init=False)
@@ -470,8 +477,23 @@ def historical_weekend(
             item[f"{name}_available_at"] = row["feature_timestamp"]
             if row["feature_timestamp"] > cutoff:
                 raise ValueError("Gold weekend value is later than its audited cutoff")
+        item.update(sprint_weekend_values(history.sprints.get(event_id, {}).get(row["driver_id"])))
         result[row["driver_id"]] = item
     return result
+
+
+def sprint_weekend_values(row: dict[str, Any] | None) -> dict[str, Any]:
+    """Race-contract sprint values from one Gold sprint row, each with its own clock."""
+    if row is None:
+        return {}
+    return {
+        "sprint_qualifying_position": row["sprint_qualifying_position"],
+        "sprint_qualifying_position_available_at": row["grid_available_at"],
+        "sprint_position": row["label_position"],
+        "sprint_position_available_at": row["label_available_at"],
+        "sprint_classified": float(row["label_classified"]),
+        "sprint_classified_available_at": row["label_available_at"],
+    }
 
 
 def practice_clocks(version: GoldVersion) -> dict[tuple[str, str], datetime]:
@@ -538,6 +560,7 @@ def build_contract_datasets(
         / f"gold_{CONTRACT_VERSION.replace('-', '_')}"
         / history.version.manifest_sha256
         / dnf_version.manifest_sha256
+        / (history.sprint_version or "no_gold_sprints")
     )
     result = {}
     for contract in CUTOFFS:
@@ -584,6 +607,7 @@ def build_contract_datasets(
             "events": len(history.order),
             "source_gold_manifest_sha256": history.version.manifest_sha256,
             "source_dnf_manifest_sha256": dnf_version.manifest_sha256,
+            "source_gold_sprint_manifest_sha256": history.sprint_version,
             "scoring_ledger_sha256": history.ledger.sha256,
             "schedule_sources": schedule_sources,
             "practice_policy": "practice only when its FIA publication precedes the cutoff",

@@ -37,6 +37,7 @@ from f1_ml_predictor.prediction.candidates import (
 )
 from f1_ml_predictor.prediction.contracts import (
     PRACTICE_NUMERIC,
+    SPRINT_NUMERIC,
     AuditedHistory,
     build_rows,
 )
@@ -57,14 +58,16 @@ from f1_ml_predictor.prediction.protocol import (
 from f1_ml_predictor.sources.http import JsonSourceClient
 from f1_ml_predictor.sources.jolpica import BASE_URL
 from f1_ml_predictor.time import require_known_by, require_utc
+from f1_ml_predictor.trust.sprint_gold import SPRINT_GOLD_VERSION, load_gold_sprints
 from f1_ml_predictor.trust.winter import DRIVER_ALIASES
 
 SPRINT_CONTRACT = "post_sprint_qualifying"
 RACE_CONTRACT = "post_qualifying"
 SPRINT_SESSION_NAMES = ("Sprint Qualifying", "Sprint Shootout")
 OPENF1 = "https://api.openf1.org/v1"
-# Practice is never captured live, so sprint rows never carry it.
-MASKED = tuple(PRACTICE_NUMERIC)
+# Practice is never captured live, so sprint rows never carry it; same-weekend sprint
+# values describe the sprint being predicted, so they are hidden too.
+MASKED = (*PRACTICE_NUMERIC, *SPRINT_NUMERIC)
 # 2022 had no sprint qualifying session: Friday qualifying set the sprint grid.
 # Its classification is bounded conservatively after the scheduled start.
 LEGACY_GRID_BOUND = timedelta(hours=2)
@@ -107,6 +110,28 @@ SPRINT_ADDENDUM = {
 SPRINT_ADDENDUM_SHA256 = hashlib.sha256(
     json.dumps(SPRINT_ADDENDUM, sort_keys=True, separators=(",", ":")).encode()
 ).hexdigest()
+# The same method on the FIA-audited Gold sprint history (trust/sprint_gold.py).
+SPRINT_GOLD_ADDENDUM = {
+    **SPRINT_ADDENDUM,
+    "version": "sprint-gold-v1",
+    "tier": "Gold",
+    "cutoff": "FIA registry publication of the first non-recalled sprint grid document "
+    "(sprint qualifying 2024+, sprint shootout 2023, qualifying 2022), read as the later "
+    "UTC bound plus one minute, and published before the Final Sprint Starting Grid",
+    "labels": "latest non-recalled FIA Final Sprint Classification with no later sprint "
+    "ruling; label time is its publication upper bound plus one minute; retirements are "
+    "labelled only on FIA, Jolpica and OpenF1 agreement under the binary DNF rule",
+    "cross_check": "every FIA sprint position must match the audited FIA sprint points ledger",
+}
+SPRINT_GOLD_ADDENDUM_SHA256 = hashlib.sha256(
+    json.dumps(SPRINT_GOLD_ADDENDUM, sort_keys=True, separators=(",", ":")).encode()
+).hexdigest()
+
+
+def addendum_for(tier: str) -> tuple[dict[str, Any], str]:
+    if tier == "Gold":
+        return SPRINT_GOLD_ADDENDUM, SPRINT_GOLD_ADDENDUM_SHA256
+    return SPRINT_ADDENDUM, SPRINT_ADDENDUM_SHA256
 
 
 def _canonical(value: Any) -> bytes:
@@ -465,6 +490,84 @@ def _legacy_grid(
     )
 
 
+def status_sources(
+    root: Path, history: AuditedHistory, *, http_client: httpx.Client | None = None
+) -> Callable[[EventId], tuple[dict[str, Any], dict[str, Any] | None]]:
+    """Jolpica and OpenF1 sprint status rows by canonical driver, for DNF agreement.
+
+    OpenF1 starts in 2023, so earlier sprints have no OpenF1 rows and their
+    retirements stay unlabelled under the three-source rule.
+    """
+    client = JsonSourceClient(_LIMITS, http_client)
+
+    def provide(event: EventId) -> tuple[dict[str, Any], dict[str, Any] | None]:
+        identities = crosswalk(
+            _retained(
+                root,
+                f"season={event.season}/jolpica-drivers",
+                f"{BASE_URL}/{event.season}/drivers/",
+                {"limit": 100, "offset": 0},
+                client,
+            )
+        )
+        path = (
+            root
+            / "data/normalized"
+            / f"season={event.season}"
+            / f"round={event.round:02d}"
+            / "sprint.parquet"
+        )
+        if not path.exists():
+            raise ValueError("jolpica_sprint_missing")
+        jolpica = {
+            identities.driver(row["driver_id"]): row for row in pq.read_table(path).to_pylist()
+        }
+        if event.season < 2023:
+            return jolpica, None
+        sessions = _retained(
+            root,
+            f"season={event.season}/openf1-sprint-sessions",
+            f"{OPENF1}/sessions",
+            {"year": event.season, "session_name": "Sprint"},
+            client,
+        )
+        low, high = _session_window(history, event)
+        matches = [
+            item
+            for item in sessions
+            if low <= datetime.fromisoformat(item["date_start"]) <= high + timedelta(hours=2)
+        ]
+        if len(matches) != 1:
+            return jolpica, None
+        key = int(matches[0]["session_key"])
+        results = _retained(
+            root,
+            f"season={event.season}/openf1-session-result-{key}",
+            f"{OPENF1}/session_result",
+            {"session_key": key},
+            client,
+        )
+        drivers = _retained(
+            root,
+            f"season={event.season}/openf1-drivers-{key}",
+            f"{OPENF1}/drivers",
+            {"session_key": key},
+            client,
+        )
+        by_number = {
+            int(item["driver_number"]): identities.codes.get(item["name_acronym"])
+            for item in drivers
+        }
+        openf1 = {
+            str(by_number[int(row["driver_number"])]): row
+            for row in results
+            if by_number.get(int(row["driver_number"])) is not None
+        }
+        return jolpica, openf1
+
+    return provide
+
+
 def latest_jolpica_constructors(root: Path, event: EventId, drivers: list[str]) -> dict[str, str]:
     """Constructor of each driver at their latest Jolpica entry earlier this season.
 
@@ -495,6 +598,60 @@ def latest_jolpica_constructors(root: Path, event: EventId, drivers: list[str]) 
         if set(found) == set(drivers):
             break
     return found
+
+
+def gold_sprints(
+    root: Path, history: AuditedHistory, *, clock: datetime
+) -> tuple[list[SprintEvent], list[dict[str, str]], dict[str, Any]] | None:
+    """Completed sprints from the current Gold sprint version, or None if none exists."""
+    loaded = load_gold_sprints(root)
+    if loaded is None:
+        return None
+    rows, manifest, digest = loaded
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        grouped.setdefault(row["event_id"], []).append(row)
+    events = []
+    for event_id, group in grouped.items():
+        season, number = event_id.split("/")
+        event = EventId(int(season.removeprefix("season=")), int(number.removeprefix("round=")))
+        weekend = history.weekends.get(event)
+        labels_at = group[0]["label_available_at"]
+        if weekend is None or weekend.sprint is None or labels_at > clock:
+            continue
+        grid = SprintGrid(
+            {row["driver_id"]: row["sprint_qualifying_position"] for row in group},
+            {row["driver_id"]: row["sprint_qualifying_last_seconds"] for row in group},
+            group[0]["grid_available_at"],
+            f"fia:{SPRINT_GOLD_VERSION}:{digest[:12]}",
+        )
+        labels = {
+            row["driver_id"]: {
+                "label_position": row["label_position"],
+                "label_winner": row["label_position"] == 1,
+                "label_podium": row["label_position"] is not None and row["label_position"] <= 3,
+                "label_dnf": row["label_dnf"],
+                "label_available_at": row["label_available_at"],
+                "label_dnf_available_at": row["label_available_at"]
+                if row["label_dnf"] is not None
+                else None,
+                "points": None,
+            }
+            for row in group
+        }
+        events.append(
+            SprintEvent(
+                event,
+                weekend.circuit_id,
+                grid.available_at,
+                weekend.sprint,
+                {row["driver_id"]: row["constructor_id"] for row in group},
+                grid,
+                labels,
+            )
+        )
+    events.sort(key=lambda item: item.cutoff)
+    return events, list(manifest["excluded"]), {"manifest_sha256": digest, **manifest["dataset"]}
 
 
 def weekend_values(grid: SprintGrid, roster: dict[str, str]) -> dict[str, dict[str, Any]]:
@@ -619,8 +776,10 @@ def evaluate_sprints(
     seed: int = 42,
     candidates: tuple[str, ...] = JOINT_CANDIDATES,
     progress: Callable[[str], None] | None = None,
+    tier: str = "Development",
 ) -> tuple[dict[str, Any], Path]:
-    """Run or reload the sprint-dev-v1 evaluation for exactly these inputs."""
+    """Run or reload the sprint evaluation (addendum by tier) for exactly these inputs."""
+    addendum, addendum_sha256 = addendum_for(tier)
     sprint_identity = [
         {
             "event_id": sprint.event.partition(),
@@ -637,7 +796,7 @@ def evaluate_sprints(
         for sprint in sprints
     ]
     key_payload = {
-        "addendum_sha256": SPRINT_ADDENDUM_SHA256,
+        "addendum_sha256": addendum_sha256,
         "race_dataset_sha256": race_dataset_sha256,
         "sprints_sha256": hashlib.sha256(_canonical(sprint_identity)).hexdigest(),
         "seed": seed,
@@ -648,7 +807,7 @@ def evaluate_sprints(
         root
         / "models/experiments/gold"
         / history.version.dataset_version
-        / "sprint_dev_v1"
+        / addendum["version"].replace("-", "_")
         / key
         / "evaluation.json"
     )
@@ -667,9 +826,9 @@ def evaluate_sprints(
         oof_path.parent.mkdir(parents=True, exist_ok=True)
         joblib.dump(records, oof_path)
     report = analyse(records, seed=seed, candidates=candidates)
-    report["addendum"] = SPRINT_ADDENDUM
-    report["addendum_sha256"] = SPRINT_ADDENDUM_SHA256
-    report["evidence_tier"] = "Development"
+    report["addendum"] = addendum
+    report["addendum_sha256"] = addendum_sha256
+    report["evidence_tier"] = tier
     report["sprints"] = sprint_identity
     report["excluded_sprints"] = excluded
     report["key"] = key_payload

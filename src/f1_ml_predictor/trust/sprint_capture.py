@@ -119,6 +119,42 @@ def capture_points(record: dict[str, Any]) -> dict[str, float]:
     }
 
 
+def captured_sprint_values(
+    grid_record: dict[str, Any] | None, result_record: dict[str, Any] | None
+) -> dict[str, dict[str, Any]]:
+    """Live race-contract sprint values from verified captures, at their capture clocks.
+
+    Mirrors the Gold values: the sprint qualifying position, and from the sprint
+    classification the classified position and whether the driver was classified.
+    """
+    values: dict[str, dict[str, Any]] = {}
+    if grid_record is not None:
+        grid = capture_grid(grid_record)
+        for driver, position in grid.positions.items():
+            values.setdefault(driver, {}).update(
+                {
+                    "sprint_qualifying_position": position,
+                    "sprint_qualifying_position_available_at": grid.available_at,
+                }
+            )
+    if result_record is not None:
+        event = EventId(result_record["event"]["season"], result_record["event"]["round"])
+        identities = crosswalk(result_record["sources"]["drivers_season"]["payload"])
+        captured = datetime.fromisoformat(result_record["captured_at"])
+        payload = result_record["sources"]["sprint"]["payload"]
+        for row in normalize_sprint(payload["MRData"]["RaceTable"]["Races"], event).to_pylist():
+            classified = str(row["position_text"] or "").isdecimal()
+            values.setdefault(identities.driver(row["driver_id"]), {}).update(
+                {
+                    "sprint_position": row["position"] if classified else None,
+                    "sprint_position_available_at": captured,
+                    "sprint_classified": float(classified),
+                    "sprint_classified_available_at": captured,
+                }
+            )
+    return values
+
+
 def sprint_tick(
     root: Path,
     event: EventId,

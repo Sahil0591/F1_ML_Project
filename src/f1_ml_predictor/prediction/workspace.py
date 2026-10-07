@@ -36,6 +36,7 @@ from f1_ml_predictor.prediction.protocol import (
 )
 from f1_ml_predictor.prediction.schedules import retained_schedules
 from f1_ml_predictor.scoring.ledger import load_scoring_ledger
+from f1_ml_predictor.trust.sprint_gold import load_gold_sprints
 
 COLLECTION_VERSION = "oof-fits-v1"
 
@@ -63,6 +64,12 @@ def load_audited_history(
     seasons = sorted({int(row["event_id"][7:11]) for row in version.rows})
     weekends, sources = retained_schedules(root, seasons, http_client=http_client)
     history = AuditedHistory(version, outcomes, ledger, weekends, dnf_label_map(dnf_version))
+    gold_sprints = load_gold_sprints(root)
+    if gold_sprints is not None:
+        sprint_rows, _, digest = gold_sprints
+        for row in sprint_rows:
+            history.sprints.setdefault(row["event_id"], {})[row["driver_id"]] = row
+        history.sprint_version = digest
     return history, dnf_version, sources
 
 

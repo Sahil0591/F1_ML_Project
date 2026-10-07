@@ -75,6 +75,10 @@ def published_standings(
             raise ValueError("sprint result capture is later than the cutoff")
         rule = ledger.rule_for(target)
         team_scoring = rule is None or rule.constructor_scoring == "sum_awarded_entries"
+        season_rule, _ = _season_rule(ledger, target)
+        awarded = sorted((p for p in current_sprint["points"].values() if p), reverse=True)
+        if awarded != [float(p) for p in season_rule.sprint_points[: len(awarded)]]:
+            raise ValueError("captured sprint points do not match the audited sprint table")
         for driver, points in current_sprint["points"].items():
             drivers[driver] += points
             if team_scoring and driver in roster:

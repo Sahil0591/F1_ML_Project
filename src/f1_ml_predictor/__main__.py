@@ -226,6 +226,15 @@ def main() -> None:
     nextrace.add_argument("--benchmark-dir", type=Path)
     nextrace.add_argument("--dnf-benchmark-dir", type=Path)
     nextrace.add_argument("--root", type=Path, default=Path.cwd())
+    sprints = subcommands.add_parser(
+        "build-gold-sprints", help="Audit FIA sprint grids and classifications into Gold"
+    )
+    sprints.add_argument(
+        "--collection",
+        type=Path,
+        help="Scoring-audit collection with retained FIA registries (default: newest)",
+    )
+    sprints.add_argument("--root", type=Path, default=Path.cwd())
     cutoff_eval = subcommands.add_parser(
         "evaluate-cutoffs", help="Run the frozen cutoff-specific v3 Gold evaluation"
     )
@@ -315,6 +324,21 @@ def main() -> None:
             print(json.dumps(result, indent=2))
             if result.get("status") == "error":
                 raise SystemExit(1)
+            return
+        if args.command == "build-gold-sprints":
+            from f1_ml_predictor.prediction.sprint import status_sources
+            from f1_ml_predictor.prediction.workspace import load_audited_history
+            from f1_ml_predictor.trust.sprint_gold import build_gold_sprints
+
+            collection = args.collection or max(
+                (paths.root / "data/raw/scoring_audit").glob("collection-*.json"),
+                key=lambda path: path.stat().st_mtime,
+            )
+            history, _, _ = load_audited_history(paths.root)
+            result = build_gold_sprints(
+                paths.root, collection, sources=status_sources(paths.root, history)
+            )
+            print(json.dumps(result, indent=2))
             return
         if args.command == "evaluate-cutoffs":
             summary = evaluate_cutoffs(
