@@ -128,14 +128,17 @@ SPRINT_ADDENDUM_SHA256 = hashlib.sha256(
 # The same method on the FIA-audited Gold sprint history (trust/sprint_gold.py).
 SPRINT_GOLD_ADDENDUM = {
     **SPRINT_ADDENDUM,
-    "version": "sprint-gold-v1",
+    "version": "sprint-gold-v2",
     "tier": "Gold",
     "cutoff": "FIA registry publication of the first non-recalled sprint grid document "
     "(sprint qualifying 2024+, sprint shootout 2023, qualifying 2022), read as the later "
     "UTC bound plus one minute, and published before the Final Sprint Starting Grid",
     "labels": "latest non-recalled FIA Final Sprint Classification with no later sprint "
-    "ruling; label time is its publication upper bound plus one minute; retirements are "
-    "labelled only on FIA, Jolpica and OpenF1 agreement under the binary DNF rule",
+    "ruling, except a ruling reviewed against that classification and found not to amend "
+    "it, bound to the ruling PDF hash; label time is its publication upper bound plus one "
+    "minute; retirements are labelled only on FIA, Jolpica and OpenF1 agreement under the "
+    "binary DNF rule",
+    "audit_method": "fia-sprint-direct-v2-cet-upper-bound",
     "cross_check": "every FIA sprint position must match the audited FIA sprint points ledger",
 }
 SPRINT_GOLD_ADDENDUM_SHA256 = hashlib.sha256(

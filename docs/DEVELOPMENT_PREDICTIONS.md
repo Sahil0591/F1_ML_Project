@@ -162,7 +162,7 @@ Sprint captures are immutable, hash-named bundles under
 `data/raw/prospective_sprint/<event>/`; the observation clock is the availability
 time. Sprint history is the FIA-audited Gold sprint version when one exists
 (`build-gold-sprints`, addendum
-[sprint-gold-v1](EVALUATION_PROTOCOL_V3.md#addendum-sprint-gold-v1)), and the
+[sprint-gold-v2](EVALUATION_PROTOCOL_V3.md#addendum-sprint-gold-v2)), and the
 Development history otherwise; the manifest records which. Grand Prix runs at the
 post-qualifying and pre-race cutoffs use the captured sprint qualifying position,
 sprint position and classified flag (contract `cutoff-contracts-v3`), trained on the

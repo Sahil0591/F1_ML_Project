@@ -231,6 +231,40 @@ against 0.0673 and 0.0667, and finish MAE 2.34 against 2.35 and 2.32. The heuris
 again picked more winners, so sprint tasks stay `no_selection`. With 402 labels the
 logistic retirement model beat the flat sprint rate out of fold.
 
+## Addendum sprint-gold-v2
+
+The same method as `sprint-gold-v1` on audit method `fia-sprint-direct-v2`, which
+recovers two of the three sprints v1 excluded (8 October 2026):
+
+- 2025 China: the FIA sprint qualifying PDF wraps "Andrea Kimi ANTONELLI" onto two
+  lines. A lone uppercase surname is rejoined only when the row's name cell plus
+  that word is an exact driver alias, written into the cell padding so the
+  lap-time columns keep their positions.
+- 2025 São Paulo: document 65 is a corrected reissue of recalled document 41 with
+  the same 5 second penalty for car 30, and the Final Sprint Classification
+  (document 42) already applies it and cites document 41. A later sprint ruling
+  reviewed this way is listed with its finding and bound to the ruling PDF hash; a
+  changed PDF excludes the sprint again.
+
+The label rule therefore reads "no later sprint ruling, except one reviewed against
+the classification and found not to amend it", so the addendum has a new version
+and SHA-256. The rebuilt Gold sprint set has 25 of 26 sprints, 510 driver rows and
+442 audited retirement labels; 2023 Azerbaijan stays excluded.
+
+On 24 outer sprints the primary (`ridge_pl`) had winner log loss 1.300 against 1.580
+(logistic) and 1.599 (grid heuristic), podium Brier 0.0609 against 0.0674 and
+0.0653, and finish MAE 2.33 against 2.31 and 2.34. The heuristic picked the winner
+more often (top-1 0.67 against 0.46), so sprint tasks stay `no_selection`. The
+logistic retirement model again beat the flat sprint rate (Brier 0.0601 against
+0.0638).
+
+The race contracts carry Gold sprint values, so both new sprints change the
+`post_qualifying` and `pre_race` datasets. Re-evaluated on the same 92 outer races,
+the `ensemble_all` primary moved from winner log loss 1.2245 to 1.2230 at
+`post_qualifying` (podium Brier 0.07126 to 0.07123, finish MAE 2.641 to 2.643) and
+from 1.2247 to 1.2251 at `pre_race` (0.07135 to 0.07121, 2.637 to 2.638). Formal
+gates were identical.
+
 ### Sprint values in the race contracts (cutoff-contracts-v3)
 
 Since 2024 the sprint runs before Grand Prix qualifying, so the `post_qualifying`
