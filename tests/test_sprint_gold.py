@@ -15,7 +15,13 @@ from f1_ml_predictor.prediction.contracts import (
     sprint_weekend_values,
 )
 from f1_ml_predictor.prediction.sprint import MASKED
-from f1_ml_predictor.trust.sprint_gold import SCHEMA, grid_kind, load_gold_sprints, select_documents
+from f1_ml_predictor.trust.sprint_gold import (
+    REVIEWED_LATER_RULINGS,
+    SCHEMA,
+    grid_kind,
+    load_gold_sprints,
+    select_documents,
+)
 
 
 def _row(number: int, title: str, cet: str, *, recalled: bool = False) -> dict:
@@ -67,6 +73,15 @@ def test_a_later_sprint_ruling_excludes_the_sprint() -> None:
     )
     with pytest.raises(ValueError, match="later_sprint_ruling_requires_review"):
         select_documents(_registry(ruling), 2026)
+
+
+def test_a_reviewed_later_ruling_does_not_exclude_the_sprint() -> None:
+    ruling = _row(
+        30, "Corrected - Sprint Infringement - Car 30 - Causing a Collision", "22.08.26 16:00"
+    )
+    ruling["url"] = next(iter(REVIEWED_LATER_RULINGS))
+    _, _, final = select_documents(_registry(ruling), 2026)
+    assert final["document_id"] == "21"
 
 
 def test_late_grid_uploads_and_points_are_not_rulings() -> None:

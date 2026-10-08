@@ -108,6 +108,43 @@ def test_sparse_session_keeps_q3_in_q3_when_q2_is_missing():
     assert rows[1]["q3_seconds"] == 82.408
 
 
+def test_wrapped_surname_is_rejoined_only_into_an_exact_alias_without_moving_columns():
+    complete = qualifying_row(
+        1,
+        1,
+        "Max VERSTAPPEN",
+        "Oracle Red Bull Racing",
+        "1:22.877 6 18:17:31",
+        "1:22.752 6 18:33:17",
+        "1:22.207 6 19:00:53",
+    )
+    wrapped = qualifying_row(
+        2,
+        55,
+        "Carlos",
+        "Scuderia Ferrari",
+        "1:23.178 6 18:16:17",
+        "1:22.804 5 18:32:24",
+        "1:22.408 6 19:00:44",
+    )
+    text = "\n".join([QHEADER, complete, wrapped, "         SAINZ"])
+    rows = parse_qualifying_text(text, EVENT, DRIVERS, CONSTRUCTORS).to_pylist()
+    assert rows[1]["driver_id"] == "sainz"
+    assert (rows[1]["q1_seconds"], rows[1]["q2_seconds"], rows[1]["q3_seconds"]) == (
+        83.178,
+        82.804,
+        82.408,
+    )
+    # A lone word that does not complete an exact alias is never joined.
+    with pytest.raises(ParsingFailure, match="unmapped exact driver"):
+        parse_qualifying_text(
+            "\n".join([QHEADER, complete, wrapped, "         SAINTS"]),
+            EVENT,
+            DRIVERS,
+            CONSTRUCTORS,
+        )
+
+
 def test_qualifying_unclassified_driver_has_no_invented_time_or_position():
     text = "\n".join(
         [

@@ -186,6 +186,33 @@ def _lines(text: str, event: EventId) -> list[str]:
     return text.splitlines()
 
 
+_WRAPPED_SURNAME = re.compile(r"^\s+([A-Z][A-Z'-]+)\s*$")
+
+
+def _join_wrapped_names(lines: list[str], drivers: dict[str, str]) -> list[str]:
+    """Rejoin a surname the PDF wrapped onto its own line below a timing row.
+
+    A row is joined only when its name cell plus the lone surname is an exact
+    alias. The surname is written into the cell's padding so later columns keep
+    their positions; without enough padding the row is left for the parser to fail.
+    """
+    joined = list(lines)
+    for index, line in enumerate(lines[:-1]):
+        prefix = _PREFIX.match(line)
+        wrapped = _WRAPPED_SURNAME.match(lines[index + 1])
+        if prefix is None or wrapped is None:
+            continue
+        cell = re.match(r"(\S+(?: \S+)*)( {2,})", line[prefix.end() :])
+        if cell is None or f"{cell[1]} {wrapped[1]}" not in drivers:
+            continue
+        if len(cell[2]) < len(wrapped[1]) + 3:
+            continue
+        start = prefix.end() + cell.end(1)
+        joined[index] = line[:start] + " " + wrapped[1] + line[start + len(wrapped[1]) + 1 :]
+        joined[index + 1] = ""
+    return joined
+
+
 def _timing_rows(
     text: str,
     event: EventId,
@@ -200,7 +227,7 @@ def _timing_rows(
     classified = True
     section_status: str | None = None
     rows: list[_Row] = []
-    for line in _lines(text, event):
+    for line in _join_wrapped_names(_lines(text, event), drivers):
         normalized = _normalize(line).upper()
         header = "DRIVER" in normalized and (
             all(name in normalized for name in ("Q1", "Q2", "Q3"))

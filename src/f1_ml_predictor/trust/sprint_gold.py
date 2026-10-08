@@ -48,7 +48,7 @@ from f1_ml_predictor.trust.winter import (
 )
 
 SPRINT_GOLD_VERSION = "gold-sprint-core-v1"
-AUDIT_METHOD = "fia-sprint-direct-v1-cet-upper-bound"
+AUDIT_METHOD = "fia-sprint-direct-v2-cet-upper-bound"
 _ROOT = Path("data/benchmarks/gold_sprint_core_v1")
 _FINAL = re.compile(r"^final sprint classification$", re.I)
 _STARTING_GRID = re.compile(r"^(?:provisional |final )?sprint (?:qualifying )?starting grid$", re.I)
@@ -67,6 +67,17 @@ _RULING = re.compile(r"decision|infringement|penalt|review|summons|offence|class
 _GRID_DOCUMENT = re.compile(
     r"qualifying classification|shootout classification|starting grid", re.I
 )
+# Later sprint rulings read against the Final Sprint Classification and found not to
+# amend it, bound to the ruling PDF. A changed PDF excludes the sprint again.
+REVIEWED_LATER_RULINGS = {
+    "https://www.fia.com/system/files/decision-document/2025_sao_paulo_grand_prix_-_corrected_-"
+    "_sprint_infringement_-_car_30_-_causing_a_collision_with_car_87_at_t4.pdf": {
+        "sha256": "e8c6a44309ce67ee3eb755e37fc8e71c4068ab7c22544b617b58ce29c7abe3d3",
+        "finding": "corrected reissue of recalled document 41 with the same 5 second time "
+        "penalty for car 30; the Final Sprint Classification (document 42) already applies "
+        "it and cites document 41",
+    },
+}
 SCHEMA = pa.schema(
     [
         pa.field("event_id", pa.string(), nullable=False),
@@ -98,6 +109,18 @@ def _available(row: dict[str, Any]) -> datetime:
     return _publication(row) + timedelta(minutes=1)
 
 
+def _later_rulings(live: list[dict[str, Any]], final: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        row
+        for row in live
+        if _version_key(row) > _version_key(final)
+        and "sprint" in row["title"].lower()
+        and _RULING.search(row["title"])
+        and not _GRID_DOCUMENT.search(row["title"])
+        and "championship points" not in row["title"].lower()
+    ]
+
+
 def select_documents(
     rows: list[dict[str, Any]], season: int
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
@@ -118,15 +141,7 @@ def select_documents(
     if not finals:
         raise ValueError("fia_final_sprint_classification_missing")
     final = finals[-1]
-    later = [
-        row
-        for row in live
-        if _version_key(row) > _version_key(final)
-        and "sprint" in row["title"].lower()
-        and _RULING.search(row["title"])
-        and not _GRID_DOCUMENT.search(row["title"])
-        and "championship points" not in row["title"].lower()
-    ]
+    later = [row for row in _later_rulings(live, final) if row["url"] not in REVIEWED_LATER_RULINGS]
     if later:
         raise ValueError(
             "later_sprint_ruling_requires_review:" + "|".join(r["title"] for r in later)
@@ -176,6 +191,18 @@ def audit_event(
     constructors = constructor_aliases_for_season(event.season)
     grid_artifact, grid_pdf = _document(root, client, grid_row, event)
     final_artifact, final_pdf = _document(root, client, final_row, event)
+    reviewed = []
+    live = [row for row in rows if row.get("url") and not row["recalled"]]
+    for ruling in _later_rulings(live, final_row):
+        artifact, _ = _document(root, client, ruling, event)
+        if artifact["sha256"] != REVIEWED_LATER_RULINGS[ruling["url"]]["sha256"]:
+            raise ValueError(f"reviewed_later_sprint_ruling_changed:{ruling['title']}")
+        reviewed.append(
+            {
+                **_binding(ruling, artifact, "reviewed_later_ruling"),
+                "finding": REVIEWED_LATER_RULINGS[ruling["url"]]["finding"],
+            }
+        )
     grid = {
         row["driver_id"]: row
         for row in parse_qualifying_text(
@@ -253,6 +280,7 @@ def audit_event(
         "documents": [
             _binding(grid_row, grid_artifact, "sprint_grid"),
             _binding(final_row, final_artifact, "sprint_final_classification"),
+            *reviewed,
         ],
         "dnf_labels": sum(item["label_dnf"] is not None for item in output),
         "audit_method": AUDIT_METHOD,
