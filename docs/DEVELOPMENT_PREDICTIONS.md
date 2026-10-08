@@ -140,15 +140,23 @@ sprint qualifying and the sprint, and the Grand Prix prediction otherwise
    the `post_sprint_qualifying` cutoff and addendum
    [sprint-dev-v1](EVALUATION_PROTOCOL_V3.md#addendum-sprint-dev-v1), and writes to
    `data/predictions/development/next_race/<event>/post_sprint_qualifying/<run id>/`.
-   A driver who set no sprint qualifying time keeps a missing grid position. A
-   driver missing from the latest audited roster takes the constructor of their
-   latest Jolpica entry this season, and the roster source says so.
+   A driver who set no sprint qualifying time keeps a missing grid position. Each
+   driver's constructor is the team in the capture's own OpenF1 driver list, so a
+   mid-season seat change is followed; the roster source names drivers whose team
+   differs from the latest audited roster. An unmapped team name falls back to the
+   latest audited roster, then to the driver's latest Jolpica entry this season. A
+   Grand Prix run before the Grand Prix capture (the pre-weekend contract) uses the
+   same captured roster.
 2. After the sprint, run `collect-next-race`. It freezes the Jolpica sprint
-   classification (polled from 45 minutes after the scheduled sprint start). Later
-   Grand Prix runs add those sprint points to the starting standings, marked
-   Development in the notes until the FIA after-sprint audit, and the season
-   simulation no longer samples that sprint. Without this capture a Grand Prix run
-   after the sprint stops rather than drop the points.
+   classification (polled from 45 minutes after the scheduled sprint start), then
+   the FIA Final Sprint Classification once it is published with no later sprint
+   ruling pending, reached through the FIA registry for the exact season and event
+   and rechecked after the PDF is read. Later Grand Prix runs add the sprint points
+   to the starting standings: from the FIA classification and the audited sprint
+   table when it is captured (the notes say whether Jolpica agreed), otherwise from
+   Jolpica, marked Development. The season simulation no longer samples that
+   sprint. Without the Jolpica capture a Grand Prix run after the sprint stops
+   rather than drop the points; the FIA capture never blocks a run.
 
 Sprint captures are immutable, hash-named bundles under
 `data/raw/prospective_sprint/<event>/`; the observation clock is the availability

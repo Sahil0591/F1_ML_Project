@@ -19,11 +19,13 @@ from typing import Any
 
 import httpx
 
+from f1_ml_predictor.benchmarks.builder import file_sha256
 from f1_ml_predictor.identifiers import EventId
 from f1_ml_predictor.normalization.jolpica import normalize_sprint
 from f1_ml_predictor.prediction.schedules import Weekend
 from f1_ml_predictor.prediction.sprint import (
     OPENF1,
+    OPENF1_TEAMS,
     SPRINT_SESSION_NAMES,
     SprintGrid,
     crosswalk,
@@ -32,11 +34,28 @@ from f1_ml_predictor.prediction.sprint import (
 from f1_ml_predictor.sources.http import JsonSourceClient
 from f1_ml_predictor.sources.jolpica import BASE_URL
 from f1_ml_predictor.time import require_utc
+from f1_ml_predictor.trust.collected_outcomes import (
+    _ROOT_URL,
+    _exact_option,
+    _same_event_url,
+    _selected_registry,
+)
+from f1_ml_predictor.trust.fia_tables import parse_final_text
+from f1_ml_predictor.trust.historical import _official, _retain_response, inspect_pdf
+from f1_ml_predictor.trust.sprint_gold import _FINAL, REVIEWED_LATER_RULINGS, _later_rulings
+from f1_ml_predictor.trust.winter import (
+    DRIVER_ALIASES,
+    _publication,
+    _version_key,
+    constructor_aliases_for_season,
+    registry_rows,
+)
 
 _DIRECTORY = Path("data/raw/prospective_sprint")
 _LIMITS = ((3, 1.0), (30, 60.0))
 SPRINT_QUALIFYING = "sprint_qualifying"
 SPRINT_RESULT = "sprint_result"
+SPRINT_FIA = "sprint_fia_classification"
 # Jolpica publishes classifications some time after the chequered flag.
 RESULT_POLL_DELAY = timedelta(minutes=45)
 
@@ -107,6 +126,23 @@ def capture_grid(record: dict[str, Any]) -> SprintGrid:
     )
 
 
+def capture_teams(record: dict[str, Any]) -> dict[str, str]:
+    """Canonical constructor per driver from a capture's own OpenF1 driver list.
+
+    The session team is the seat raced that weekend, so it covers a mid-season
+    change the latest audited roster cannot know. Unmapped team names are left out.
+    """
+    sources = record["sources"]
+    codes = crosswalk(sources["drivers_season"]["payload"]).codes
+    teams: dict[str, str] = {}
+    for driver in sources["session_drivers"]["payload"]:
+        team = OPENF1_TEAMS.get(str(driver.get("team_name") or ""))
+        code = driver.get("name_acronym")
+        if team is not None and code in codes:
+            teams[codes[code]] = team
+    return teams
+
+
 def capture_points(record: dict[str, Any]) -> dict[str, float]:
     """Sprint points per canonical driver from a verified sprint result capture."""
     event = EventId(record["event"]["season"], record["event"]["round"])
@@ -155,6 +191,110 @@ def captured_sprint_values(
     return values
 
 
+def capture_fia_positions(root: Path, record: dict[str, Any]) -> dict[str, int | None]:
+    """FIA sprint positions from a verified capture, after rechecking its retained PDF."""
+    document = record["document"]
+    if file_sha256(root / document["path"]) != document["sha256"]:
+        raise ValueError("retained FIA sprint classification PDF changed")
+    return {row["driver_id"]: row["position"] for row in record["classification"]}
+
+
+def _capture_fia_sprint(
+    root: Path, client: httpx.Client, event: EventId, race_name: str, clock: datetime
+) -> dict[str, Any] | None:
+    """Freeze the latest FIA Final Sprint Classification once no later ruling is pending.
+
+    The registry is reached the same way as the race outcome collector (root, exact
+    season, exact event) and rechecked after the PDF is read. Returns None while the
+    document is unpublished or a later sprint ruling could still amend it.
+    """
+
+    def fetch(url: str) -> tuple[dict[str, Any], httpx.Response]:
+        _official(url)
+        response = client.get(
+            url, timeout=30, follow_redirects=False, headers={"User-Agent": "f1-ml-predictor/0.1.0"}
+        )
+        if str(response.url) != url:
+            raise ValueError("FIA sprint capture cannot follow an unverified redirect")
+        return _retain_response(root, response), response
+
+    _, root_response = fetch(_ROOT_URL)
+    season_url = _exact_option(root_response.text, f"SEASON {event.season}")
+    _, season_response = fetch(season_url)
+    registry_url = _exact_option(season_response.text, race_name)
+    if not registry_url.startswith(season_url + "/event/"):
+        raise ValueError("discovered FIA registry URL does not match the exact event")
+
+    def select(text: str) -> dict[str, Any] | None:
+        # Unlike the race collector, unnumbered rows (late "DOC n - ..." uploads such
+        # as revised standings) are allowed; numbered documents must stay unique.
+        _selected_registry(text, event.season, race_name)
+        rows = registry_rows(text)
+        numbered = [row["document_id"] for row in rows if row["document_id"] is not None]
+        if len(set(numbered)) != len(numbered):
+            raise ValueError("FIA registry has duplicate document numbers")
+        live = [row for row in rows if row.get("url") and not row["recalled"]]
+        finals = sorted((row for row in live if _FINAL.match(row["title"])), key=_version_key)
+        if not finals:
+            return None
+        final = finals[-1]
+        if final["document_id"] is None:
+            raise ValueError("FIA final sprint classification has no document number")
+        if not _same_event_url(final["url"], event.season, race_name):
+            raise ValueError("FIA final sprint classification belongs to another event")
+        if any(row["url"] not in REVIEWED_LATER_RULINGS for row in _later_rulings(live, final)):
+            return None
+        return final
+
+    registry_artifact, registry_response = fetch(registry_url)
+    final = select(registry_response.text)
+    if final is None:
+        return None
+    pdf_artifact, pdf_response = fetch(final["url"])
+    if not pdf_response.content.startswith(b"%PDF"):
+        raise ValueError("FIA final sprint classification is not a PDF")
+    pdf = inspect_pdf(root / pdf_artifact["path"])
+    if final["document_id"] is not None and pdf["document_id"] not in {None, final["document_id"]}:
+        raise ValueError("FIA sprint PDF document number contradicts the registry")
+    parsed = parse_final_text(
+        pdf["text"], event, DRIVER_ALIASES, constructor_aliases_for_season(event.season)
+    ).to_pylist()
+    _, recheck_response = fetch(registry_url)
+    if select(recheck_response.text) != final:
+        raise ValueError("FIA sprint registry changed while the classification was read")
+    published = _publication(final) + timedelta(minutes=1)
+    if published > clock:
+        raise ValueError("FIA sprint classification publication is after the capture clock")
+    record = {
+        "version": 1,
+        "kind": SPRINT_FIA,
+        "event": {"season": event.season, "round": event.round},
+        "captured_at": clock.isoformat(),
+        "evidence_class": "captured_live",
+        "decision_basis": "latest_nonrecalled_fia_final_sprint_classification_without_later_ruling",
+        "document": {
+            "title": final["title"],
+            "document_id": final["document_id"],
+            "url": final["url"],
+            "publication_cet": final["publication_cet"],
+            "path": pdf_artifact["path"],
+            "sha256": pdf_artifact["sha256"],
+        },
+        "registry": {"path": registry_artifact["path"], "sha256": registry_artifact["sha256"]},
+        "classification": [
+            {
+                "driver_id": row["driver_id"],
+                "constructor_id": row["constructor_id"],
+                "position": row["position"],
+                "classified": row["classified"],
+            }
+            for row in parsed
+        ],
+        "sources": {},
+    }
+    return _freeze(root, event, SPRINT_FIA, record)
+
+
 def sprint_tick(
     root: Path,
     event: EventId,
@@ -201,6 +341,25 @@ def sprint_tick(
                 return status
             status["sprint_result_capture"] = captured
     status["status"] = "sprint_captured"
+    fia = latest_capture(root, event, SPRINT_FIA, clock)
+    if fia is not None:
+        status["sprint_fia_capture"] = fia["bundle"]
+        return status
+    # The FIA document confirms the Jolpica points; its absence never blocks a run.
+    owned = http_client is None
+    fia_client = http_client or httpx.Client(timeout=30, follow_redirects=False)
+    try:
+        captured = _capture_fia_sprint(root, fia_client, event, weekend.race_name, clock)
+    except (ValueError, KeyError, RuntimeError, OSError, httpx.HTTPError) as exc:
+        status["fia_status"] = f"error: {exc}"
+    else:
+        if captured is None:
+            status["fia_status"] = "waiting_for_fia_final_sprint_classification"
+        else:
+            status["sprint_fia_capture"] = captured
+    finally:
+        if owned:
+            fia_client.close()
     return status
 
 

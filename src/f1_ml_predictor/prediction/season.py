@@ -79,20 +79,49 @@ def published_standings(
         awarded = sorted((p for p in current_sprint["points"].values() if p), reverse=True)
         if awarded != [float(p) for p in season_rule.sprint_points[: len(awarded)]]:
             raise ValueError("captured sprint points do not match the audited sprint table")
-        for driver, points in current_sprint["points"].items():
-            drivers[driver] += points
-            if team_scoring and driver in roster:
-                constructors[roster[driver]] += points
-        notes.append(
+        sprint_points: dict[str, float] = current_sprint["points"]
+        evidence, status = current_sprint["bundle"]["sha256"], "captured_live_development"
+        note = (
             f"{target.partition()} sprint points come from the captured Jolpica sprint "
             "classification (Development) until the FIA after-sprint audit"
         )
+        fia = current_sprint.get("fia")
+        if fia is not None:
+            if datetime.fromisoformat(fia["captured_at"]) > cutoff:
+                raise ValueError("FIA sprint capture is later than the cutoff")
+            table = season_rule.sprint_points
+            sprint_points = {
+                driver: float(table[position - 1])
+                if position is not None and position <= len(table)
+                else 0.0
+                for driver, position in fia["positions"].items()
+            }
+            differ = sorted(
+                driver
+                for driver in set(sprint_points) | set(current_sprint["points"])
+                if sprint_points.get(driver, 0.0) != current_sprint["points"].get(driver, 0.0)
+            )
+            evidence, status = fia["bundle"]["sha256"], "captured_live_fia"
+            note = (
+                f"{target.partition()} sprint points come from the captured FIA Final Sprint "
+                f"Classification (document {fia['document_id']}) and the audited sprint table"
+                + (
+                    f"; the Jolpica capture differed for {', '.join(differ)}"
+                    if differ
+                    else "; the Jolpica capture agrees"
+                )
+            )
+        for driver, points in sprint_points.items():
+            drivers[driver] += points
+            if team_scoring and driver in roster:
+                constructors[roster[driver]] += points
+        notes.append(note)
         used.append(
             {
                 "event_id": f"{target.partition()}#sprint",
                 "effective_at": captured.isoformat(),
-                "revision_status": "captured_live_development",
-                "evidence_hash": current_sprint["bundle"]["sha256"],
+                "revision_status": status,
+                "evidence_hash": evidence,
             }
         )
     for driver, constructor in roster.items():

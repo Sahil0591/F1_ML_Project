@@ -77,6 +77,21 @@ _RAW = Path("data/raw/sprint_sources")
 _LIMITS = ((3, 1.0), (30, 60.0))
 # Jolpica identifiers that differ from the canonical Gold identifiers.
 JOLPICA_CONSTRUCTORS = {"alfa": "alfa_romeo", "alphatauri": "alpha_tauri"}
+# OpenF1 team names in a live sprint qualifying capture, as canonical Gold constructors.
+# A name missing here falls back to the latest audited roster.
+OPENF1_TEAMS = {
+    "Alpine": "alpine",
+    "Aston Martin": "aston_martin",
+    "Audi": "audi",
+    "Cadillac": "cadillac",
+    "Ferrari": "ferrari",
+    "Haas F1 Team": "haas",
+    "McLaren": "mclaren",
+    "Mercedes": "mercedes",
+    "Racing Bulls": "rb",
+    "Red Bull Racing": "red_bull",
+    "Williams": "williams",
+}
 
 SPRINT_ADDENDUM = {
     "version": "sprint-dev-v1",

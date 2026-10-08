@@ -656,6 +656,38 @@ def test_season_inputs_use_published_points_and_explicit_rules(workspace: dict) 
     assert len(used) == 6
     with pytest.raises(ValueError, match="round 6"):
         published_standings(ledger, EventId(SEASON, 7), _race_start(6), ROSTER)
+    sprint = {
+        "points": {"alpha": 3.0, "beta": 2.0, "gamma": 1.0, "delta": 0.0},
+        "captured_at": (CLOCK - timedelta(hours=1)).isoformat(),
+        "bundle": {"sha256": "jolpica"},
+    }
+    with_sprint, notes, used = published_standings(
+        ledger, EventId(SEASON, 7), CLOCK, ROSTER, current_sprint=sprint
+    )
+    assert with_sprint.driver_points["beta"] - standings.driver_points["beta"] == 2
+    assert used[-1]["revision_status"] == "captured_live_development"
+    # A captured FIA classification decides the points, and a Jolpica difference is named.
+    sprint["fia"] = {
+        "positions": {"alpha": 1, "beta": 3, "gamma": 2, "delta": None},
+        "captured_at": (CLOCK - timedelta(minutes=30)).isoformat(),
+        "bundle": {"sha256": "fia"},
+        "document_id": "44",
+    }
+    with_fia, notes, used = published_standings(
+        ledger, EventId(SEASON, 7), CLOCK, ROSTER, current_sprint=sprint
+    )
+    assert with_fia.driver_points["beta"] - standings.driver_points["beta"] == 1
+    assert with_fia.driver_points["gamma"] - standings.driver_points["gamma"] == 2
+    assert used[-1] == {
+        "event_id": f"{EventId(SEASON, 7).partition()}#sprint",
+        "effective_at": sprint["captured_at"],
+        "revision_status": "captured_live_fia",
+        "evidence_hash": "fia",
+    }
+    assert notes[-1].endswith("the Jolpica capture differed for beta, gamma")
+    sprint["fia"]["captured_at"] = (CLOCK + timedelta(minutes=1)).isoformat()
+    with pytest.raises(ValueError, match="FIA sprint capture is later"):
+        published_standings(ledger, EventId(SEASON, 7), CLOCK, ROSTER, current_sprint=sprint)
     rules, status = points_rules(ledger, EventId(SEASON, 8), "sprint")
     assert rules.points_by_position == (3, 2, 1)
     assert status == "continuation_of_audited_rounds_1_6"

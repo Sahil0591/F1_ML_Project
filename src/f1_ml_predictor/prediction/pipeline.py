@@ -23,6 +23,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from f1_ml_predictor.benchmarks.builder import file_sha256
+from f1_ml_predictor.identifiers import EventId
 from f1_ml_predictor.models.boosting import BACKENDS
 from f1_ml_predictor.models.development import _check_race
 from f1_ml_predictor.models.hardware import library_versions
@@ -77,10 +78,13 @@ from f1_ml_predictor.simulation import EventSimulation, simulate_championship
 from f1_ml_predictor.time import require_known_by, require_utc
 from f1_ml_predictor.trust.scheduler import scheduler_status
 from f1_ml_predictor.trust.sprint_capture import (
+    SPRINT_FIA,
     SPRINT_QUALIFYING,
     SPRINT_RESULT,
+    capture_fia_positions,
     capture_grid,
     capture_points,
+    capture_teams,
     captured_sprint_values,
     latest_capture,
 )
@@ -484,6 +488,46 @@ def _season(
     return events, sessions
 
 
+def _captured_sprint_roster(
+    root: Path,
+    rows: list[dict[str, Any]],
+    event: EventId,
+    grid_record: dict[str, Any],
+    cutoff: datetime,
+) -> tuple[dict[str, str], str]:
+    """Drivers from a sprint qualifying capture with their constructors that weekend.
+
+    The capture's OpenF1 session team decides; the latest audited roster, then the
+    latest Jolpica entry this season, cover a team name the table does not map.
+    """
+    drivers = capture_grid(grid_record).positions
+    session_teams = capture_teams(grid_record)
+    latest, roster_basis = _latest_roster(rows, event.season, cutoff)
+    unknown = sorted(set(drivers) - set(session_teams) - set(latest))
+    fallback = latest_jolpica_constructors(root, event, unknown)
+    if set(unknown) - set(fallback):
+        missing = sorted(set(unknown) - set(fallback))
+        raise ValueError(f"sprint qualifying drivers have no known constructor: {missing}")
+    roster = {
+        driver: session_teams.get(driver) or latest.get(driver) or fallback[driver]
+        for driver in drivers
+    }
+    teams = list(roster.values())
+    crowded = sorted(team for team in set(teams) if teams.count(team) > 2)
+    if crowded:
+        raise ValueError(f"sprint roster gives more than two drivers to {crowded}")
+    moved = sorted(
+        driver for driver, team in session_teams.items() if latest.get(driver, team) != team
+    )
+    source = (
+        "captured_sprint_qualifying drivers; constructors from the captured OpenF1 session "
+        f"teams, else {roster_basis}"
+        + (f"; seat changes since {roster_basis}: {', '.join(moved)}" if moved else "")
+        + (f"; latest Jolpica entry for {', '.join(unknown)}" if unknown else "")
+    )
+    return roster, source
+
+
 def predict_next_race(
     root: Path,
     *,
@@ -555,23 +599,26 @@ def predict_next_race(
         sprint_grid = capture_grid(sprint_grid_capture)
         cutoff = sprint_grid.available_at
         capture_record = None
-        latest, roster_basis = _latest_roster(history.rows, target.event.season, cutoff)
-        unknown = sorted(set(sprint_grid.positions) - set(latest))
-        fallback = latest_jolpica_constructors(root, target.event, unknown)
-        if set(unknown) - set(fallback):
-            missing = sorted(set(unknown) - set(fallback))
-            raise ValueError(f"sprint qualifying drivers have no known constructor: {missing}")
-        roster = {
-            driver: latest.get(driver) or fallback[driver] for driver in sprint_grid.positions
-        }
-        roster_source = f"captured_sprint_qualifying drivers; constructors from {roster_basis}" + (
-            f"; latest Jolpica entry for {', '.join(unknown)}" if unknown else ""
+        roster, roster_source = _captured_sprint_roster(
+            root, history.rows, target.event, sprint_grid_capture, cutoff
         )
         weekend_values = None
     elif capture is None:
         contract, cutoff, capture_record = "pre_weekend", clock, None
-        roster, roster_basis = _latest_roster(history.rows, target.event.season, cutoff)
-        roster_source = f"latest_audited_gold_event_roster:{roster_basis}"
+        grid_record = (
+            latest_capture(root, target.event, SPRINT_QUALIFYING, cutoff)
+            if weekend.sprint is not None
+            else None
+        )
+        if grid_record is not None:
+            # This weekend's sprint qualifying names who is racing, so it beats the
+            # latest audited roster when a seat changed.
+            roster, roster_source = _captured_sprint_roster(
+                root, history.rows, target.event, grid_record, cutoff
+            )
+        else:
+            roster, roster_basis = _latest_roster(history.rows, target.event.season, cutoff)
+            roster_source = f"latest_audited_gold_event_roster:{roster_basis}"
         weekend_values = None
         if weekend.first_practice is not None and clock >= weekend.first_practice:
             notes.append(
@@ -613,6 +660,14 @@ def predict_next_race(
             "captured_at": result["captured_at"],
             "bundle": result["bundle"],
         }
+        fia = latest_capture(root, target.event, SPRINT_FIA, cutoff)
+        if fia is not None:
+            current_sprint["fia"] = {
+                "positions": capture_fia_positions(root, fia),
+                "captured_at": fia["captured_at"],
+                "bundle": fia["bundle"],
+                "document_id": fia["document"]["document_id"],
+            }
     hardware_path = root / "models/experiments/hardware.json"
     hardware = (
         json.loads(hardware_path.read_text(encoding="utf-8"))
@@ -1082,7 +1137,15 @@ def predict_next_race(
         },
         "current_sprint_points": None
         if current_sprint is None
-        else {"bundle": current_sprint["bundle"], "captured_at": current_sprint["captured_at"]},
+        else {
+            "bundle": current_sprint["bundle"],
+            "captured_at": current_sprint["captured_at"],
+            "fia": None
+            if "fia" not in current_sprint
+            else {
+                key: current_sprint["fia"][key] for key in ("bundle", "captured_at", "document_id")
+            },
+        },
         "dataset": {
             "gold": history.version.dataset_version,
             "gold_manifest_sha256": history.version.manifest_sha256,

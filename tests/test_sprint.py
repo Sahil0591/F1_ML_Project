@@ -25,6 +25,7 @@ from f1_ml_predictor.prediction.web_export import EXPORT_CUTOFFS, session_of
 from f1_ml_predictor.trust.sprint_capture import (
     SPRINT_QUALIFYING,
     capture_grid,
+    capture_teams,
     latest_capture,
     sprint_tick,
 )
@@ -55,10 +56,10 @@ def _drivers_payload() -> dict:
 
 def _session_drivers() -> list[dict]:
     return [
-        {"driver_number": 3, "name_acronym": "VER"},
-        {"driver_number": 20, "name_acronym": "MAG"},
-        {"driver_number": 1, "name_acronym": "NOR"},
-        {"driver_number": 81, "name_acronym": "PIA"},
+        {"driver_number": 3, "name_acronym": "VER", "team_name": "Red Bull Racing"},
+        {"driver_number": 20, "name_acronym": "MAG", "team_name": "Haas F1 Team"},
+        {"driver_number": 1, "name_acronym": "NOR", "team_name": "McLaren"},
+        {"driver_number": 81, "name_acronym": "PIA", "team_name": "Unknown Racing"},
     ]
 
 
@@ -248,6 +249,23 @@ def test_sprint_tick_waits_then_freezes_a_verified_capture(tmp_path: Path) -> No
     assert grid.available_at == NOW
     # A capture is invisible to an earlier clock.
     assert latest_capture(tmp_path, EVENT, SPRINT_QUALIFYING, NOW - timedelta(seconds=1)) is None
+
+
+def test_capture_teams_read_the_session_seat_and_skip_unmapped_names(tmp_path: Path) -> None:
+    start = NOW - timedelta(hours=2)
+    weekend = _weekend(start, NOW + timedelta(hours=20))
+    with httpx.Client(
+        transport=_transport(_session_result(), end=start + timedelta(minutes=44))
+    ) as client:
+        sprint_tick(tmp_path, EVENT, weekend, now=lambda: NOW, http_client=client)
+    record = latest_capture(tmp_path, EVENT, SPRINT_QUALIFYING, NOW)
+    assert record is not None
+    # Piastri's team name is unmapped, so the latest audited roster decides it.
+    assert capture_teams(record) == {
+        "max_verstappen": "red_bull",
+        "magnussen": "haas",
+        "norris": "mclaren",
+    }
 
 
 def test_tampered_sprint_capture_is_rejected(tmp_path: Path) -> None:
