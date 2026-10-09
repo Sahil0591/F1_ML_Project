@@ -147,7 +147,7 @@ describe("race page", () => {
     renderRace();
     await screen.findByRole("heading", { name: "Fixture Grand Prix" });
     const nav = screen.getByRole("navigation", { name: "Prediction snapshots" });
-    expect(within(nav).queryByRole("button", { name: /Sprint/ })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("button", { name: /Pre-sprint/ })).not.toBeInTheDocument();
   });
 
   it("labels a sprint snapshot as a sprint prediction", async () => {
@@ -171,7 +171,7 @@ describe("race page", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Predicted sprint finishing order" })).toBeVisible();
     const nav = screen.getByRole("navigation", { name: "Prediction snapshots" });
-    expect(within(nav).getByRole("button", { name: /Sprint.*Viewing/ })).toHaveAttribute(
+    expect(within(nav).getByRole("button", { name: /Pre-sprint.*Viewing/ })).toHaveAttribute(
       "aria-current",
       "true",
     );
