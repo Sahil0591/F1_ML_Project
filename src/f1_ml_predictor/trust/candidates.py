@@ -33,9 +33,12 @@ _FIA_EVENT_LABELS = {
     (2022, 20): "Mexican Grand Prix",
     (2022, 21): "Brazilian Grand Prix",
     (2026, 7): "Barcelona-Catalunya Grand Prix",
+    # Held at Sepang; the FIA registry keeps the original event name.
+    (2026, 16): "Bahrain Grand Prix",
 }
 _FIA_DOCUMENT_STEMS = {
-    (2026, 7): "/system/files/decision-document/2026_barcelona-catalunya_grand_prix_-_"
+    (2026, 7): "/system/files/decision-document/2026_barcelona-catalunya_grand_prix_-_",
+    (2026, 16): "/system/files/decision-document/2026_bahrain_grand_prix_in_malaysia_-_",
 }
 
 

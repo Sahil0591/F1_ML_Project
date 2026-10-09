@@ -11,6 +11,7 @@ import re
 import unicodedata
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from html import unescape
 from html.parser import HTMLParser
 from typing import Any
 from urllib.parse import urlsplit
@@ -74,6 +75,7 @@ _VENUES = {
     "rodriguez": ("Mexico City", "Mexico City Grand Prix", "America/Mexico_City"),
     "madring": ("Madrid", "Spanish Grand Prix", "Europe/Madrid"),
     "ricard": ("France", "French Grand Prix", "Europe/Paris"),
+    "sepang": ("Malaysia", "Bahrain Grand Prix in Malaysia", "Asia/Kuala_Lumpur"),
 }
 _EVENT_NAMES = {
     (2022, "interlagos"): "São Paulo Grand Prix",
@@ -86,6 +88,21 @@ _VENUE_NAMES = {
     (2022, "silverstone"): "Great Britain",
     (2026, "catalunya"): "Barcelona",
     (2026, "madring"): "Spain",
+}
+
+
+# A relocated event is absent from its season's start-time article. Each entry
+# binds one reviewed official article whose prose states the race start.
+RACE_TIME_ARTICLES = {
+    (2026, 16): {
+        "circuit_id": "sepang",
+        "url": "https://www.formula1.com/en/latest/article/"
+        "what-time-is-the-formula-1-2026-bahrain-grand-prix-in-malaysia-and-how-can-i-watch-it."
+        "3gFLqniY3acdKlkPjaN66d",
+        "headline": "What time is the Formula 1 2026 Bahrain Grand Prix in Malaysia "
+        "and how can I watch it?",
+        "published_at_utc": "2026-09-29T20:56:06.110000+00:00",
+    },
 }
 
 
@@ -649,4 +666,102 @@ def validate_fia_timetable_amendment(
         (str(matches[0][0]), matches[0][1]),
         _VENUES[circuit_id][2],
         document_sha256,
+    )
+
+
+def validate_race_time_article(
+    html: str,
+    *,
+    season: int,
+    round_number: int,
+    event_name: str,
+    circuit_id: str,
+    claimed_publication: datetime,
+    claimed_race_start: datetime,
+    source_url: str,
+    prediction_timestamp: datetime,
+) -> ScheduledRace:
+    """Bind a relocated race start to one reviewed official article sentence.
+
+    Only explicitly reviewed articles are accepted. The article must be unmodified
+    since publication, published before cutoff, and state exactly one Grand Prix
+    start on the race day in circuit local time.
+    """
+    reviewed = RACE_TIME_ARTICLES.get((season, round_number))
+    if reviewed is None or reviewed["circuit_id"] != circuit_id:
+        raise ScheduleValidationError("race time article is not reviewed for this event")
+    if source_url != reviewed["url"]:
+        raise ScheduleValidationError("race time article URL is not the reviewed article")
+    if _alias(event_name) != _alias(_EVENT_NAMES.get((season, circuit_id), _VENUES[circuit_id][1])):
+        raise ScheduleValidationError("event name contradicts reviewed circuit")
+    parser = _ScheduleHTML()
+    parser.feed(html)
+    parser.close()
+    if parser.capture is not None or parser.table is not None:
+        raise ScheduleValidationError("incomplete race time article HTML")
+    if [_alias(heading) for heading in parser.headings] != [_alias(reviewed["headline"])]:
+        raise ScheduleValidationError("race time article heading contradicts review")
+    articles: list[dict[str, Any]] = []
+    for script in parser.scripts:
+        try:
+            articles.extend(
+                item
+                for item in _entities(json.loads(script))
+                if item.get("@type") == "NewsArticle" and item.get("url") == source_url
+            )
+        except json.JSONDecodeError as exc:
+            raise ScheduleValidationError("invalid race time article JSON-LD") from exc
+    if len(articles) != 1:
+        raise ScheduleValidationError("one exact race time NewsArticle is required")
+    article = articles[0]
+    if article.get("@id", source_url) != source_url or _alias(article.get("headline", "")) not in {
+        _alias(reviewed["headline"]),
+        _alias(reviewed["headline"] + " | Formula 1"),
+    }:
+        raise ScheduleValidationError("race time article canonical identity contradicts heading")
+    published = _stamp(article.get("datePublished"))
+    modified = _stamp(article.get("dateModified", article.get("datePublished")))
+    if modified != published:
+        raise ScheduleValidationError("race time article was modified after publication")
+    if published != _utc(claimed_publication) or published != _stamp(reviewed["published_at_utc"]):
+        raise ScheduleValidationError("race time article publication contradicts review")
+    minute = published.replace(second=0, microsecond=0)
+    visible = [stamp for value in parser.times if (stamp := _visible_time(value)) is not None]
+    if visible != [minute]:
+        raise ScheduleValidationError("visible UTC stamp contradicts article publication")
+    available_by = minute + timedelta(minutes=1)
+    if available_by > _utc(prediction_timestamp):
+        raise ScheduleValidationError("race time article was not known by cutoff")
+    body = re.sub(r"(?is)<(script|style)\b.*?</\1>", " ", html)
+    text = _space(unescape(re.sub(r"<[^>]+>", " ", body)))
+    sentences = re.findall(
+        r"Grand Prix itself gets underway at (\d{2}):?(\d{2}) on "
+        r"(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), ([A-Z][a-z]+) (\d{1,2})\b",
+        text,
+    )
+    if len(sentences) != 1:
+        raise ScheduleValidationError("one Grand Prix start sentence is required")
+    hour, minute_number, weekday, month, day = sentences[0]
+    if month.lower() not in _MONTHS or int(hour) > 23 or int(minute_number) > 59:
+        raise ScheduleValidationError("unsupported race time article date or time")
+    local = datetime(season, _MONTHS[month.lower()], int(day), int(hour), int(minute_number))
+    if local.strftime("%A") != weekday:
+        raise ScheduleValidationError("race time article weekday contradicts its date")
+    zone_name = _VENUES[circuit_id][2]
+    race_start = _local_utc(local, zone_name)
+    if race_start != _utc(claimed_race_start):
+        raise ScheduleValidationError("race time article contradicts the claimed race start")
+    return ScheduledRace(
+        published,
+        available_by,
+        60,
+        race_start,
+        season,
+        round_number,
+        circuit_id,
+        event_name,
+        source_url,
+        (weekday, f"{month} {day}", f"{hour}:{minute_number}"),
+        zone_name,
+        hashlib.sha256(html.encode("utf-8")).hexdigest(),
     )

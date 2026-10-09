@@ -15,6 +15,7 @@ import pyarrow.parquet as pq
 from f1_ml_predictor.benchmarks.builder import BENCHMARK_FEATURE_COLUMNS, file_sha256
 from f1_ml_predictor.identifiers import EventId
 from f1_ml_predictor.trust.f1_schedule import (
+    RACE_TIME_ARTICLES,
     SCHEDULE_URLS,
     _ScheduleHTML,
     canonical_event_name,
@@ -209,6 +210,13 @@ def prepare_audit_catalog(
         cutoff = _publication(qualifying) + timedelta(minutes=2)
         timetable = (timetables or {}).get(key)
         reference = schedule_reference.get(year) or timetable
+        race_time_article = RACE_TIME_ARTICLES.get((year, item["round"]))
+        if race_time_article is not None:
+            reference = {
+                "kind": "race_time_article",
+                "url": race_time_article["url"],
+                "published_at_utc": race_time_article["published_at_utc"],
+            }
         if (
             timetable is not None
             and timetable["race_start_utc"] != item["discovery_race_start_hint_utc"]

@@ -24,6 +24,7 @@ from f1_ml_predictor.trust.f1_schedule import (
     validate_event_timetable,
     validate_f1_schedule,
     validate_fia_timetable_amendment,
+    validate_race_time_article,
 )
 from f1_ml_predictor.trust.fia import (
     FiaDocumentMetadata,
@@ -791,6 +792,8 @@ def audit_winter_pool(
                     schedule_validator = (
                         validate_event_timetable
                         if schedule_kind == "event_timetable"
+                        else validate_race_time_article
+                        if schedule_kind == "race_time_article"
                         else validate_f1_schedule
                     )
                     verified_schedule = schedule_validator(

@@ -5,11 +5,13 @@ import pytest
 
 from f1_ml_predictor.trust.f1_schedule import (
     ARTICLE_URLS,
+    RACE_TIME_ARTICLES,
     SCHEDULE_URLS,
     ScheduleValidationError,
     validate_event_timetable,
     validate_f1_schedule,
     validate_fia_timetable_amendment,
+    validate_race_time_article,
 )
 
 _HEADLINES = {
@@ -367,3 +369,72 @@ def test_fia_amendment_supersedes_original_schedule_before_cutoff() -> None:
         )
     with pytest.raises(ScheduleValidationError, match="approval"):
         validate_fia_timetable_amendment(text.replace("approve", "reject"), **claims)
+
+
+_SEPANG = RACE_TIME_ARTICLES[(2026, 16)]
+
+
+def _race_time_html(
+    *,
+    modified: str = "2026-09-29T20:56:06.110Z",
+    sentence: str = "the Grand Prix itself gets underway at 1500 on Sunday, October 4.",
+) -> str:
+    article = {
+        "@context": "https://schema.org",
+        "@type": "NewsArticle",
+        "url": _SEPANG["url"],
+        "headline": _SEPANG["headline"],
+        "datePublished": "2026-09-29T20:56:06.110Z",
+        "dateModified": modified,
+    }
+    return (
+        f'<script type="application/ld+json">{json.dumps(article)}</script>'
+        f"<h1>{_SEPANG['headline']}</h1><time>Sep 29, 2026 8:56pm UTC</time>"
+        f"<p>Qualifying at 1600 before {sentence}</p>"
+    )
+
+
+def _race_time(html: str, **changes: object):
+    claim = {
+        "season": 2026,
+        "round_number": 16,
+        "event_name": "Bahrain Grand Prix in Malaysia",
+        "circuit_id": "sepang",
+        "claimed_publication": datetime(2026, 9, 29, 20, 56, 6, 110000, tzinfo=UTC),
+        "claimed_race_start": datetime(2026, 10, 4, 7, tzinfo=UTC),
+        "source_url": _SEPANG["url"],
+        "prediction_timestamp": datetime(2026, 10, 3, 9, tzinfo=UTC),
+    }
+    claim.update(changes)
+    return validate_race_time_article(html, **claim)
+
+
+def test_relocated_race_time_article_binds_local_start() -> None:
+    verified = _race_time(_race_time_html())
+    assert verified.race_start == datetime(2026, 10, 4, 7, tzinfo=UTC)
+    assert verified.available_by == datetime(2026, 9, 29, 20, 57, tzinfo=UTC)
+    assert verified.timezone_basis == "Asia/Kuala_Lumpur"
+
+
+@pytest.mark.parametrize(
+    ("html", "changes"),
+    [
+        (_race_time_html(modified="2022-01-01T00:00:00.000Z"), {}),
+        (_race_time_html(sentence="the race starts at 1500 on Sunday, October 4."), {}),
+        (
+            _race_time_html(
+                sentence="the Grand Prix itself gets underway at 1500 on Monday, October 4."
+            ),
+            {},
+        ),
+        (_race_time_html(), {"claimed_race_start": datetime(2026, 10, 4, 12, tzinfo=UTC)}),
+        (_race_time_html(), {"prediction_timestamp": datetime(2026, 9, 29, 20, 56, tzinfo=UTC)}),
+        (_race_time_html(), {"round_number": 17}),
+        (_race_time_html(), {"source_url": _SEPANG["url"] + "x"}),
+    ],
+)
+def test_race_time_article_rejects_unreviewed_or_inconsistent_claims(
+    html: str, changes: dict
+) -> None:
+    with pytest.raises(ScheduleValidationError):
+        _race_time(html, **changes)
