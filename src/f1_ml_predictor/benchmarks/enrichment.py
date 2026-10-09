@@ -125,6 +125,42 @@ def _prior_window(
     return selected, None
 
 
+def practice_features(
+    practice: dict[str, dict[str, Any]], field_size: int, driver: str, teammates: set[str]
+) -> tuple[dict[str, float | None], dict[str, str]]:
+    """Practice predictors for one driver from one parsed FIA practice classification."""
+    values: dict[str, float | None] = {name: None for name in _PRACTICE_FEATURES}
+    selected = practice.get(driver)
+    if selected is None:
+        return values, {
+            name: "driver_absent_from_selected_practice_classification"
+            for name in _PRACTICE_FEATURES
+        }
+    reasons: dict[str, str] = {}
+    values["practice_position"] = float(selected["position"])
+    values["session_relative_rank"] = (selected["position"] - 1) / (field_size - 1)
+    timed = [
+        entry["best_lap_seconds"]
+        for entry in practice.values()
+        if entry["best_lap_seconds"] is not None
+    ]
+    own = selected["best_lap_seconds"]
+    if own is not None and timed:
+        values["best_lap_gap_to_fastest"] = own - min(timed)
+    else:
+        reasons["best_lap_gap_to_fastest"] = "driver_has_no_printed_practice_lap"
+    teammate_laps = [
+        entry["best_lap_seconds"]
+        for other, entry in practice.items()
+        if other in teammates and entry["best_lap_seconds"] is not None
+    ]
+    if own is not None and teammate_laps:
+        values["teammate_practice_delta"] = own - mean(teammate_laps)
+    else:
+        reasons["teammate_practice_delta"] = "no_current_teammate_with_printed_practice_lap"
+    return values, reasons
+
+
 def _derive(
     row: dict[str, Any],
     current_rows: list[dict[str, Any]],
@@ -220,38 +256,13 @@ def _derive(
                 else "current_teammates_have_no_classified_prior_finish"
             )
     if practice_record is not None:
-        selected = practice_record["practice"].get(row["driver_id"])
-        if selected is None:
-            for name in _PRACTICE_FEATURES:
-                reasons[name] = "driver_absent_from_selected_practice_classification"
-        else:
-            values["practice_position"] = float(selected["position"])
-            values["session_relative_rank"] = (selected["position"] - 1) / (
-                practice_record["field_size"] - 1
-            )
-            reasons.pop("practice_position", None)
-            reasons.pop("session_relative_rank", None)
-            timed = [
-                entry["best_lap_seconds"]
-                for entry in practice_record["practice"].values()
-                if entry["best_lap_seconds"] is not None
-            ]
-            own = selected["best_lap_seconds"]
-            if own is not None and timed:
-                values["best_lap_gap_to_fastest"] = own - min(timed)
-                reasons.pop("best_lap_gap_to_fastest", None)
-            else:
-                reasons["best_lap_gap_to_fastest"] = "driver_has_no_printed_practice_lap"
-            teammate_laps = [
-                entry["best_lap_seconds"]
-                for driver, entry in practice_record["practice"].items()
-                if driver in teammates and entry["best_lap_seconds"] is not None
-            ]
-            if own is not None and teammate_laps:
-                values["teammate_practice_delta"] = own - mean(teammate_laps)
-                reasons.pop("teammate_practice_delta", None)
-            else:
-                reasons["teammate_practice_delta"] = "no_current_teammate_with_printed_practice_lap"
+        practice_values, practice_reasons = practice_features(
+            practice_record["practice"], practice_record["field_size"], row["driver_id"], teammates
+        )
+        values.update(practice_values)
+        for name in _PRACTICE_FEATURES:
+            reasons.pop(name, None)
+        reasons.update(practice_reasons)
         used_clocks.append(practice_record["available_at"])
     for name in ENRICHMENT_NUMERIC_FEATURES:
         values[f"{name}_missing"] = values[name] is None

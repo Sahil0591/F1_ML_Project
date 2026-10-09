@@ -32,6 +32,7 @@ from f1_ml_predictor.trust.collected_outcomes import collect_final_outcomes
 from f1_ml_predictor.trust.collector import collect_weekend
 from f1_ml_predictor.trust.locking import advisory_lock
 from f1_ml_predictor.trust.outcomes import OUTCOME_SCHEMA, validate_audited_outcomes
+from f1_ml_predictor.trust.practice_capture import practice_tick
 from f1_ml_predictor.trust.prospective import load_bundle
 from f1_ml_predictor.trust.sprint_capture import sprint_tick
 
@@ -328,6 +329,13 @@ def _tick(
             entry["status"] = state["status"] = "schedule_changed_review_required"
             return
         _reconcile(root, entry)
+        # Practice captures are separate bundles; a failure never blocks other captures.
+        try:
+            entry["practice"] = practice_tick(
+                root, event, weekends(payload)[event], now=now, http_client=http_client
+            )
+        except (ValueError, SourceError, OSError, KeyError, TypeError, httpx.HTTPError) as exc:
+            entry["practice"] = {"status": "error", "error": str(exc)}
         if raw.get("Sprint"):
             # Sprint captures are separate bundles; a sprint failure never blocks the
             # main qualifying capture.

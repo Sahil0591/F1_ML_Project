@@ -18,8 +18,9 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +41,7 @@ from f1_ml_predictor.prediction.contracts import (
     SPRINT_NUMERIC,
     AuditedHistory,
     build_rows,
+    practice_clocks_from,
 )
 from f1_ml_predictor.prediction.evaluation import (
     RaceRecord,
@@ -65,9 +67,10 @@ SPRINT_CONTRACT = "post_sprint_qualifying"
 RACE_CONTRACT = "post_qualifying"
 SPRINT_SESSION_NAMES = ("Sprint Qualifying", "Sprint Shootout")
 OPENF1 = "https://api.openf1.org/v1"
-# Practice is never captured live, so sprint rows never carry it; same-weekend sprint
-# values describe the sprint being predicted, so they are hidden too.
-MASKED = (*PRACTICE_NUMERIC, *SPRINT_NUMERIC)
+# Same-weekend sprint values describe the sprint being predicted, so they are hidden.
+# Practice is used: historical sprints take the audited Gold practice of their race
+# weekend when published by the sprint cutoff, live sprints the captured FIA practice.
+MASKED = SPRINT_NUMERIC
 # 2022 had no sprint qualifying session: Friday qualifying set the sprint grid.
 # Its classification is bounded conservatively after the scheduled start.
 LEGACY_GRID_BOUND = timedelta(hours=2)
@@ -94,7 +97,7 @@ OPENF1_TEAMS = {
 }
 
 SPRINT_ADDENDUM = {
-    "version": "sprint-dev-v1",
+    "version": "sprint-dev-v2",
     "base_protocol": PROTOCOL_V3_VERSION,
     "base_protocol_sha256": PROTOCOL_V3_SHA256,
     "tier": "Development",
@@ -110,6 +113,9 @@ SPRINT_ADDENDUM = {
         "teammate_qualifying_position_delta": "own minus teammate sprint qualifying position",
     },
     "masked_predictors": list(MASKED),
+    "practice": "latest FIA practice classification published by the sprint cutoff: the "
+    "audited Gold practice of the race weekend for historical sprints, the live FIA "
+    "capture for the predicted sprint; missing otherwise",
     "calibration": "protocol v3 analyse over sprint out-of-fold records only: temperature, "
     "prior mixing and development primary are prequential on earlier sprints",
     "dnf": "prior is the smoothed retirement rate of earlier sprints; logistic and hist are "
@@ -128,7 +134,7 @@ SPRINT_ADDENDUM_SHA256 = hashlib.sha256(
 # The same method on the FIA-audited Gold sprint history (trust/sprint_gold.py).
 SPRINT_GOLD_ADDENDUM = {
     **SPRINT_ADDENDUM,
-    "version": "sprint-gold-v2",
+    "version": "sprint-gold-v3",
     "tier": "Gold",
     "cutoff": "FIA registry publication of the first non-recalled sprint grid document "
     "(sprint qualifying 2024+, sprint shootout 2023, qualifying 2022), read as the later "
@@ -175,6 +181,8 @@ class SprintEvent:
     roster: dict[str, str]
     grid: SprintGrid
     labels: dict[str, dict[str, Any]]
+    # Weekend practice values with their availability clocks, by driver.
+    practice: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 def _retained(
@@ -473,6 +481,7 @@ def historical_sprints(
                     {driver: str(team) for driver, team in roster.items()},
                     grid,
                     labels,
+                    gold_practice(history, name),
                 )
             )
     events.sort(key=lambda item: item.cutoff)
@@ -666,10 +675,29 @@ def gold_sprints(
                 {row["driver_id"]: row["constructor_id"] for row in group},
                 grid,
                 labels,
+                gold_practice(history, event_id),
             )
         )
     events.sort(key=lambda item: item.cutoff)
     return events, list(manifest["excluded"]), {"manifest_sha256": digest, **manifest["dataset"]}
+
+
+@lru_cache(maxsize=4)
+def _practice_clocks(directory: Path) -> dict[tuple[str, str], datetime]:
+    return practice_clocks_from(directory)
+
+
+def gold_practice(history: AuditedHistory, event_id: str) -> dict[str, dict[str, Any]]:
+    """Audited practice values of a Gold race weekend with their publication clocks."""
+    clocks = _practice_clocks(history.version.directory)
+    practice: dict[str, dict[str, Any]] = {}
+    for row in history.by_event.get(event_id, []):
+        clock = clocks.get((event_id, row["driver_id"]))
+        practice[row["driver_id"]] = {
+            **{name: row[name] for name in PRACTICE_NUMERIC},
+            **{f"{name}_available_at": clock for name in PRACTICE_NUMERIC},
+        }
+    return practice
 
 
 def weekend_values(grid: SprintGrid, roster: dict[str, str]) -> dict[str, dict[str, Any]]:
@@ -709,7 +737,10 @@ def sprint_rows(
         circuit_id=sprint.circuit_id,
         cutoff=sprint.cutoff,
         roster=sprint.roster,
-        weekend=weekend_values(sprint.grid, sprint.roster),
+        weekend={
+            driver: {**values, **sprint.practice.get(driver, {})}
+            for driver, values in weekend_values(sprint.grid, sprint.roster).items()
+        },
     )
     for row in rows:
         row["cutoff_kind"] = SPRINT_CONTRACT

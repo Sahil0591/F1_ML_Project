@@ -265,6 +265,29 @@ the `ensemble_all` primary moved from winner log loss 1.2245 to 1.2230 at
 from 1.2247 to 1.2251 at `pre_race` (0.07135 to 0.07121, 2.637 to 2.638). Formal
 gates were identical.
 
+## Addendum sprint-gold-v3
+
+The same method as `sprint-gold-v2` with practice predictors no longer hidden
+(9 October 2026). They were hidden only because practice was never captured live.
+The collector now freezes the latest FIA practice classification each weekend, with
+availability at its registry publication minute plus one, the bound the historical
+practice audit uses. Historical sprints take the audited Gold practice of their race
+weekend when it was published by the sprint cutoff; on every sprint format that is
+first practice. 24 of the 25 Gold sprints carry it; 2026 Round 5 has no Gold race.
+Same-weekend sprint values stay hidden. `sprint-dev-v2` makes the same change.
+
+On the same 24 outer sprints, against `sprint-gold-v2` on the 96-race Gold version:
+
+| Model | v2 win LL | v3 win LL | v2 podium Brier | v3 podium Brier | v2 finish MAE | v3 finish MAE |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| hist | 1.311 | 1.264 | 0.0554 | 0.0545 | 2.47 | 2.46 |
+| logistic | 1.580 | 1.606 | 0.0674 | 0.0700 | 2.31 | 2.33 |
+| development primary | 1.300 (`ridge_pl`) | 1.264 (`hist`) | 0.0609 | 0.0545 | 2.33 | 2.46 |
+
+The primary beat logistic on winner log loss by -0.342 (race bootstrap 95% interval
+-0.717 to -0.004) and podium Brier by -0.0157 (-0.0270 to -0.0051); finish MAE was
++0.130 (-0.009 to +0.275). Formal gates stay `no_selection`.
+
 ### Sprint values in the race contracts (cutoff-contracts-v3)
 
 Since 2024 the sprint runs before Grand Prix qualifying, so the `post_qualifying`

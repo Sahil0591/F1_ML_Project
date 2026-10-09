@@ -54,8 +54,14 @@ The pre-qualifying primary is never reused after qualifying. If results are not 
 published, the tick reports `waiting_for_qualifying_results`; retry a few minutes
 later. For the pre-race window run
 `.\.venv\Scripts\python.exe -m f1_ml_predictor collect-next-race --pre-race` first.
-Practice is not captured live yet, so a run between practice and qualifying uses
-the `pre_weekend` contract and says so. Every run has a new run ID and directory.
+Each collector tick after first practice freezes the latest FIA practice
+classification (PDF, registry page and parsed timing rows) under
+`data/raw/prospective_sprint/<event>/practice_classification-*.json`. Its
+availability is the registry publication minute plus one, as in the historical
+practice audit. Sprint, `post_qualifying` and `pre_race` runs use it when it was
+published by their cutoff; the report names the session and document. A run
+between practice and qualifying still uses the `pre_weekend` contract and says so.
+Every run has a new run ID and directory.
 
 ## Models and calibration
 
@@ -162,7 +168,7 @@ Sprint captures are immutable, hash-named bundles under
 `data/raw/prospective_sprint/<event>/`; the observation clock is the availability
 time. Sprint history is the FIA-audited Gold sprint version when one exists
 (`build-gold-sprints`, addendum
-[sprint-gold-v2](EVALUATION_PROTOCOL_V3.md#addendum-sprint-gold-v2)), and the
+[sprint-gold-v3](EVALUATION_PROTOCOL_V3.md#addendum-sprint-gold-v3)), and the
 Development history otherwise; the manifest records which. Grand Prix runs at the
 post-qualifying and pre-race cutoffs use the captured sprint qualifying position,
 sprint position and classified flag (contract `cutoff-contracts-v3`), trained on the

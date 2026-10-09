@@ -76,6 +76,7 @@ from f1_ml_predictor.prediction.sprint import (
 from f1_ml_predictor.prediction.workspace import evaluate_contract, load_audited_history
 from f1_ml_predictor.simulation import EventSimulation, simulate_championship
 from f1_ml_predictor.time import require_known_by, require_utc
+from f1_ml_predictor.trust.practice_capture import PRACTICE, captured_practice_values
 from f1_ml_predictor.trust.scheduler import scheduler_status
 from f1_ml_predictor.trust.sprint_capture import (
     SPRINT_FIA,
@@ -647,6 +648,21 @@ def predict_next_race(
             for driver, values in weekend_values.items():
                 values.update(live_sprint.get(driver, {}))
     require_known_by(observed_at, cutoff)
+    live_practice: dict[str, dict[str, Any]] = {}
+    practice_source = None
+    if contract in {SPRINT_CONTRACT, "post_qualifying", "pre_race"}:
+        live_practice, practice_source = captured_practice_values(
+            root, latest_capture(root, target.event, PRACTICE, clock), roster, cutoff
+        )
+        if practice_source is not None:
+            notes.append(
+                f"practice predictors use FIA practice {practice_source['session']} "
+                f"classification document {practice_source['document_id']}, published by "
+                f"{practice_source['available_at']}"
+            )
+            if weekend_values is not None:
+                for driver, values in weekend_values.items():
+                    values.update(live_practice.get(driver, {}))
     current_sprint = None
     if not is_sprint and weekend.sprint is not None and weekend.sprint <= cutoff:
         result = latest_capture(root, target.event, SPRINT_RESULT, clock)
@@ -698,7 +714,14 @@ def predict_next_race(
         rows, reasons = sprint_rows(
             history,
             SprintEvent(
-                target.event, target.circuit_id, cutoff, weekend.sprint, roster, sprint_grid, {}
+                target.event,
+                target.circuit_id,
+                cutoff,
+                weekend.sprint,
+                roster,
+                sprint_grid,
+                {},
+                live_practice,
             ),
             labelled=False,
         )

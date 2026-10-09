@@ -497,7 +497,12 @@ def sprint_weekend_values(row: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def practice_clocks(version: GoldVersion) -> dict[tuple[str, str], datetime]:
-    records = json.loads((version.directory / "feature_provenance.json").read_text("utf-8"))
+    return practice_clocks_from(version.directory)
+
+
+def practice_clocks_from(directory: Path) -> dict[tuple[str, str], datetime]:
+    """Audited practice publication bounds by event and driver for one Gold version."""
+    records = json.loads((directory / "feature_provenance.json").read_text("utf-8"))
     return {
         (item["event_id"], item["driver_id"]): datetime.fromisoformat(
             item["practice"]["available_at"]
