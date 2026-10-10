@@ -73,10 +73,12 @@ from f1_ml_predictor.prediction.sprint import (
     latest_jolpica_constructors,
     sprint_rows,
 )
+from f1_ml_predictor.prediction.sprint import weekend_values as openf1_qualifying_values
 from f1_ml_predictor.prediction.workspace import evaluate_contract, load_audited_history
 from f1_ml_predictor.simulation import EventSimulation, simulate_championship
 from f1_ml_predictor.time import require_known_by, require_utc
 from f1_ml_predictor.trust.practice_capture import PRACTICE, captured_practice_values
+from f1_ml_predictor.trust.qualifying_fallback import QUALIFYING_OPENF1
 from f1_ml_predictor.trust.scheduler import scheduler_status
 from f1_ml_predictor.trust.sprint_capture import (
     SPRINT_FIA,
@@ -495,8 +497,9 @@ def _captured_sprint_roster(
     event: EventId,
     grid_record: dict[str, Any],
     cutoff: datetime,
+    label: str = "sprint_qualifying",
 ) -> tuple[dict[str, str], str]:
-    """Drivers from a sprint qualifying capture with their constructors that weekend.
+    """Drivers from an OpenF1 session capture with their constructors that weekend.
 
     The capture's OpenF1 session team decides; the latest audited roster, then the
     latest Jolpica entry this season, cover a team name the table does not map.
@@ -521,7 +524,7 @@ def _captured_sprint_roster(
         driver for driver, team in session_teams.items() if latest.get(driver, team) != team
     )
     source = (
-        "captured_sprint_qualifying drivers; constructors from the captured OpenF1 session "
+        f"captured_{label} drivers; constructors from the captured OpenF1 session "
         f"teams, else {roster_basis}"
         + (f"; seat changes since {roster_basis}: {', '.join(moved)}" if moved else "")
         + (f"; latest Jolpica entry for {', '.join(unknown)}" if unknown else "")
@@ -593,6 +596,11 @@ def predict_next_race(
             "sprint qualifying"
         )
     is_sprint = sprint_grid_capture is not None
+    qualifying_fallback = (
+        latest_capture(root, target.event, QUALIFYING_OPENF1, clock)
+        if capture is None and not is_sprint and session != "sprint"
+        else None
+    )
     sprint_grid = None
     if sprint_grid_capture is not None:
         assert weekend.sprint is not None
@@ -604,6 +612,21 @@ def predict_next_race(
             root, history.rows, target.event, sprint_grid_capture, cutoff
         )
         weekend_values = None
+    elif qualifying_fallback is not None:
+        # Jolpica had not published qualifying: a provisional post-qualifying run from
+        # the frozen OpenF1 qualifying result, never a certified capture.
+        contract, capture_record = "post_qualifying", None
+        qualifying_grid = capture_grid(qualifying_fallback)
+        cutoff = qualifying_grid.available_at
+        roster, roster_source = _captured_sprint_roster(
+            root, history.rows, target.event, qualifying_fallback, cutoff, "openf1_qualifying"
+        )
+        weekend_values = openf1_qualifying_values(qualifying_grid, roster)
+        notes.append(
+            "PROVISIONAL: qualifying comes from the OpenF1 session result frozen at "
+            f"{cutoff.isoformat()} because Jolpica had not published it; not certified and "
+            "not evaluation-eligible"
+        )
     elif capture is None:
         contract, cutoff, capture_record = "pre_weekend", clock, None
         grid_record = (
@@ -640,13 +663,13 @@ def predict_next_race(
             }
             for driver, row in base.items()
         }
-        if weekend.sprint is not None and weekend.sprint <= cutoff:
-            live_sprint = captured_sprint_values(
-                latest_capture(root, target.event, SPRINT_QUALIFYING, cutoff),
-                latest_capture(root, target.event, SPRINT_RESULT, cutoff),
-            )
-            for driver, values in weekend_values.items():
-                values.update(live_sprint.get(driver, {}))
+    if weekend_values is not None and weekend.sprint is not None and weekend.sprint <= cutoff:
+        live_sprint = captured_sprint_values(
+            latest_capture(root, target.event, SPRINT_QUALIFYING, cutoff),
+            latest_capture(root, target.event, SPRINT_RESULT, cutoff),
+        )
+        for driver, values in weekend_values.items():
+            values.update(live_sprint.get(driver, {}))
     require_known_by(observed_at, cutoff)
     live_practice: dict[str, dict[str, Any]] = {}
     practice_source = None
@@ -675,6 +698,7 @@ def predict_next_race(
             "points": capture_points(result),
             "captured_at": result["captured_at"],
             "bundle": result["bundle"],
+            "provider": result.get("provider", "jolpica"),
         }
         fia = latest_capture(root, target.event, SPRINT_FIA, cutoff)
         if fia is not None:
@@ -1136,6 +1160,14 @@ def predict_next_race(
         "capture": None
         if capture_record is None
         else {key: capture_record[key] for key in ("bundle", "manifest_sha256", "captured_at")},
+        "qualifying_fallback": None
+        if qualifying_fallback is None
+        else {
+            "provider": "openf1",
+            "bundle": qualifying_fallback["bundle"],
+            "captured_at": qualifying_fallback["captured_at"],
+            "certified": False,
+        },
         "evidence_tier": {
             "training": "Gold",
             "prediction_snapshot": "Development",
@@ -1163,6 +1195,7 @@ def predict_next_race(
         else {
             "bundle": current_sprint["bundle"],
             "captured_at": current_sprint["captured_at"],
+            "provider": current_sprint["provider"],
             "fia": None
             if "fia" not in current_sprint
             else {

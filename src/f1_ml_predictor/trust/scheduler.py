@@ -34,6 +34,7 @@ from f1_ml_predictor.trust.locking import advisory_lock
 from f1_ml_predictor.trust.outcomes import OUTCOME_SCHEMA, validate_audited_outcomes
 from f1_ml_predictor.trust.practice_capture import practice_tick
 from f1_ml_predictor.trust.prospective import load_bundle
+from f1_ml_predictor.trust.qualifying_fallback import qualifying_fallback_tick
 from f1_ml_predictor.trust.sprint_capture import sprint_tick
 
 _LIMITS = ((4, 1.0), (500, 3600.0))
@@ -329,10 +330,11 @@ def _tick(
             entry["status"] = state["status"] = "schedule_changed_review_required"
             return
         _reconcile(root, entry)
+        weekend = weekends(payload)[event]
         # Practice captures are separate bundles; a failure never blocks other captures.
         try:
             entry["practice"] = practice_tick(
-                root, event, weekends(payload)[event], now=now, http_client=http_client
+                root, event, weekend, now=now, http_client=http_client
             )
         except (ValueError, SourceError, OSError, KeyError, TypeError, httpx.HTTPError) as exc:
             entry["practice"] = {"status": "error", "error": str(exc)}
@@ -341,7 +343,7 @@ def _tick(
             # main qualifying capture.
             try:
                 entry["sprint"] = sprint_tick(
-                    root, event, weekends(payload)[event], now=now, http_client=http_client
+                    root, event, weekend, now=now, http_client=http_client
                 )
             except (ValueError, SourceError, OSError, KeyError, TypeError, httpx.HTTPError) as exc:
                 entry["sprint"] = {"status": "error", "error": str(exc)}
@@ -373,6 +375,14 @@ def _tick(
         qualifying_races, total = _races(payload)
         normalized = normalize_qualifying(qualifying_races, event)
         if not total and not normalized.num_rows:
+            # A late Jolpica leaves the certified capture pending; a provisional OpenF1
+            # qualifying capture keeps the race prediction possible in the meantime.
+            try:
+                entry["qualifying_fallback"] = qualifying_fallback_tick(
+                    root, event, weekend, now=now, http_client=http_client
+                )
+            except (ValueError, SourceError, OSError, KeyError, TypeError, httpx.HTTPError) as exc:
+                entry["qualifying_fallback"] = {"status": "error", "error": str(exc)}
             entry["status"] = state["status"] = "waiting_for_qualifying_results"
             return
         if len(qualifying_races) != 1 or total != normalized.num_rows:

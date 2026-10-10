@@ -22,10 +22,15 @@ from f1_ml_predictor.prediction.sprint import (
     weekend_values,
 )
 from f1_ml_predictor.prediction.web_export import EXPORT_CUTOFFS, session_of
+from f1_ml_predictor.trust.qualifying_fallback import QUALIFYING_OPENF1, qualifying_fallback_tick
 from f1_ml_predictor.trust.sprint_capture import (
+    FALLBACK_DELAY,
     SPRINT_QUALIFYING,
+    SPRINT_RESULT,
     capture_grid,
+    capture_points,
     capture_teams,
+    captured_sprint_values,
     latest_capture,
     sprint_tick,
 )
@@ -323,3 +328,153 @@ def test_export_orders_the_sprint_snapshot_between_practice_and_qualifying() -> 
     )
     assert session_of("post_sprint_qualifying") == "sprint"
     assert session_of("post_qualifying") == "race"
+
+
+def test_openf1_grid_ranks_a_non_numeric_position_behind_the_classified() -> None:
+    result = [*_session_result(), {"driver_number": 20, "position": "RT", "duration": [None]}]
+    grid = openf1_grid(result, _session_drivers(), crosswalk(_drivers_payload()).codes, NOW, "t")
+    assert grid.positions["magnussen"] == 4
+    assert grid.last_seconds["magnussen"] is None
+
+
+def _fallback_transport(
+    sessions: list[dict], results: dict[int, list[dict]], jolpica_sprint: dict | None = None
+) -> httpx.MockTransport:
+    def respond(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if request.url.host == "api.openf1.org":
+            if path.endswith("/v1/sessions"):
+                return httpx.Response(200, json=sessions)
+            key = int(request.url.params["session_key"])
+            if path.endswith("/v1/session_result"):
+                return httpx.Response(200, json=results.get(key, []))
+            if path.endswith("/v1/drivers"):
+                return httpx.Response(200, json=_session_drivers())
+        if request.url.host == "api.jolpi.ca":
+            if path.endswith("/drivers/"):
+                return httpx.Response(200, json=_drivers_payload())
+            if path.endswith("/sprint/"):
+                empty = {"MRData": {"total": "0", "RaceTable": {"Races": []}}}
+                return httpx.Response(200, json=jolpica_sprint or empty)
+        # FIA documents are not part of these checks.
+        return httpx.Response(404, text="")
+
+    return httpx.MockTransport(respond)
+
+
+def _session(key: int, name: str, start: datetime, minutes: int) -> dict:
+    return {
+        "session_key": key,
+        "session_name": name,
+        "date_start": start.isoformat(),
+        "date_end": (start + timedelta(minutes=minutes)).isoformat(),
+    }
+
+
+def test_sprint_result_falls_back_to_openf1_then_jolpica_supersedes(tmp_path: Path) -> None:
+    sprint_start = NOW - timedelta(hours=1)
+    weekend = _weekend(sprint_start - timedelta(hours=20), sprint_start)
+    sessions = [
+        _session(11379, "Sprint Qualifying", weekend.sprint_qualifying, 44),  # type: ignore[arg-type]
+        _session(11383, "Sprint", sprint_start, 40),
+    ]
+    sprint_result = [
+        {"driver_number": 1, "position": 1, "points": 8.0, "dnf": False},
+        # Retired on the last lap but still classified: dnf is not classification.
+        {"driver_number": 81, "position": 2, "points": 7.0, "dnf": True},
+        {"driver_number": 3, "position": None, "points": 0.0, "dnf": True},
+    ]
+    transport = _fallback_transport(sessions, {11379: _session_result(), 11383: sprint_result})
+    with httpx.Client(transport=transport) as client:
+        sprint_tick(
+            tmp_path, EVENT, weekend, now=lambda: NOW - timedelta(hours=10), http_client=client
+        )
+        waiting = sprint_tick(tmp_path, EVENT, weekend, now=lambda: NOW, http_client=client)
+        assert waiting["status"] == "waiting_for_sprint_results"
+        later = NOW + FALLBACK_DELAY
+        fallback = sprint_tick(tmp_path, EVENT, weekend, now=lambda: later, http_client=client)
+    assert fallback["status"] == "sprint_captured"
+    assert fallback["sprint_result_provider"] == "openf1"
+    record = latest_capture(tmp_path, EVENT, SPRINT_RESULT, later)
+    assert record is not None
+    assert capture_points(record) == {
+        "norris": 8.0,
+        "piastri": 7.0,
+        "max_verstappen": 0.0,
+    }
+    values = captured_sprint_values(None, record)
+    assert values["piastri"]["sprint_position"] == 2
+    assert values["piastri"]["sprint_classified"] == 1.0
+    assert values["max_verstappen"]["sprint_position"] is None
+    assert values["max_verstappen"]["sprint_classified"] == 0.0
+
+    jolpica = {
+        "MRData": {
+            "total": "1",
+            "RaceTable": {
+                "Races": [
+                    {
+                        "season": "2026",
+                        "round": "17",
+                        "SprintResults": [
+                            {
+                                "number": "1",
+                                "position": "1",
+                                "positionText": "1",
+                                "points": "8",
+                                "grid": "1",
+                                "laps": "20",
+                                "status": "Finished",
+                                "Driver": {"driverId": "norris"},
+                                "Constructor": {"constructorId": "mclaren"},
+                            }
+                        ],
+                    }
+                ]
+            },
+        }
+    }
+    final = later + timedelta(hours=1)
+    transport = _fallback_transport(sessions, {11379: _session_result()}, jolpica)
+    with httpx.Client(transport=transport) as client:
+        superseded = sprint_tick(tmp_path, EVENT, weekend, now=lambda: final, http_client=client)
+    assert superseded["sprint_result_provider"] == "jolpica"
+    # A cutoff before the Jolpica capture still sees the OpenF1 fallback.
+    earlier = latest_capture(tmp_path, EVENT, SPRINT_RESULT, later)
+    assert earlier is not None and earlier["provider"] == "openf1"
+
+
+def test_qualifying_fallback_waits_for_the_delay_then_freezes_openf1(tmp_path: Path) -> None:
+    qualifying = NOW - timedelta(hours=1)
+    weekend = Weekend(
+        EVENT,
+        "Singapore Grand Prix",
+        "marina_bay",
+        "Marina Bay",
+        qualifying - timedelta(days=1),
+        qualifying,
+        None,
+        qualifying + timedelta(hours=22),
+    )
+    sessions = [_session(11384, "Qualifying", qualifying + timedelta(minutes=30), 60)]
+    transport = _fallback_transport(sessions, {11384: _session_result()})
+    with httpx.Client(transport=transport) as client:
+        early = qualifying_fallback_tick(
+            tmp_path, EVENT, weekend, now=lambda: NOW, http_client=client
+        )
+        assert early["status"] == "waiting_for_jolpica"
+        later = qualifying + FALLBACK_DELAY
+        captured = qualifying_fallback_tick(
+            tmp_path, EVENT, weekend, now=lambda: later, http_client=client
+        )
+    assert captured["status"] == "openf1_captured"
+    record = latest_capture(tmp_path, EVENT, QUALIFYING_OPENF1, later)
+    assert record is not None and record["provider"] == "openf1"
+    assert capture_grid(record).positions["norris"] == 1
+    after_race = weekend.race + timedelta(minutes=1)  # type: ignore[operator]
+    assert (
+        qualifying_fallback_tick(tmp_path / "other", EVENT, weekend, now=lambda: after_race)[
+            "status"
+        ]
+        == "missed"
+    )

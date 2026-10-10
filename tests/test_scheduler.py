@@ -99,11 +99,16 @@ def mock_client(
     qualifying: object | None = None,
     seen: list[httpx.Request] | None = None,
     schedule: list[dict] | None = None,
+    openf1: dict[str, Any] | None = None,
 ) -> httpx.Client:
     def response(request: httpx.Request) -> httpx.Response:
         if seen is not None:
             seen.append(request)
+        if request.url.host == "api.openf1.org":
+            return httpx.Response(200, json=(openf1 or {}).get(request.url.path, []))
         assert request.url.host in {"api.jolpi.ca", "api.open-meteo.com"}
+        if request.url.path.endswith("/drivers/"):
+            return httpx.Response(200, json=(openf1 or {})["jolpica_drivers"])
         assert "results" not in request.url.path
         if request.url.host == "api.open-meteo.com":
             return httpx.Response(200, json={"hourly": {"time": ["future"], "rain": [1]}})
@@ -190,6 +195,50 @@ def test_scheduled_start_without_results_does_not_claim_completion(
     assert not active_entry(state)["captures"]
     assert "qualifying_decision_at" not in active_entry(state)
     assert not list(tmp_path.rglob("manifest.json"))
+
+
+def test_late_jolpica_qualifying_freezes_a_provisional_openf1_capture(
+    tmp_path: Path, clock: Clock
+) -> None:
+    raw = race(clock)
+    qualifying = datetime.fromisoformat(f"{raw['Qualifying']['date']}T{raw['Qualifying']['time']}")
+    openf1 = {
+        "/v1/sessions": [
+            {
+                "session_key": 1,
+                "session_name": "Qualifying",
+                "date_start": qualifying.isoformat(),
+                "date_end": (qualifying + timedelta(hours=1)).isoformat(),
+            }
+        ],
+        "/v1/session_result": [
+            {"driver_number": 1, "position": 1, "duration": [90.1]},
+            {"driver_number": 2, "position": "RT", "duration": [None]},
+        ],
+        "/v1/drivers": [
+            {"driver_number": 1, "name_acronym": "AAA", "team_name": "Team A"},
+            {"driver_number": 2, "name_acronym": "BBB", "team_name": "Team A"},
+        ],
+        "jolpica_drivers": {
+            "MRData": {
+                "DriverTable": {
+                    "Drivers": [
+                        {"driverId": "driver_a", "code": "AAA"},
+                        {"driverId": "driver_b", "code": "BBB"},
+                    ]
+                }
+            }
+        },
+    }
+    with mock_client(raw, qualifying=response_payload([]), openf1=openf1) as client:
+        state = tick(tmp_path, clock, client)
+    entry = active_entry(state)
+    # The certified capture still waits for Jolpica; the fallback is a separate capture.
+    assert state["status"] == "waiting_for_qualifying_results"
+    assert entry["qualifying_fallback"]["status"] == "openf1_captured"
+    assert not entry["captures"]
+    assert not list(tmp_path.rglob("manifest.json"))
+    assert list(tmp_path.rglob("qualifying_openf1-*.json"))
 
 
 def test_no_qualifying_requests_before_scheduled_start(tmp_path: Path, clock: Clock) -> None:

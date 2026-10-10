@@ -81,8 +81,9 @@ def published_standings(
             raise ValueError("captured sprint points do not match the audited sprint table")
         sprint_points: dict[str, float] = current_sprint["points"]
         evidence, status = current_sprint["bundle"]["sha256"], "captured_live_development"
+        provider = "OpenF1" if current_sprint.get("provider") == "openf1" else "Jolpica"
         note = (
-            f"{target.partition()} sprint points come from the captured Jolpica sprint "
+            f"{target.partition()} sprint points come from the captured {provider} sprint "
             "classification (Development) until the FIA after-sprint audit"
         )
         fia = current_sprint.get("fia")
@@ -106,9 +107,9 @@ def published_standings(
                 f"{target.partition()} sprint points come from the captured FIA Final Sprint "
                 f"Classification (document {fia['document_id']}) and the audited sprint table"
                 + (
-                    f"; the Jolpica capture differed for {', '.join(differ)}"
+                    f"; the {provider} capture differed for {', '.join(differ)}"
                     if differ
-                    else "; the Jolpica capture agrees"
+                    else f"; the {provider} capture agrees"
                 )
             )
         for driver, points in sprint_points.items():

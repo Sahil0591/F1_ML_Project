@@ -2,10 +2,12 @@
 
 Jolpica has no sprint qualifying endpoint, so the sprint grid comes from OpenF1's
 session result, mapped to canonical drivers through the session's own driver list
-and the Jolpica season codes. Each capture freezes fresh payloads, their hashes and
-the observation clock in an immutable bundle; the observation clock is the
-availability time. A schedule time never proves a session finished: a capture needs
-a nonempty, complete response observed after the scheduled start.
+and the Jolpica season codes. When Jolpica is still empty ``FALLBACK_DELAY`` after
+the sprint, the OpenF1 sprint result is frozen instead, until Jolpica supersedes it.
+Each capture freezes fresh payloads, their hashes and the observation clock in an
+immutable bundle; the observation clock is the availability time. A schedule time
+never proves a session finished: a capture needs a nonempty, complete response
+observed after the scheduled start.
 """
 
 from __future__ import annotations
@@ -30,6 +32,7 @@ from f1_ml_predictor.prediction.sprint import (
     SprintGrid,
     crosswalk,
     openf1_grid,
+    openf1_numbers,
 )
 from f1_ml_predictor.sources.http import JsonSourceClient
 from f1_ml_predictor.sources.jolpica import BASE_URL
@@ -58,6 +61,9 @@ SPRINT_RESULT = "sprint_result"
 SPRINT_FIA = "sprint_fia_classification"
 # Jolpica publishes classifications some time after the chequered flag.
 RESULT_POLL_DELAY = timedelta(minutes=45)
+# Past this delay after a session's scheduled start with Jolpica still empty, the
+# OpenF1 session result is frozen instead (labelled with its provider).
+FALLBACK_DELAY = timedelta(hours=2)
 
 
 def _canonical(value: Any) -> bytes:
@@ -143,16 +149,42 @@ def capture_teams(record: dict[str, Any]) -> dict[str, str]:
     return teams
 
 
+def sprint_classification(record: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Classified position (None if unclassified) and points per canonical driver.
+
+    A Jolpica capture is classified by a numeric position text. An OpenF1 capture is
+    classified by a numeric position: its ``dnf`` flag also marks a driver who retired
+    late but is still classified, so it never decides classification.
+    """
+    sources = record["sources"]
+    identities = crosswalk(sources["drivers_season"]["payload"])
+    if record.get("provider") == "openf1":
+        by_number = openf1_numbers(sources["session_drivers"]["payload"], identities.codes)
+        rows: dict[str, dict[str, Any]] = {}
+        for row in sources["session_result"]["payload"]:
+            number = int(row["driver_number"])
+            if number not in by_number:
+                raise ValueError(f"OpenF1 sprint car {number} is not in the driver list")
+            position = row.get("position")
+            rows[by_number[number]] = {
+                "position": position if isinstance(position, int) else None,
+                "points": float(row.get("points") or 0.0),
+            }
+        return rows
+    event = EventId(record["event"]["season"], record["event"]["round"])
+    payload = sources["sprint"]["payload"]
+    return {
+        identities.driver(row["driver_id"]): {
+            "position": row["position"] if str(row["position_text"] or "").isdecimal() else None,
+            "points": float(row["points"] or 0.0),
+        }
+        for row in normalize_sprint(payload["MRData"]["RaceTable"]["Races"], event).to_pylist()
+    }
+
+
 def capture_points(record: dict[str, Any]) -> dict[str, float]:
     """Sprint points per canonical driver from a verified sprint result capture."""
-    event = EventId(record["event"]["season"], record["event"]["round"])
-    payload = record["sources"]["sprint"]["payload"]
-    identities = crosswalk(record["sources"]["drivers_season"]["payload"])
-    table = normalize_sprint(payload["MRData"]["RaceTable"]["Races"], event)
-    return {
-        identities.driver(row["driver_id"]): float(row["points"] or 0.0)
-        for row in table.to_pylist()
-    }
+    return {driver: row["points"] for driver, row in sprint_classification(record).items()}
 
 
 def captured_sprint_values(
@@ -174,15 +206,12 @@ def captured_sprint_values(
                 }
             )
     if result_record is not None:
-        event = EventId(result_record["event"]["season"], result_record["event"]["round"])
-        identities = crosswalk(result_record["sources"]["drivers_season"]["payload"])
         captured = datetime.fromisoformat(result_record["captured_at"])
-        payload = result_record["sources"]["sprint"]["payload"]
-        for row in normalize_sprint(payload["MRData"]["RaceTable"]["Races"], event).to_pylist():
-            classified = str(row["position_text"] or "").isdecimal()
-            values.setdefault(identities.driver(row["driver_id"]), {}).update(
+        for driver, row in sprint_classification(result_record).items():
+            classified = row["position"] is not None
+            values.setdefault(driver, {}).update(
                 {
-                    "sprint_position": row["position"] if classified else None,
+                    "sprint_position": row["position"],
                     "sprint_position_available_at": captured,
                     "sprint_classified": float(classified),
                     "sprint_classified_available_at": captured,
@@ -331,15 +360,35 @@ def sprint_tick(
                 status["status"] = "waiting_for_sprint_qualifying_results"
                 return status
             status["sprint_qualifying_capture"] = captured
-        if result is None:
-            if clock < weekend.sprint + RESULT_POLL_DELAY:
-                status["status"] = "sprint_qualifying_captured"
-                return status
+        if result is None and clock < weekend.sprint + RESULT_POLL_DELAY:
+            status["status"] = "sprint_qualifying_captured"
+            return status
+        # Jolpica stays the preferred source: an OpenF1 fallback is superseded by a
+        # later Jolpica capture, which becomes the latest one.
+        if result is None or result.get("provider") == "openf1":
             captured = _capture_sprint_result(root, client, event, clock)
-            if captured is None:
+            if captured is None and result is None and clock >= weekend.sprint + FALLBACK_DELAY:
+                captured = capture_openf1_session(
+                    root,
+                    client,
+                    event,
+                    clock,
+                    kind=SPRINT_RESULT,
+                    names=("Sprint",),
+                    window=(
+                        weekend.sprint - timedelta(hours=2),
+                        weekend.sprint + timedelta(hours=12),
+                    ),
+                    decision_basis="openf1_sprint_result_after_jolpica_delay",
+                )
+            if captured is None and result is None:
                 status["status"] = "waiting_for_sprint_results"
                 return status
-            status["sprint_result_capture"] = captured
+            if captured is not None:
+                status["sprint_result_capture"] = captured
+                result = latest_capture(root, event, SPRINT_RESULT, clock)
+    assert result is not None
+    status["sprint_result_provider"] = result.get("provider", "jolpica")
     status["status"] = "sprint_captured"
     fia = latest_capture(root, event, SPRINT_FIA, clock)
     if fia is not None:
@@ -367,16 +416,44 @@ def _capture_sprint_qualifying(
     root: Path, client: JsonSourceClient, event: EventId, weekend: Weekend, clock: datetime
 ) -> dict[str, Any] | None:
     assert weekend.sprint_qualifying is not None and weekend.sprint is not None
+    return capture_openf1_session(
+        root,
+        client,
+        event,
+        clock,
+        kind=SPRINT_QUALIFYING,
+        names=SPRINT_SESSION_NAMES,
+        window=(weekend.sprint_qualifying - timedelta(hours=2), weekend.sprint),
+        decision_basis="fresh_nonempty_openf1_sprint_qualifying_result_observed",
+    )
+
+
+def capture_openf1_session(
+    root: Path,
+    client: JsonSourceClient,
+    event: EventId,
+    clock: datetime,
+    *,
+    kind: str,
+    names: tuple[str, ...],
+    window: tuple[datetime, datetime],
+    decision_basis: str,
+) -> dict[str, Any] | None:
+    """Freeze one finished OpenF1 session result with its driver list and season codes.
+
+    Returns None until the single matching session has ended and has a result. The
+    mapping to canonical drivers is validated before anything is stored.
+    """
     sessions = client.get_json(f"{OPENF1}/sessions", {"year": event.season})
-    low = weekend.sprint_qualifying - timedelta(hours=2)
+    low, high = window
     matches = [
         item
         for item in sessions
-        if item.get("session_name") in SPRINT_SESSION_NAMES
-        and low <= datetime.fromisoformat(item["date_start"]) < weekend.sprint
+        if item.get("session_name") in names
+        and low <= datetime.fromisoformat(item["date_start"]) < high
     ]
     if len(matches) != 1:
-        raise ValueError("OpenF1 sprint qualifying session is missing or ambiguous")
+        raise ValueError(f"OpenF1 {kind} session is missing or ambiguous")
     session = matches[0]
     if datetime.fromisoformat(session["date_end"]) > clock:
         return None
@@ -388,11 +465,12 @@ def _capture_sprint_qualifying(
     season = _source(client, f"{BASE_URL}/{event.season}/drivers/", {"limit": 100, "offset": 0})
     record = {
         "version": 1,
-        "kind": SPRINT_QUALIFYING,
+        "kind": kind,
+        "provider": "openf1",
         "event": {"season": event.season, "round": event.round},
         "captured_at": clock.isoformat(),
         "evidence_class": "captured_live",
-        "decision_basis": "fresh_nonempty_openf1_sprint_qualifying_result_observed",
+        "decision_basis": decision_basis,
         "session": {
             "session_key": key,
             "session_name": session["session_name"],
@@ -419,7 +497,7 @@ def _capture_sprint_qualifying(
         clock,
         "validation",
     )
-    return _freeze(root, event, SPRINT_QUALIFYING, record)
+    return _freeze(root, event, kind, record)
 
 
 def _capture_sprint_result(

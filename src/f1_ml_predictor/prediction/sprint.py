@@ -249,6 +249,20 @@ def crosswalk(payload: Any) -> Crosswalk:
     return Crosswalk(drivers, codes)
 
 
+def openf1_numbers(drivers: list[dict[str, Any]], codes: dict[str, str]) -> dict[int, str]:
+    """Car number to canonical driver through the session's own OpenF1 driver list."""
+    by_number: dict[int, str] = {}
+    for driver in drivers:
+        code = driver.get("name_acronym")
+        if code not in codes:
+            raise ValueError(f"OpenF1 driver {code} has no Jolpica code this season")
+        number = int(driver["driver_number"])
+        if by_number.get(number, codes[code]) != codes[code]:
+            raise ValueError(f"OpenF1 car {number} maps to two drivers")
+        by_number[number] = codes[code]
+    return by_number
+
+
 def openf1_grid(
     results: list[dict[str, Any]],
     drivers: list[dict[str, Any]],
@@ -262,17 +276,13 @@ def openf1_grid(
     Jolpica code; an unmapped or duplicate driver fails rather than being guessed.
     """
     require_utc(available_at, "sprint qualifying availability")
-    by_number: dict[int, str] = {}
-    for driver in drivers:
-        code = driver.get("name_acronym")
-        if code not in codes:
-            raise ValueError(f"OpenF1 driver {code} has no Jolpica code this season")
-        number = int(driver["driver_number"])
-        if by_number.get(number, codes[code]) != codes[code]:
-            raise ValueError(f"OpenF1 car {number} maps to two drivers")
-        by_number[number] = codes[code]
+    by_number = openf1_numbers(drivers, codes)
     positions: dict[str, int | None] = {}
     seconds: dict[str, float | None] = {}
+    # A non-numeric position ("RT" for a driver who set no time) ranks behind every
+    # numeric one in result order, as Jolpica and the FIA classification place them.
+    numeric = [row.get("position") for row in results if isinstance(row.get("position"), int)]
+    behind = max(numeric, default=0)
     for row in results:
         number = int(row["driver_number"])
         if number not in by_number:
@@ -281,7 +291,11 @@ def openf1_grid(
         if driver_id in positions:
             raise ValueError(f"duplicate OpenF1 sprint qualifying driver {driver_id}")
         position = row.get("position")
-        positions[driver_id] = int(position) if position is not None else None
+        if isinstance(position, str):
+            behind += 1
+            positions[driver_id] = behind
+        else:
+            positions[driver_id] = int(position) if position is not None else None
         durations = row.get("duration")
         stages = durations if isinstance(durations, list) else [durations]
         seconds[driver_id] = next(
