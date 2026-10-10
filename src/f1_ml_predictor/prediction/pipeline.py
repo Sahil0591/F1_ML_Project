@@ -67,6 +67,7 @@ from f1_ml_predictor.prediction.sprint import (
     SprintEvent,
     SprintModel,
     addendum_for,
+    crosswalk,
     evaluate_sprints,
     gold_sprints,
     historical_sprints,
@@ -78,6 +79,7 @@ from f1_ml_predictor.prediction.workspace import evaluate_contract, load_audited
 from f1_ml_predictor.simulation import EventSimulation, simulate_championship
 from f1_ml_predictor.time import require_known_by, require_utc
 from f1_ml_predictor.trust.practice_capture import PRACTICE, captured_practice_values
+from f1_ml_predictor.trust.prospective import load_bundle
 from f1_ml_predictor.trust.qualifying_fallback import QUALIFYING_OPENF1
 from f1_ml_predictor.trust.scheduler import scheduler_status
 from f1_ml_predictor.trust.sprint_capture import (
@@ -532,6 +534,32 @@ def _captured_sprint_roster(
     return roster, source
 
 
+def _canonical_capture_base(
+    root: Path, capture_record: dict[str, Any], base: dict[str, dict[str, Any]]
+) -> dict[str, dict[str, Any]]:
+    """Certified capture rows keyed by canonical Gold driver IDs.
+
+    The capture keeps Jolpica driver IDs; Gold names drivers through the FIA name
+    table (Jolpica ``arvid_lindblad`` is Gold ``lindblad``). The capture's own
+    Jolpica qualifying payload supplies the names, as the sprint crosswalk does.
+    """
+    manifest, tables = load_bundle(root / capture_record["bundle"])
+    drivers: list[dict[str, Any]] = []
+    for name, request in manifest["request_metadata"]["source_requests"].items():
+        if isinstance(request, dict) and request.get("role") == "qualifying":
+            payload = json.loads(tables[name]["payload_json"][0].as_py())
+            for race in payload["MRData"]["RaceTable"]["Races"]:
+                drivers.extend(row["Driver"] for row in race["QualifyingResults"])
+    identities = crosswalk({"MRData": {"DriverTable": {"Drivers": drivers}}})
+    mapped = {
+        identities.driver(driver): {**row, "driver_id": identities.driver(driver)}
+        for driver, row in base.items()
+    }
+    if len(mapped) != len(base):
+        raise ValueError("certified capture drivers collide after canonical mapping")
+    return mapped
+
+
 def predict_next_race(
     root: Path,
     *,
@@ -651,6 +679,7 @@ def predict_next_race(
             )
     else:
         capture_record, base = capture
+        base = _canonical_capture_base(root, capture_record, base)
         contract = "pre_race" if capture_record["cutoff_kind"] == "pre_race" else "post_qualifying"
         cutoff = next(iter(base.values()))["prediction_timestamp"]
         roster = {driver: row["constructor_id"] for driver, row in base.items()}

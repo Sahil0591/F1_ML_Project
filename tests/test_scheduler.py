@@ -512,3 +512,26 @@ def test_normalization_failure_keeps_raw_capture_without_false_gold(
     assert retry["status"] == "error"
     assert not active_entry(retry)["captures"]
     assert not seen
+
+
+def test_certified_capture_drivers_map_to_gold_ids(tmp_path: Path, clock: Clock) -> None:
+    from f1_ml_predictor.prediction.pipeline import _canonical_capture_base
+
+    raw = race(clock)
+    payload = qualifying_payload(raw)
+    rows = payload["MRData"]["RaceTable"]["Races"][0]["QualifyingResults"]
+    rows[1]["Driver"] = {
+        "driverId": "arvid_lindblad",
+        "givenName": "Arvid",
+        "familyName": "Lindblad",
+    }
+    with mock_client(raw, qualifying=payload) as client:
+        state = tick(tmp_path, clock, client)
+    capture = active_entry(state)["captures"][0]
+    base = {
+        "driver_a": {"driver_id": "driver_a"},
+        "arvid_lindblad": {"driver_id": "arvid_lindblad"},
+    }
+    mapped = _canonical_capture_base(tmp_path, capture, base)
+    assert set(mapped) == {"driver_a", "lindblad"}
+    assert mapped["lindblad"]["driver_id"] == "lindblad"
