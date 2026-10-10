@@ -197,6 +197,29 @@ def _retained_context(
     return manifest, raw, raw_entries, constructors
 
 
+def capture_driver_aliases(entries: list[dict[str, Any]], roster: set[str]) -> dict[str, str]:
+    """FIA printed names to the capture's own Jolpica driver IDs.
+
+    Labels attach to the capture roster, so its IDs win. An FIA alias naming a
+    different ID for the same printed name is the same person under a Gold name
+    (Jolpica ``arvid_lindblad`` is Gold ``lindblad``) unless that other ID is
+    itself in the capture, which is a real conflict.
+    """
+    drivers = dict(DRIVER_ALIASES)
+    for entry in entries:
+        driver = entry["Driver"]
+        if driver.get("givenName") and driver.get("familyName"):
+            for display in (
+                f"{driver['givenName']} {driver['familyName']}",
+                f"{driver['givenName']} {driver['familyName'].upper()}",
+            ):
+                known = drivers.get(display)
+                if known is not None and known != driver["driverId"] and known in roster:
+                    raise ValueError("captured driver identity conflicts with exact FIA alias")
+                drivers[display] = driver["driverId"]
+    return drivers
+
+
 def collect_final_outcomes(
     root: Path,
     bundle: Path,
@@ -223,18 +246,10 @@ def collect_final_outcomes(
     if normalized_race["race_start_utc"] != race_start:
         raise ValueError("retained outcome schedule disagrees with frozen prediction window")
     race_name = normalized_race["race_name"]
-    drivers = dict(DRIVER_ALIASES)
+    drivers = capture_driver_aliases(raw_entries, set(constructors))
     teams = dict(CONSTRUCTOR_ALIASES)
     for entry in raw_entries:
-        driver, constructor = entry["Driver"], entry["Constructor"]
-        if driver.get("givenName") and driver.get("familyName"):
-            for display in (
-                f"{driver['givenName']} {driver['familyName']}",
-                f"{driver['givenName']} {driver['familyName'].upper()}",
-            ):
-                if display in drivers and drivers[display] != driver["driverId"]:
-                    raise ValueError("captured driver identity conflicts with exact FIA alias")
-                drivers[display] = driver["driverId"]
+        constructor = entry["Constructor"]
         if constructor.get("name"):
             display = constructor["name"]
             if display in teams and teams[display] != constructor["constructorId"]:

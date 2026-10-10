@@ -476,3 +476,15 @@ def test_pdf_parser_errors_are_deferred_without_stopping_the_tick(
     with fia_client() as client:
         state = scheduler_tick(tmp_path, http_client=client, now=lambda: OBSERVED)
     assert state["events"][EVENT.partition()]["outcome_collection"]["status"] == "deferred"
+
+
+def test_capture_ids_win_over_a_gold_alias_for_the_same_driver() -> None:
+    from f1_ml_predictor.trust.collected_outcomes import capture_driver_aliases
+
+    lindblad = {"driverId": "arvid_lindblad", "givenName": "Arvid", "familyName": "Lindblad"}
+    entries = [{"Driver": lindblad}]
+    aliases = capture_driver_aliases(entries, {"arvid_lindblad"})
+    assert aliases["Arvid LINDBLAD"] == "arvid_lindblad"
+    # The alias target racing in the same capture under its own ID is a real conflict.
+    with pytest.raises(ValueError, match="conflicts with exact FIA alias"):
+        capture_driver_aliases(entries, {"arvid_lindblad", "lindblad"})
