@@ -335,9 +335,16 @@ def _fit(table: np.ndarray[Any, Any], indices: list[int]) -> Calibration:
 
 
 def analyse(
-    records: list[RaceRecord], *, seed: int = 42, candidates: tuple[str, ...] = JOINT_CANDIDATES
+    records: list[RaceRecord],
+    *,
+    seed: int = 42,
+    candidates: tuple[str, ...] = JOINT_CANDIDATES,
+    outputs: dict[str, list[dict[str, Any]]] | None = None,
 ) -> dict[str, Any]:
-    """Prequential calibration, selection, metrics, gates and live configuration."""
+    """Prequential calibration, selection, metrics, gates and live configuration.
+
+    `outputs`, when given, receives each model's calibrated per-race marginals.
+    """
     if len(records) < MIN_SELECTION_EVENTS:
         raise ValueError("too few outer races for cutoff-specific evaluation")
     dnf_used: list[str] = []
@@ -468,11 +475,13 @@ def analyse(
     baseline_metrics = {
         name: _metrics(records, outputs) for name, outputs in baseline_outputs.items()
     }
+    if outputs is not None:
+        outputs.update({**calibrated, "selected_pipeline": selected})
     results: dict[str, Any] = {}
-    for name, outputs in [*calibrated.items(), ("selected_pipeline", selected)]:
-        metrics = _metrics(records, outputs)
+    for name, values in [*calibrated.items(), ("selected_pipeline", selected)]:
+        metrics = _metrics(records, values)
         paired = {
-            base: _paired(records, outputs, baseline_outputs[base], seed)
+            base: _paired(records, values, baseline_outputs[base], seed)
             for base in baseline_outputs
         }
         results[name] = {

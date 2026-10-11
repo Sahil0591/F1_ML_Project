@@ -83,3 +83,32 @@ PROTOCOL_V3 = {
 PROTOCOL_V3_SHA256 = hashlib.sha256(
     json.dumps(PROTOCOL_V3, sort_keys=True, separators=(",", ":")).encode()
 ).hexdigest()
+
+# Addendum for the race prediction made once the FIA provisional starting grid is
+# out. Protocol v3 and its four cutoffs stay frozen; this contract is evaluated
+# with the same method and stored under its own key.
+GRID_CONTRACT = "provisional_grid"
+GRID_ADDENDUM = {
+    "version": "grid-addendum-v1",
+    "base_protocol": PROTOCOL_V3_VERSION,
+    "base_protocol_sha256": PROTOCOL_V3_SHA256,
+    "tier": "Gold",
+    "contract": GRID_CONTRACT,
+    "cutoff": "one minute after the first FIA Grand Prix starting grid publication in the "
+    "retained registry, never before the audited Gold post-qualifying cutoff; a race whose "
+    "grid cannot be audited keeps that cutoff with grid inputs missing",
+    "grid_inputs": {
+        "grid_position": "ordinal printed on the FIA grid known at the cutoff; missing for a "
+        "pit-lane start",
+        "grid_places_lost": "grid position minus qualifying position; for a pit-lane start, "
+        "entrants plus one minus qualifying position",
+        "pit_lane_start": "1 when the grid names the driver as a pit-lane starter, else 0",
+    },
+    "other_inputs": "the pre_race contract predictors, history recomputed at this cutoff",
+    "evaluation": "protocol v3 outer split, label gate, candidates, calibration and gate",
+    "selection": "protocol v3 formal gate; no change to the frozen v3 cutoffs",
+}
+GRID_ADDENDUM_SHA256 = hashlib.sha256(
+    json.dumps(GRID_ADDENDUM, sort_keys=True, separators=(",", ":")).encode()
+).hexdigest()
+CONTRACTS = (*CUTOFFS, GRID_CONTRACT)

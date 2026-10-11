@@ -32,7 +32,7 @@ from f1_ml_predictor.models.probabilistic import run_probabilistic_files
 from f1_ml_predictor.paths import StoragePaths
 from f1_ml_predictor.prediction.legacy import predict_next_race_c52b674
 from f1_ml_predictor.prediction.pipeline import predict_next_race
-from f1_ml_predictor.prediction.protocol import CUTOFFS
+from f1_ml_predictor.prediction.protocol import CONTRACTS, CUTOFFS
 from f1_ml_predictor.prediction.web_export import write_export
 from f1_ml_predictor.prediction.workspace import evaluate_cutoffs
 from f1_ml_predictor.sources.jolpica import JolpicaClient
@@ -236,9 +236,10 @@ def main() -> None:
     )
     sprints.add_argument("--root", type=Path, default=Path.cwd())
     cutoff_eval = subcommands.add_parser(
-        "evaluate-cutoffs", help="Run the frozen cutoff-specific v3 Gold evaluation"
+        "evaluate-cutoffs",
+        help="Run the frozen cutoff-specific v3 Gold evaluation (provisional_grid: addendum)",
     )
-    cutoff_eval.add_argument("--contracts", choices=CUTOFFS, nargs="+", default=list(CUTOFFS))
+    cutoff_eval.add_argument("--contracts", choices=CONTRACTS, nargs="+", default=list(CUTOFFS))
     cutoff_eval.add_argument("--seed", type=int, default=42)
     cutoff_eval.add_argument("--root", type=Path, default=Path.cwd())
     web = subcommands.add_parser(

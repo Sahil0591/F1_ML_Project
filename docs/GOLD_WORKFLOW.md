@@ -321,7 +321,25 @@ The audit paths and dataset are content addressed. Existing Gold versions and
 model runs remain unchanged. The build checks source and audit hashes, replays
 PDF parsing, and rejects publication after the target cutoff. `grid_status` and
 pit-lane starts remain distinct. The post-qualifying cohort stays intact. A
-separate provisional-grid cohort would need its own later cutoffs and frozen
+separate provisional-grid cohort needs its own later cutoffs and frozen
 evaluation rather than relabeling these rows. See the [coverage and evaluation
 report](GOLD_HISTORICAL_ENRICHMENT_2026-10-01.md) for the exact version, missing
 reasons, and paired ablations.
+
+## Provisional-grid cohort
+
+The `provisional_grid` contract (addendum `grid-addendum-v1`) predicts the race
+one minute after the first FIA Grand Prix starting grid is published. Audit the
+grids for the current coverage report, evaluate the contract beside `pre_race`,
+then pair them:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/audit-historical-grids.py COVERAGE_REPORT --cohort provisional_grid
+.\.venv\Scripts\python.exe -m f1_ml_predictor evaluate-cutoffs --contracts provisional_grid pre_race
+.\.venv\Scripts\python.exe scripts/compare-grid-contract.py
+```
+
+Rerun the audit after each new Gold race, because the contract dataset only
+exists when an audit covers exactly the current Gold races. The
+[cohort report](PROVISIONAL_GRID_COHORT_2026-10-11.md) records the first
+evaluation and why live predictions do not use this contract yet.

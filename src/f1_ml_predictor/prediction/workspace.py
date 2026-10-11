@@ -30,12 +30,15 @@ from f1_ml_predictor.prediction.history import (
 )
 from f1_ml_predictor.prediction.protocol import (
     CUTOFFS,
+    GRID_ADDENDUM_SHA256,
+    GRID_CONTRACT,
     JOINT_CANDIDATES,
     MIN_TRAIN_EVENTS,
     PROTOCOL_V3_SHA256,
 )
 from f1_ml_predictor.prediction.schedules import retained_schedules
 from f1_ml_predictor.scoring.ledger import load_scoring_ledger
+from f1_ml_predictor.trust.grid_history import load_provisional_grids
 from f1_ml_predictor.trust.sprint_gold import load_gold_sprints
 
 COLLECTION_VERSION = "oof-fits-v1"
@@ -70,7 +73,47 @@ def load_audited_history(
         for row in sprint_rows:
             history.sprints.setdefault(row["event_id"], {})[row["driver_id"]] = row
         history.sprint_version = digest
+    grids = load_provisional_grids(
+        root,
+        {
+            event_id: (rows[0]["prediction_timestamp"], {row["driver_id"] for row in rows})
+            for event_id, rows in history.by_event.items()
+        },
+    )
+    if grids is not None:
+        history.grids, history.grid_audit = grids
     return history, dnf_version, sources
+
+
+def out_of_fold_path(
+    root: Path,
+    history: AuditedHistory,
+    contract: str,
+    dataset_sha256: str,
+    *,
+    masked: tuple[str, ...] = (),
+    seed: int = 42,
+    candidates: tuple[str, ...] = JOINT_CANDIDATES,
+) -> Path:
+    """Cache location of one contract's raw out-of-fold records."""
+    payload = {
+        "contract": contract,
+        "dataset_sha256": dataset_sha256,
+        "masked_features": sorted(masked),
+        "seed": seed,
+        "candidates": list(candidates),
+        "minimum_train_events": MIN_TRAIN_EVENTS,
+        "collection_version": COLLECTION_VERSION,
+    }
+    return (
+        root
+        / "models/experiments/gold"
+        / history.version.dataset_version
+        / "cutoff_v3"
+        / contract
+        / "oof"
+        / f"{hashlib.sha256(_canonical(payload)).hexdigest()}.joblib"
+    )
 
 
 def evaluate_contract(
@@ -85,7 +128,10 @@ def evaluate_contract(
     candidates: tuple[str, ...] = JOINT_CANDIDATES,
     progress: Callable[[str], None] | None = None,
 ) -> tuple[dict[str, Any], Path]:
-    """Run or reload the frozen v3 evaluation for one contract and availability mask."""
+    """Run or reload the frozen v3 evaluation for one contract and availability mask.
+
+    The provisional-grid contract runs the same method under the grid addendum.
+    """
     key_payload = {
         "contract": contract,
         "dataset_sha256": dataset_sha256,
@@ -95,6 +141,8 @@ def evaluate_contract(
         "protocol_sha256": PROTOCOL_V3_SHA256,
         "device": "cpu",
     }
+    if contract == GRID_CONTRACT:
+        key_payload["addendum_sha256"] = GRID_ADDENDUM_SHA256
     key = hashlib.sha256(_canonical(key_payload)).hexdigest()
     path = (
         root
@@ -110,17 +158,9 @@ def evaluate_contract(
         if cached.get("key") != key_payload:
             raise ValueError("cached cutoff evaluation does not match its inputs")
         return cached, path
-    oof_payload = {
-        "contract": contract,
-        "dataset_sha256": dataset_sha256,
-        "masked_features": sorted(masked),
-        "seed": seed,
-        "candidates": list(candidates),
-        "minimum_train_events": MIN_TRAIN_EVENTS,
-        "collection_version": COLLECTION_VERSION,
-    }
-    oof_key = hashlib.sha256(_canonical(oof_payload)).hexdigest()
-    oof_path = path.parents[1] / "oof" / f"{oof_key}.joblib"
+    oof_path = out_of_fold_path(
+        root, history, contract, dataset_sha256, masked=masked, seed=seed, candidates=candidates
+    )
     if oof_path.exists():
         records = joblib.load(oof_path)
     else:
@@ -168,6 +208,11 @@ def evaluate_cutoffs(
     datasets = build_contract_datasets(root, history, dnf_version, sources)
     summary = {}
     for contract in contracts:
+        if contract not in datasets:
+            raise ValueError(
+                f"no {contract} dataset; run scripts/audit-historical-grids.py with "
+                "--cohort provisional_grid on the current Gold coverage report"
+            )
         dataset = datasets[contract]
         report, path = evaluate_contract(
             root,

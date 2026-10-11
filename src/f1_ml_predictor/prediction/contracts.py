@@ -28,7 +28,12 @@ from f1_ml_predictor.benchmarks.rolling import rolling_driver_features
 from f1_ml_predictor.benchmarks.scoring import _POINT_FEATURES as POINT_FEATURES
 from f1_ml_predictor.identifiers import EventId
 from f1_ml_predictor.prediction.history import GoldVersion
-from f1_ml_predictor.prediction.protocol import CUTOFFS
+from f1_ml_predictor.prediction.protocol import (
+    CUTOFFS,
+    GRID_ADDENDUM,
+    GRID_ADDENDUM_SHA256,
+    GRID_CONTRACT,
+)
 from f1_ml_predictor.prediction.schedules import Weekend
 from f1_ml_predictor.prediction.strength_features import (
     CIRCUIT_PROFILES,
@@ -85,11 +90,21 @@ GRID_NUMERIC = ("grid_position",)
 # qualifying, so the post-qualifying cutoffs see it; earlier formats and non-sprint
 # weekends leave them missing, which the sprint_weekend count disambiguates.
 SPRINT_NUMERIC = ("sprint_qualifying_position", "sprint_position", "sprint_classified")
+# Grid addendum: penalties show as places lost against qualifying, and a pit-lane
+# start is its own state rather than a missing grid ordinal.
+PENALTY_NUMERIC = ("grid_places_lost", "pit_lane_start")
 _WEEKEND = {
     "pre_weekend": (),
     "post_practice": PRACTICE_NUMERIC,
     "post_qualifying": (*PRACTICE_NUMERIC, *QUALIFYING_NUMERIC, *SPRINT_NUMERIC),
     "pre_race": (*PRACTICE_NUMERIC, *QUALIFYING_NUMERIC, *GRID_NUMERIC, *SPRINT_NUMERIC),
+    GRID_CONTRACT: (
+        *PRACTICE_NUMERIC,
+        *QUALIFYING_NUMERIC,
+        *GRID_NUMERIC,
+        *PENALTY_NUMERIC,
+        *SPRINT_NUMERIC,
+    ),
 }
 DNF_FEATURES = (
     "driver_dnf_rate_any_10",
@@ -121,7 +136,7 @@ _CONTEXT = (
 
 
 def numeric_features(contract: str) -> tuple[str, ...]:
-    if contract not in CUTOFFS:
+    if contract not in _WEEKEND:
         raise ValueError(f"unknown cutoff contract {contract}")
     return (*HISTORY_NUMERIC, *_WEEKEND[contract])
 
@@ -162,6 +177,9 @@ class AuditedHistory:
     # Gold sprint rows by event and driver, and the sprint version's manifest hash.
     sprints: dict[str, dict[str, dict[str, Any]]] = field(default_factory=dict)
     sprint_version: str | None = None
+    # Verified provisional-grid audit records by event, and that audit's hash.
+    grids: dict[str, dict[str, Any]] = field(default_factory=dict)
+    grid_audit: str | None = None
     rows: list[dict[str, Any]] = field(init=False)
     by_event: dict[str, list[dict[str, Any]]] = field(init=False)
     order: list[str] = field(init=False)
@@ -405,6 +423,12 @@ def contract_cutoff(history: AuditedHistory, contract: str, event_id: str) -> da
     if weekend.circuit_id != rows[0]["circuit_id"]:
         raise ValueError(f"{event_id} schedule circuit differs from the audited Gold circuit")
     post_qualifying: datetime = rows[0]["prediction_timestamp"]
+    if contract == GRID_CONTRACT:
+        # The audit bounded this by the audited Gold race start.
+        grid_cutoff: datetime = history.grids[event_id]["cutoff"]
+        if grid_cutoff < post_qualifying:
+            raise ValueError(f"{event_id} provisional grid cutoff precedes qualifying")
+        return grid_cutoff
     if contract == "pre_weekend":
         cutoff = weekend.first_practice
     elif contract == "post_practice":
@@ -443,6 +467,8 @@ def build_rows(
         }
         source = (weekend or {}).get(driver, {})
         for name in allowed:
+            if name == "grid_places_lost":
+                continue
             clock = source.get(f"{name}_available_at")
             value = source.get(name)
             if value is not None and clock is not None and clock <= cutoff:
@@ -453,11 +479,46 @@ def build_rows(
                 reasons[driver]["missing_reasons"][name] = (
                     "weekend_source_absent" if value is None else "published_after_cutoff"
                 )
+        if "grid_places_lost" in allowed:
+            row["grid_places_lost"] = grid_places_lost(row, len(roster))
+            if row["grid_places_lost"] is None:
+                reasons[driver]["missing_reasons"]["grid_places_lost"] = (
+                    "grid_or_qualifying_missing"
+                )
+            if row["pit_lane_start"] == 1.0:
+                reasons[driver]["missing_reasons"]["grid_position"] = "pit_lane_start"
         for name in numeric_features(contract):
             row[f"{name}_missing"] = row[name] is None
         require_known_by(row["feature_timestamp"], cutoff)
         rows.append(row)
     return rows, reasons
+
+
+def grid_places_lost(row: dict[str, Any], entrants: int) -> float | None:
+    """Places between qualifying and the start; a pit-lane start is behind every slot."""
+    qualifying = row.get("qualifying_position")
+    if qualifying is None or row.get("pit_lane_start") is None:
+        return None
+    if row["pit_lane_start"] == 1.0:
+        return float(entrants + 1 - qualifying)
+    if row.get("grid_position") is None:
+        return None
+    return float(row["grid_position"] - qualifying)
+
+
+def grid_weekend_values(
+    grid: dict[str, dict[str, Any]], available_at: datetime
+) -> dict[str, dict[str, Any]]:
+    """Grid predictors from one parsed FIA starting grid, all on its publication clock."""
+    return {
+        driver: {
+            "grid_position": value["grid_position"],
+            "grid_position_available_at": available_at,
+            "pit_lane_start": float(value["pit_lane_start"]),
+            "pit_lane_start_available_at": available_at,
+        }
+        for driver, value in grid.items()
+    }
 
 
 def historical_weekend(
@@ -479,6 +540,27 @@ def historical_weekend(
                 raise ValueError("Gold weekend value is later than its audited cutoff")
         item.update(sprint_weekend_values(history.sprints.get(event_id, {}).get(row["driver_id"])))
         result[row["driver_id"]] = item
+    return result
+
+
+def _with_audited_grid(
+    history: AuditedHistory, event_id: str, weekend: dict[str, dict[str, Any]]
+) -> dict[str, dict[str, Any]]:
+    """Replace Gold's post-qualifying grid with the provisional grid audited for this race."""
+    record = history.grids[event_id]
+    result = {
+        driver: {
+            **values,
+            "grid_position": None,
+            "grid_position_available_at": None,
+            "pit_lane_start": None,
+            "pit_lane_start_available_at": None,
+        }
+        for driver, values in weekend.items()
+    }
+    if record["status"] == "audited":
+        for driver, values in grid_weekend_values(record["grid"], record["available_at"]).items():
+            result[driver].update(values)
     return result
 
 
@@ -568,13 +650,17 @@ def build_contract_datasets(
         / (history.sprint_version or "no_gold_sprints")
     )
     result = {}
-    for contract in CUTOFFS:
+    contracts = (*CUTOFFS, *((GRID_CONTRACT,) if history.grid_audit else ()))
+    for contract in contracts:
         rows = []
         for event_id in history.order:
             gold = history.by_event[event_id]
             event = EventId(*_event_key(event_id))
             cutoff = contract_cutoff(history, contract, event_id)
             roster = {row["driver_id"]: row["constructor_id"] for row in gold}
+            weekend = historical_weekend(history, event_id, clocks)
+            if contract == GRID_CONTRACT:
+                weekend = _with_audited_grid(history, event_id, weekend)
             built, _ = build_rows(
                 history,
                 contract,
@@ -582,7 +668,7 @@ def build_contract_datasets(
                 circuit_id=gold[0]["circuit_id"],
                 cutoff=cutoff,
                 roster=roster,
-                weekend=historical_weekend(history, event_id, clocks),
+                weekend=weekend,
             )
             labels = {row["driver_id"]: row for row in gold}
             for row in built:
@@ -591,6 +677,8 @@ def build_contract_datasets(
                 rows.append(row)
         table = pa.Table.from_pylist(rows, schema=_schema(contract))
         directory = output / contract
+        if contract == GRID_CONTRACT:
+            directory = directory / str(history.grid_audit)
         directory.mkdir(parents=True, exist_ok=True)
         pending = directory / ".pending.parquet"
         pq.write_table(table, pending)
@@ -617,6 +705,10 @@ def build_contract_datasets(
             "schedule_sources": schedule_sources,
             "practice_policy": "practice only when its FIA publication precedes the cutoff",
         }
+        if contract == GRID_CONTRACT:
+            manifest["addendum"] = GRID_ADDENDUM["version"]
+            manifest["addendum_sha256"] = GRID_ADDENDUM_SHA256
+            manifest["grid_audit_sha256"] = history.grid_audit
         manifest_path = directory / "manifest.json"
         manifest_bytes = _canonical(manifest)
         if manifest_path.exists():

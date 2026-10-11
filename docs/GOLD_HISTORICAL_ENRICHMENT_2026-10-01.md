@@ -73,7 +73,9 @@ The FIA grid registry supports publication-time checks. Only 24 race grid
 documents were available by these cutoffs; no target race result was used to
 backfill grid position. Later documents belong to a separately timed
 provisional-grid cohort if that cohort is built and evaluated. The current
-post-qualifying predictions and gates are unchanged.
+post-qualifying predictions and gates are unchanged. That cohort was built and
+evaluated on 11 October 2026; see the
+[provisional-grid report](PROVISIONAL_GRID_COHORT_2026-10-11.md).
 
 FIA practice classifications do support conservative rank and printed-lap
 features in 94 races. Retrospective FastF1/OpenF1 fetches were not automatically

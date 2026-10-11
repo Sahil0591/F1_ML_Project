@@ -18,7 +18,11 @@ from f1_ml_predictor.benchmarks.scoring import NEW_FEATURE_COLUMNS, SCORING_VERS
 from f1_ml_predictor.identifiers import EventId
 from f1_ml_predictor.models.development import _check_race
 from f1_ml_predictor.prediction.candidates import PlackettLuceRegression, fit_strength
-from f1_ml_predictor.prediction.contracts import build_rows, feature_columns
+from f1_ml_predictor.prediction.contracts import (
+    build_rows,
+    feature_columns,
+    grid_weekend_values,
+)
 from f1_ml_predictor.prediction.evaluation import _icc, training_rows
 from f1_ml_predictor.prediction.joint import (
     average,
@@ -516,6 +520,56 @@ def test_contract_rows_use_only_published_history_and_weekend_values(workspace: 
     )
     assert all(row["recent_finish_mean_3"] is None for row in rows)
     assert set(feature_columns("pre_weekend")) < set(feature_columns("pre_race"))
+
+
+def test_provisional_grid_rows_show_penalties_and_pit_lane_starts(workspace: dict) -> None:
+    history, _, _ = load_audited_history(
+        workspace["root"], gold_dir=workspace["gold"], dnf_dir=workspace["dnf"]
+    )
+    event = EventId(SEASON, 10)
+    cutoff = _start(10) - timedelta(hours=12)
+    published = cutoff - timedelta(minutes=5)
+    qualifying = {driver: index for index, driver in enumerate(ROSTER, 1)}
+    grid = {
+        driver: {"grid_position": place, "pit_lane_start": False}
+        for driver, place in qualifying.items()
+    }
+    grid["a1"] = {"grid_position": 6, "pit_lane_start": False}
+    grid["a2"] = {"grid_position": 1, "pit_lane_start": False}
+    grid["b1"] = {"grid_position": None, "pit_lane_start": True}
+    weekend = grid_weekend_values(grid, published)
+    for driver, place in qualifying.items():
+        weekend[driver]["qualifying_position"] = place
+        weekend[driver]["qualifying_position_available_at"] = published - timedelta(hours=3)
+    rows, reasons = build_rows(
+        history,
+        "provisional_grid",
+        event=event,
+        circuit_id=_circuit(10),
+        cutoff=cutoff,
+        roster=ROSTER,
+        weekend=weekend,
+    )
+    by_driver = {row["driver_id"]: row for row in rows}
+    assert by_driver["a1"]["grid_places_lost"] == 5.0
+    assert by_driver["a2"]["grid_places_lost"] == -1.0
+    assert by_driver["b1"]["grid_position"] is None
+    assert by_driver["b1"]["pit_lane_start"] == 1.0
+    assert by_driver["b1"]["grid_places_lost"] == float(len(ROSTER) + 1 - 3)
+    assert reasons["b1"]["missing_reasons"]["grid_position"] == "pit_lane_start"
+    assert by_driver["c1"]["pit_lane_start"] == 0.0
+    assert set(feature_columns("pre_race")) < set(feature_columns("provisional_grid"))
+    early, early_reasons = build_rows(
+        history,
+        "provisional_grid",
+        event=event,
+        circuit_id=_circuit(10),
+        cutoff=published - timedelta(minutes=1),
+        roster=ROSTER,
+        weekend=weekend,
+    )
+    assert all(row["grid_places_lost"] is None for row in early)
+    assert early_reasons["a1"]["missing_reasons"]["grid_position"] == "published_after_cutoff"
 
 
 def test_schedule_circuit_comes_from_identifier_not_title() -> None:
