@@ -560,6 +560,19 @@ def _canonical_capture_base(
     return mapped
 
 
+def _schedule_known_by(root: Path, payload_sha256: str, cutoff: datetime) -> str | None:
+    """Return the latest retained schedule observation with this payload captured by cutoff."""
+    best: tuple[datetime, str] | None = None
+    for path in (root / "data/raw/prospective_scheduler/observations").glob("schedule-*.json"):
+        record = json.loads(path.read_text(encoding="utf-8"))
+        if record.get("payload_sha256") != payload_sha256:
+            continue
+        captured = datetime.fromisoformat(record["response_captured_at"])
+        if captured <= cutoff and (best is None or captured > best[0]):
+            best = (captured, path.relative_to(root).as_posix())
+    return None if best is None else best[1]
+
+
 def predict_next_race(
     root: Path,
     *,
@@ -699,6 +712,13 @@ def predict_next_race(
         )
         for driver, values in weekend_values.items():
             values.update(live_sprint.get(driver, {}))
+    if observed_at > cutoff:
+        # A tick after the frozen cutoff re-observes the schedule; an identical
+        # response captured by the cutoff proves the schedule was already known.
+        earlier = _schedule_known_by(root, schedule_source["payload_sha256"], cutoff)
+        if earlier is not None:
+            schedule_source = load_schedule(root, earlier)[1]
+            observed_at = datetime.fromisoformat(schedule_source["captured_at"])
     require_known_by(observed_at, cutoff)
     live_practice: dict[str, dict[str, Any]] = {}
     practice_source = None

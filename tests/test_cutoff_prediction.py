@@ -30,7 +30,7 @@ from f1_ml_predictor.prediction.joint import (
     sharpness,
 )
 from f1_ml_predictor.prediction.ood import ood_report
-from f1_ml_predictor.prediction.pipeline import predict_next_race
+from f1_ml_predictor.prediction.pipeline import _schedule_known_by, predict_next_race
 from f1_ml_predictor.prediction.schedules import weekends
 from f1_ml_predictor.prediction.workspace import load_audited_history
 from f1_ml_predictor.scoring.ledger import _digest
@@ -525,6 +525,30 @@ def test_schedule_circuit_comes_from_identifier_not_title() -> None:
     assert sepang.circuit_id == "sepang"
     assert sepang.circuit_id != "bahrain"
     assert parsed[EventId(SEASON, COMPLETED + 2)].sprint is not None
+
+
+def test_schedule_reobserved_after_cutoff_falls_back_to_identical_earlier_copy(
+    tmp_path: Path,
+) -> None:
+    cutoff = datetime(2026, 10, 10, 22, 58, 7, tzinfo=UTC)
+    folder = tmp_path / "data/raw/prospective_scheduler/observations"
+    folder.mkdir(parents=True)
+    for name, digest, captured in (
+        ("old", "same", cutoff - timedelta(hours=7)),
+        ("before", "same", cutoff - timedelta(seconds=3)),
+        ("changed", "other", cutoff - timedelta(seconds=1)),
+        ("after", "same", cutoff + timedelta(hours=12)),
+    ):
+        (folder / f"schedule-{name}.json").write_text(
+            json.dumps({"payload_sha256": digest, "response_captured_at": captured.isoformat()}),
+            encoding="utf-8",
+        )
+    assert (
+        _schedule_known_by(tmp_path, "same", cutoff)
+        == "data/raw/prospective_scheduler/observations/schedule-before.json"
+    )
+    assert _schedule_known_by(tmp_path, "unseen", cutoff) is None
+    assert _schedule_known_by(tmp_path, "same", cutoff - timedelta(days=1)) is None
 
 
 def test_joint_layer_is_coherent_and_calibration_mixture_is_exact() -> None:
