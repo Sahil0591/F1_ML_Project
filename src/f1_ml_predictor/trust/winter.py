@@ -170,7 +170,8 @@ def registry_rows(text: str) -> list[dict[str, Any]]:
     for block in re.findall(r'<li\b[^>]*class="document-row[^>]*>.*?</li>', text, re.S):
         plain = " ".join(unescape(re.sub(r"<[^>]+>", " ", block)).split())
         match = re.search(
-            r"^(?:Recalled\s*-\s*)?(?:Doc\s+(\d+)\s*-\s*)?(.*?)\s+Published on\s+"
+            # Singapore 2026 recalled Doc 15 prints its number as "DOC 15".
+            r"^(?:Recalled\s*-\s*)?(?:(?i:Doc)\s+(\d+)\s*-\s*)?(.*?)\s+Published on\s+"
             r"(\d{2}\.\d{2}\.\d{2}\s+\d{2}:\d{2})\s+CET(?:\s|$)",
             plain,
         )
@@ -201,6 +202,17 @@ def _publication(row: dict[str, Any]) -> datetime:
     """Use the later UTC bound if the registry's CET label means CET or CEST."""
     local = datetime.strptime(row["publication_cet"], "%d.%m.%y %H:%M")
     return local.replace(tzinfo=timezone(timedelta(hours=1))).astimezone(UTC)
+
+
+def race_neutral_title(title: str) -> bool:
+    """Later documents that cannot change the race classification.
+
+    Championship Points is tallied from the final. Sprint documents only bear on
+    the sprint, whose labels audit their own later rulings (Singapore 2026 Doc 52,
+    a Sprint Scrutineering report, was uploaded after the race final).
+    """
+    lowered = title.lower()
+    return lowered == "championship points" or lowered.startswith("sprint")
 
 
 def _version_key(row: dict[str, Any]) -> tuple[datetime, int, str]:
@@ -347,7 +359,7 @@ def latest_final_record(
         if not row["recalled"]
         and row.get("url")
         and _version_key(row) > _version_key(selected)
-        and row["title"].lower() != "championship points"
+        and not race_neutral_title(row["title"])
     ]
     if later:
         if review is None or root is None:

@@ -10,6 +10,7 @@ from f1_ml_predictor.trust.winter import (
     constructor_aliases_for_season,
     latest_final_record,
     qualifying_at_cutoff,
+    race_neutral_title,
     registry_rows,
     roster_at_cutoff,
 )
@@ -127,6 +128,33 @@ def test_legacy_registry_preserves_publication_without_inventing_document_number
             "recalled": False,
         }
     ]
+
+
+def test_registry_keeps_recalled_row_with_uppercase_doc_number():
+    html = (
+        '<li class="document-row key-15"><div class="recalled-document">'
+        '<div class="title">Recalled - DOC 15 - 2026 Singapore Grand Prix - New PU Elements'
+        " for this Competition</div>"
+        '<div class="published">Published on <span>09.10.26 10:15</span> CET</div>'
+        "</div></li>"
+    )
+    rows = registry_rows(html)
+    assert rows == [
+        {
+            "document_id": "15",
+            "title": "2026 Singapore Grand Prix - New PU Elements for this Competition",
+            "publication_cet": "09.10.26 10:15",
+            "url": None,
+            "recalled": True,
+        }
+    ]
+
+
+def test_only_points_and_sprint_documents_are_race_neutral():
+    assert race_neutral_title("Championship Points")
+    assert race_neutral_title("Sprint Scrutineering")
+    assert not race_neutral_title("Scrutineering")
+    assert not race_neutral_title("Decision - Car 63 - Grid penalty")
 
 
 def test_legacy_pdf_cover_binds_number_and_rejects_wrong_event_date():

@@ -40,6 +40,7 @@ from f1_ml_predictor.trust.winter import (
     DRIVER_ALIASES,
     _publication,
     latest_final_record,
+    race_neutral_title,
     registry_rows,
 )
 
@@ -147,7 +148,7 @@ def _final(rows: list[dict[str, Any]], event: EventId, race_name: str) -> dict[s
         for row in rows
         if not row["recalled"]
         and (_publication(row), int(row["document_id"])) > key
-        and row["title"].lower() != "championship points"
+        and not race_neutral_title(row["title"])
     ]
     if later:
         raise ValueError("later same-event rulings require a newer final classification")
