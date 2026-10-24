@@ -18,6 +18,7 @@ from f1_ml_predictor.prediction.sprint import MASKED
 from f1_ml_predictor.trust.sprint_gold import (
     REVIEWED_LATER_RULINGS,
     SCHEMA,
+    _previously_bound,
     grid_kind,
     load_gold_sprints,
     select_documents,
@@ -170,3 +171,26 @@ def test_gold_sprint_loading_verifies_hashes(tmp_path: Path) -> None:
     pq.write_table(table.slice(0, 0), base / digest / "sprints.parquet")
     with pytest.raises(ValueError, match="dataset hash mismatch"):
         load_gold_sprints(tmp_path)
+
+
+def test_an_earlier_bound_document_is_reused_only_with_its_exact_bytes(tmp_path: Path) -> None:
+    pdf = tmp_path / "data/raw/fia_audit/objects/doc.pdf"
+    pdf.parent.mkdir(parents=True)
+    pdf.write_bytes(b"%PDF sprint")
+    document = {
+        "url": "https://www.fia.com/2024%20Miami%20Final%20Sprint%20Classification.pdf",
+        "path": "data/raw/fia_audit/objects/doc.pdf",
+        "sha256": hashlib.sha256(b"%PDF sprint").hexdigest(),
+    }
+    manifest = tmp_path / "data/benchmarks/gold_sprint_core_v1/abc/manifest.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(json.dumps({"included": [{"documents": [document]}]}), encoding="utf-8")
+    # The registry spells the URL unencoded; the bound copy is still found.
+    reused = _previously_bound(
+        tmp_path, "https://www.fia.com/2024 Miami Final Sprint Classification.pdf"
+    )
+    assert reused == {"path": document["path"], "sha256": document["sha256"]}
+    assert _previously_bound(tmp_path, "https://www.fia.com/other.pdf") is None
+    pdf.write_bytes(b"%PDF altered")
+    with pytest.raises(ValueError, match="fails its hash"):
+        _previously_bound(tmp_path, document["url"])

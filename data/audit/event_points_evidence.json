@@ -1,8 +1,8 @@
 {
  "audit_as_of_utc": "2026-10-20T00:00:00+00:00",
  "collection_index": {
-  "path": "data/raw/scoring_audit/collection-ced944949676d3ed437da531336fd90d8d95f6a14cf04d1c4a0526336f224379.json",
-  "sha256": "ced944949676d3ed437da531336fd90d8d95f6a14cf04d1c4a0526336f224379"
+  "path": "data/raw/scoring_audit/collection-a7e0e0d2a8b596bb5c47f2e7ca3d5a4a8ec10d334a03d6a10ba86284c56dc639.json",
+  "sha256": "a7e0e0d2a8b596bb5c47f2e7ca3d5a4a8ec10d334a03d6a10ba86284c56dc639"
  },
  "conflicts": [
   {
@@ -33747,7 +33747,7 @@
     "url": "https://www.fia.com/system/files/decision-document/2026_bahrain_grand_prix_in_malaysia_-_championship_points.pdf"
    },
    "has_sprint": false,
-   "in_gold": false,
+   "in_gold": true,
    "latest_fia_points_document": {
     "cover_document_number": "91",
     "cover_local_date": "11 October 2026",
@@ -33850,7 +33850,7 @@
     "url": "https://www.fia.com/system/files/decision-document/2026_singapore_grand_prix_-_championship_points.pdf"
    },
    "has_sprint": true,
-   "in_gold": false,
+   "in_gold": true,
    "latest_fia_points_document": {
     "cover_document_number": "91",
     "cover_local_date": "11 October 2026",
@@ -155859,17 +155859,18 @@
    "checks": {
     "formula1_race_agrees": true,
     "formula1_race_points": 0.0,
+    "gold_label_position": null,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 0.0,
     "race_points_match_full_scale": true
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:fd104b200fcf21fc386d92e6240b4f68be6a4b3c063e0909843bbde3526f7e03:37c87f2fd51636695fbbaf91bf5696a6bf3c597c90ca9ed602d4233b6362e765",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "williams",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "albon",
    "event": "Bahrain Grand Prix in Malaysia",
    "event_id_if_known": "season=2026/round=16",
@@ -155877,7 +155878,7 @@
    "fia_documents_carrying_value": 3,
    "fia_driver_name": "A. ALBON",
    "first_published_at": "2026-10-04T14:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -155911,17 +155912,19 @@
    "checks": {
     "formula1_race_agrees": true,
     "formula1_race_points": 4.0,
+    "gold_label_position": 8,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 4.0,
     "race_points_match_full_scale": true
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:fd104b200fcf21fc386d92e6240b4f68be6a4b3c063e0909843bbde3526f7e03:37c87f2fd51636695fbbaf91bf5696a6bf3c597c90ca9ed602d4233b6362e765",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "aston_martin",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "alonso",
    "event": "Bahrain Grand Prix in Malaysia",
    "event_id_if_known": "season=2026/round=16",
@@ -155929,7 +155932,7 @@
    "fia_documents_carrying_value": 3,
    "fia_driver_name": "F. ALONSO",
    "first_published_at": "2026-10-04T14:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -155963,17 +155966,19 @@
    "checks": {
     "formula1_race_agrees": true,
     "formula1_race_points": 18.0,
+    "gold_label_position": 2,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 18.0,
     "race_points_match_full_scale": true
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:fd104b200fcf21fc386d92e6240b4f68be6a4b3c063e0909843bbde3526f7e03:37c87f2fd51636695fbbaf91bf5696a6bf3c597c90ca9ed602d4233b6362e765",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "mercedes",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "antonelli",
    "event": "Bahrain Grand Prix in Malaysia",
    "event_id_if_known": "season=2026/round=16",
@@ -155981,7 +155986,7 @@
    "fia_documents_carrying_value": 3,
    "fia_driver_name": "K. ANTONELLI",
    "first_published_at": "2026-10-04T14:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -156015,17 +156020,19 @@
    "checks": {
     "formula1_race_agrees": true,
     "formula1_race_points": 0.0,
+    "gold_label_position": 14,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 0.0,
     "race_points_match_full_scale": true
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:fd104b200fcf21fc386d92e6240b4f68be6a4b3c063e0909843bbde3526f7e03:37c87f2fd51636695fbbaf91bf5696a6bf3c597c90ca9ed602d4233b6362e765",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "haas",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "bearman",
    "event": "Bahrain Grand Prix in Malaysia",
    "event_id_if_known": "season=2026/round=16",
@@ -156033,7 +156040,7 @@
    "fia_documents_carrying_value": 3,
    "fia_driver_name": "O. BEARMAN",
    "first_published_at": "2026-10-04T14:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -156067,17 +156074,19 @@
    "checks": {
     "formula1_race_agrees": true,
     "formula1_race_points": 0.0,
+    "gold_label_position": 18,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 0.0,
     "race_points_match_full_scale": true
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:fd104b200fcf21fc386d92e6240b4f68be6a4b3c063e0909843bbde3526f7e03:37c87f2fd51636695fbbaf91bf5696a6bf3c597c90ca9ed602d4233b6362e765",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "audi",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "bortoleto",
    "event": "Bahrain Grand Prix in Malaysia",
    "event_id_if_known": "season=2026/round=16",
@@ -156085,7 +156094,7 @@
    "fia_documents_carrying_value": 3,
    "fia_driver_name": "G. BORTOLETO",
    "first_published_at": "2026-10-04T14:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -156119,17 +156128,18 @@
    "checks": {
     "formula1_race_agrees": true,
     "formula1_race_points": 0.0,
+    "gold_label_position": null,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 0.0,
     "race_points_match_full_scale": true
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:fd104b200fcf21fc386d92e6240b4f68be6a4b3c063e0909843bbde3526f7e03:37c87f2fd51636695fbbaf91bf5696a6bf3c597c90ca9ed602d4233b6362e765",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "cadillac",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "bottas",
    "event": "Bahrain Grand Prix in Malaysia",
    "event_id_if_known": "season=2026/round=16",
@@ -156137,7 +156147,7 @@
    "fia_documents_carrying_value": 3,
    "fia_driver_name": "V. BOTTAS",
    "first_published_at": "2026-10-04T14:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -156171,17 +156181,19 @@
    "checks": {
     "formula1_race_agrees": true,
     "formula1_race_points": 0.0,
+    "gold_label_position": 13,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 0.0,
     "race_points_match_full_scale": true
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:fd104b200fcf21fc386d92e6240b4f68be6a4b3c063e0909843bbde3526f7e03:37c87f2fd51636695fbbaf91bf5696a6bf3c597c90ca9ed602d4233b6362e765",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "alpine",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "colapinto",
    "event": "Bahrain Grand Prix in Malaysia",
    "event_id_if_known": "season=2026/round=16",
@@ -156189,7 +156201,7 @@
    "fia_documents_carrying_value": 3,
    "fia_driver_name": "F. COLAPINTO",
    "first_published_at": "2026-10-04T14:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -156223,17 +156235,19 @@
    "checks": {
     "formula1_race_agrees": true,
     "formula1_race_points": 0.0,
+    "gold_label_position": 16,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 0.0,
     "race_points_match_full_scale": true
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:fd104b200fcf21fc386d92e6240b4f68be6a4b3c063e0909843bbde3526f7e03:37c87f2fd51636695fbbaf91bf5696a6bf3c597c90ca9ed602d4233b6362e765",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "alpine",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "gasly",
    "event": "Bahrain Grand Prix in Malaysia",
    "event_id_if_known": "season=2026/round=16",
@@ -156241,7 +156255,7 @@
    "fia_documents_carrying_value": 3,
    "fia_driver_name": "P. GASLY",
    "first_published_at": "2026-10-04T14:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -156275,17 +156289,19 @@
    "checks": {
     "formula1_race_agrees": true,
     "formula1_race_points": 10.0,
+    "gold_label_position": 5,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 10.0,
     "race_points_match_full_scale": true
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:fd104b200fcf21fc386d92e6240b4f68be6a4b3c063e0909843bbde3526f7e03:37c87f2fd51636695fbbaf91bf5696a6bf3c597c90ca9ed602d4233b6362e765",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "red_bull",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "hadjar",
    "event": "Bahrain Grand Prix in Malaysia",
    "event_id_if_known": "season=2026/round=16",
@@ -156293,7 +156309,7 @@
    "fia_documents_carrying_value": 3,
    "fia_driver_name": "I. HADJAR",
    "first_published_at": "2026-10-04T14:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -156327,17 +156343,19 @@
    "checks": {
     "formula1_race_agrees": true,
     "formula1_race_points": 15.0,
+    "gold_label_position": 3,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 15.0,
     "race_points_match_full_scale": true
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:fd104b200fcf21fc386d92e6240b4f68be6a4b3c063e0909843bbde3526f7e03:37c87f2fd51636695fbbaf91bf5696a6bf3c597c90ca9ed602d4233b6362e765",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "ferrari",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "hamilton",
    "event": "Bahrain Grand Prix in Malaysia",
    "event_id_if_known": "season=2026/round=16",
@@ -156345,7 +156363,7 @@
    "fia_documents_carrying_value": 3,
    "fia_driver_name": "L. HAMILTON",
    "first_published_at": "2026-10-04T14:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -156379,17 +156397,19 @@
    "checks": {
     "formula1_race_agrees": true,
     "formula1_race_points": 0.0,
+    "gold_label_position": 11,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 0.0,
     "race_points_match_full_scale": true
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:fd104b200fcf21fc386d92e6240b4f68be6a4b3c063e0909843bbde3526f7e03:37c87f2fd51636695fbbaf91bf5696a6bf3c597c90ca9ed602d4233b6362e765",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "audi",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "hulkenberg",
    "event": "Bahrain Grand Prix in Malaysia",
    "event_id_if_known": "season=2026/round=16",
@@ -156397,7 +156417,7 @@
    "fia_documents_carrying_value": 3,
    "fia_driver_name": "N. HULKENBERG",
    "first_published_at": "2026-10-04T14:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -156431,17 +156451,19 @@
    "checks": {
     "formula1_race_agrees": true,
     "formula1_race_points": 6.0,
+    "gold_label_position": 7,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 6.0,
     "race_points_match_full_scale": true
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:fd104b200fcf21fc386d92e6240b4f68be6a4b3c063e0909843bbde3526f7e03:37c87f2fd51636695fbbaf91bf5696a6bf3c597c90ca9ed602d4233b6362e765",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "rb",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "lawson",
    "event": "Bahrain Grand Prix in Malaysia",
    "event_id_if_known": "season=2026/round=16",
@@ -156449,7 +156471,7 @@
    "fia_documents_carrying_value": 3,
    "fia_driver_name": "L. LAWSON",
    "first_published_at": "2026-10-04T14:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -156483,17 +156505,19 @@
    "checks": {
     "formula1_race_agrees": true,
     "formula1_race_points": 12.0,
+    "gold_label_position": 4,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 12.0,
     "race_points_match_full_scale": true
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:fd104b200fcf21fc386d92e6240b4f68be6a4b3c063e0909843bbde3526f7e03:37c87f2fd51636695fbbaf91bf5696a6bf3c597c90ca9ed602d4233b6362e765",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "ferrari",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "leclerc",
    "event": "Bahrain Grand Prix in Malaysia",
    "event_id_if_known": "season=2026/round=16",
@@ -156501,7 +156525,7 @@
    "fia_documents_carrying_value": 3,
    "fia_driver_name": "C. LECLERC",
    "first_published_at": "2026-10-04T14:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -156535,17 +156559,19 @@
    "checks": {
     "formula1_race_agrees": true,
     "formula1_race_points": 1.0,
+    "gold_label_position": 10,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 1.0,
     "race_points_match_full_scale": true
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:fd104b200fcf21fc386d92e6240b4f68be6a4b3c063e0909843bbde3526f7e03:37c87f2fd51636695fbbaf91bf5696a6bf3c597c90ca9ed602d4233b6362e765",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "rb",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "lindblad",
    "event": "Bahrain Grand Prix in Malaysia",
    "event_id_if_known": "season=2026/round=16",
@@ -156553,7 +156579,7 @@
    "fia_documents_carrying_value": 3,
    "fia_driver_name": "A. LINDBLAD",
    "first_published_at": "2026-10-04T14:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -156587,17 +156613,19 @@
    "checks": {
     "formula1_race_agrees": true,
     "formula1_race_points": 25.0,
+    "gold_label_position": 1,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 25.0,
     "race_points_match_full_scale": true
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:fd104b200fcf21fc386d92e6240b4f68be6a4b3c063e0909843bbde3526f7e03:37c87f2fd51636695fbbaf91bf5696a6bf3c597c90ca9ed602d4233b6362e765",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "red_bull",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "max_verstappen",
    "event": "Bahrain Grand Prix in Malaysia",
    "event_id_if_known": "season=2026/round=16",
@@ -156605,7 +156633,7 @@
    "fia_documents_carrying_value": 3,
    "fia_driver_name": "M. VERSTAPPEN",
    "first_published_at": "2026-10-04T14:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -156639,17 +156667,19 @@
    "checks": {
     "formula1_race_agrees": true,
     "formula1_race_points": 2.0,
+    "gold_label_position": 9,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 2.0,
     "race_points_match_full_scale": true
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:fd104b200fcf21fc386d92e6240b4f68be6a4b3c063e0909843bbde3526f7e03:37c87f2fd51636695fbbaf91bf5696a6bf3c597c90ca9ed602d4233b6362e765",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "mclaren",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "norris",
    "event": "Bahrain Grand Prix in Malaysia",
    "event_id_if_known": "season=2026/round=16",
@@ -156657,7 +156687,7 @@
    "fia_documents_carrying_value": 3,
    "fia_driver_name": "L. NORRIS",
    "first_published_at": "2026-10-04T14:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -156691,17 +156721,19 @@
    "checks": {
     "formula1_race_agrees": true,
     "formula1_race_points": 0.0,
+    "gold_label_position": 15,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 0.0,
     "race_points_match_full_scale": true
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:fd104b200fcf21fc386d92e6240b4f68be6a4b3c063e0909843bbde3526f7e03:37c87f2fd51636695fbbaf91bf5696a6bf3c597c90ca9ed602d4233b6362e765",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "haas",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "ocon",
    "event": "Bahrain Grand Prix in Malaysia",
    "event_id_if_known": "season=2026/round=16",
@@ -156709,7 +156741,7 @@
    "fia_documents_carrying_value": 3,
    "fia_driver_name": "E. OCON",
    "first_published_at": "2026-10-04T14:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -156743,17 +156775,19 @@
    "checks": {
     "formula1_race_agrees": true,
     "formula1_race_points": 0.0,
+    "gold_label_position": 19,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 0.0,
     "race_points_match_full_scale": true
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:fd104b200fcf21fc386d92e6240b4f68be6a4b3c063e0909843bbde3526f7e03:37c87f2fd51636695fbbaf91bf5696a6bf3c597c90ca9ed602d4233b6362e765",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "cadillac",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "perez",
    "event": "Bahrain Grand Prix in Malaysia",
    "event_id_if_known": "season=2026/round=16",
@@ -156761,7 +156795,7 @@
    "fia_documents_carrying_value": 3,
    "fia_driver_name": "S. PEREZ",
    "first_published_at": "2026-10-04T14:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -156795,17 +156829,19 @@
    "checks": {
     "formula1_race_agrees": true,
     "formula1_race_points": 8.0,
+    "gold_label_position": 6,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 8.0,
     "race_points_match_full_scale": true
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:fd104b200fcf21fc386d92e6240b4f68be6a4b3c063e0909843bbde3526f7e03:37c87f2fd51636695fbbaf91bf5696a6bf3c597c90ca9ed602d4233b6362e765",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "mclaren",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "piastri",
    "event": "Bahrain Grand Prix in Malaysia",
    "event_id_if_known": "season=2026/round=16",
@@ -156813,7 +156849,7 @@
    "fia_documents_carrying_value": 3,
    "fia_driver_name": "O. PIASTRI",
    "first_published_at": "2026-10-04T14:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -156847,17 +156883,19 @@
    "checks": {
     "formula1_race_agrees": true,
     "formula1_race_points": 0.0,
+    "gold_label_position": 20,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 0.0,
     "race_points_match_full_scale": true
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:fd104b200fcf21fc386d92e6240b4f68be6a4b3c063e0909843bbde3526f7e03:37c87f2fd51636695fbbaf91bf5696a6bf3c597c90ca9ed602d4233b6362e765",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "mercedes",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "russell",
    "event": "Bahrain Grand Prix in Malaysia",
    "event_id_if_known": "season=2026/round=16",
@@ -156865,7 +156903,7 @@
    "fia_documents_carrying_value": 3,
    "fia_driver_name": "G. RUSSELL",
    "first_published_at": "2026-10-04T14:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -156899,17 +156937,19 @@
    "checks": {
     "formula1_race_agrees": true,
     "formula1_race_points": 0.0,
+    "gold_label_position": 17,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 0.0,
     "race_points_match_full_scale": true
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:fd104b200fcf21fc386d92e6240b4f68be6a4b3c063e0909843bbde3526f7e03:37c87f2fd51636695fbbaf91bf5696a6bf3c597c90ca9ed602d4233b6362e765",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "williams",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "sainz",
    "event": "Bahrain Grand Prix in Malaysia",
    "event_id_if_known": "season=2026/round=16",
@@ -156917,7 +156957,7 @@
    "fia_documents_carrying_value": 3,
    "fia_driver_name": "C. SAINZ",
    "first_published_at": "2026-10-04T14:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -156951,17 +156991,19 @@
    "checks": {
     "formula1_race_agrees": true,
     "formula1_race_points": 0.0,
+    "gold_label_position": 12,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 0.0,
     "race_points_match_full_scale": true
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:fd104b200fcf21fc386d92e6240b4f68be6a4b3c063e0909843bbde3526f7e03:37c87f2fd51636695fbbaf91bf5696a6bf3c597c90ca9ed602d4233b6362e765",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "aston_martin",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "stroll",
    "event": "Bahrain Grand Prix in Malaysia",
    "event_id_if_known": "season=2026/round=16",
@@ -156969,7 +157011,7 @@
    "fia_documents_carrying_value": 3,
    "fia_driver_name": "L. STROLL",
    "first_published_at": "2026-10-04T14:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -157005,6 +157047,8 @@
     "formula1_race_points": 0.0,
     "formula1_sprint_agrees": true,
     "formula1_sprint_points": 0.0,
+    "gold_label_position": 18,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 0.0,
     "jolpica_sprint_agrees": true,
@@ -157014,11 +157058,11 @@
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:66a432a8c1882cf636213bfe3a640687e0a2efd600f531b5f0c91fe060549b3b:a09dc4410abb1ab1a9aadbc807655dc196a7f233a8b5001cf0efa6fd5024871c",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "williams",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "albon",
    "event": "Singapore Grand Prix",
    "event_id_if_known": "season=2026/round=17",
@@ -157026,7 +157070,7 @@
    "fia_documents_carrying_value": 1,
    "fia_driver_name": "A. ALBON",
    "first_published_at": "2026-10-11T16:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -157068,6 +157112,8 @@
     "formula1_race_points": 0.0,
     "formula1_sprint_agrees": true,
     "formula1_sprint_points": 0.0,
+    "gold_label_position": 16,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 0.0,
     "jolpica_sprint_agrees": true,
@@ -157077,11 +157123,11 @@
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:66a432a8c1882cf636213bfe3a640687e0a2efd600f531b5f0c91fe060549b3b:a09dc4410abb1ab1a9aadbc807655dc196a7f233a8b5001cf0efa6fd5024871c",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "aston_martin",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "alonso",
    "event": "Singapore Grand Prix",
    "event_id_if_known": "season=2026/round=17",
@@ -157089,7 +157135,7 @@
    "fia_documents_carrying_value": 1,
    "fia_driver_name": "F. ALONSO",
    "first_published_at": "2026-10-11T16:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -157131,6 +157177,8 @@
     "formula1_race_points": 15.0,
     "formula1_sprint_agrees": true,
     "formula1_sprint_points": 5.0,
+    "gold_label_position": 3,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 15.0,
     "jolpica_sprint_agrees": true,
@@ -157140,11 +157188,11 @@
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:66a432a8c1882cf636213bfe3a640687e0a2efd600f531b5f0c91fe060549b3b:a09dc4410abb1ab1a9aadbc807655dc196a7f233a8b5001cf0efa6fd5024871c",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "mercedes",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "antonelli",
    "event": "Singapore Grand Prix",
    "event_id_if_known": "season=2026/round=17",
@@ -157152,7 +157200,7 @@
    "fia_documents_carrying_value": 1,
    "fia_driver_name": "K. ANTONELLI",
    "first_published_at": "2026-10-11T16:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -157194,6 +157242,8 @@
     "formula1_race_points": 0.0,
     "formula1_sprint_agrees": true,
     "formula1_sprint_points": 3.0,
+    "gold_label_position": 12,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 0.0,
     "jolpica_sprint_agrees": true,
@@ -157203,11 +157253,11 @@
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:66a432a8c1882cf636213bfe3a640687e0a2efd600f531b5f0c91fe060549b3b:a09dc4410abb1ab1a9aadbc807655dc196a7f233a8b5001cf0efa6fd5024871c",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "haas",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "bearman",
    "event": "Singapore Grand Prix",
    "event_id_if_known": "season=2026/round=17",
@@ -157215,7 +157265,7 @@
    "fia_documents_carrying_value": 1,
    "fia_driver_name": "O. BEARMAN",
    "first_published_at": "2026-10-11T16:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -157257,6 +157307,7 @@
     "formula1_race_points": 0.0,
     "formula1_sprint_agrees": true,
     "formula1_sprint_points": 0.0,
+    "gold_label_position": null,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 0.0,
     "jolpica_sprint_agrees": true,
@@ -157266,11 +157317,11 @@
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:66a432a8c1882cf636213bfe3a640687e0a2efd600f531b5f0c91fe060549b3b:a09dc4410abb1ab1a9aadbc807655dc196a7f233a8b5001cf0efa6fd5024871c",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "audi",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "bortoleto",
    "event": "Singapore Grand Prix",
    "event_id_if_known": "season=2026/round=17",
@@ -157278,7 +157329,7 @@
    "fia_documents_carrying_value": 1,
    "fia_driver_name": "G. BORTOLETO",
    "first_published_at": "2026-10-11T16:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -157320,6 +157371,8 @@
     "formula1_race_points": 0.0,
     "formula1_sprint_agrees": true,
     "formula1_sprint_points": 0.0,
+    "gold_label_position": 19,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 0.0,
     "jolpica_sprint_agrees": true,
@@ -157329,11 +157382,11 @@
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:66a432a8c1882cf636213bfe3a640687e0a2efd600f531b5f0c91fe060549b3b:a09dc4410abb1ab1a9aadbc807655dc196a7f233a8b5001cf0efa6fd5024871c",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "cadillac",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "bottas",
    "event": "Singapore Grand Prix",
    "event_id_if_known": "season=2026/round=17",
@@ -157341,7 +157394,7 @@
    "fia_documents_carrying_value": 1,
    "fia_driver_name": "V. BOTTAS",
    "first_published_at": "2026-10-11T16:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -157383,6 +157436,7 @@
     "formula1_race_points": 0.0,
     "formula1_sprint_agrees": true,
     "formula1_sprint_points": 0.0,
+    "gold_label_position": null,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 0.0,
     "jolpica_sprint_agrees": true,
@@ -157392,11 +157446,11 @@
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:66a432a8c1882cf636213bfe3a640687e0a2efd600f531b5f0c91fe060549b3b:a09dc4410abb1ab1a9aadbc807655dc196a7f233a8b5001cf0efa6fd5024871c",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "alpine",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "colapinto",
    "event": "Singapore Grand Prix",
    "event_id_if_known": "season=2026/round=17",
@@ -157404,7 +157458,7 @@
    "fia_documents_carrying_value": 1,
    "fia_driver_name": "F. COLAPINTO",
    "first_published_at": "2026-10-11T16:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -157446,6 +157500,8 @@
     "formula1_race_points": 0.0,
     "formula1_sprint_agrees": true,
     "formula1_sprint_points": 0.0,
+    "gold_label_position": 11,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 0.0,
     "jolpica_sprint_agrees": true,
@@ -157455,11 +157511,11 @@
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:66a432a8c1882cf636213bfe3a640687e0a2efd600f531b5f0c91fe060549b3b:a09dc4410abb1ab1a9aadbc807655dc196a7f233a8b5001cf0efa6fd5024871c",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "alpine",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "gasly",
    "event": "Singapore Grand Prix",
    "event_id_if_known": "season=2026/round=17",
@@ -157467,7 +157523,7 @@
    "fia_documents_carrying_value": 1,
    "fia_driver_name": "P. GASLY",
    "first_published_at": "2026-10-11T16:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -157509,6 +157565,8 @@
     "formula1_race_points": 1.0,
     "formula1_sprint_agrees": true,
     "formula1_sprint_points": 0.0,
+    "gold_label_position": 10,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 1.0,
     "jolpica_sprint_agrees": true,
@@ -157518,11 +157576,11 @@
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:66a432a8c1882cf636213bfe3a640687e0a2efd600f531b5f0c91fe060549b3b:a09dc4410abb1ab1a9aadbc807655dc196a7f233a8b5001cf0efa6fd5024871c",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "red_bull",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "hadjar",
    "event": "Singapore Grand Prix",
    "event_id_if_known": "season=2026/round=17",
@@ -157530,7 +157588,7 @@
    "fia_documents_carrying_value": 1,
    "fia_driver_name": "I. HADJAR",
    "first_published_at": "2026-10-11T16:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -157572,6 +157630,8 @@
     "formula1_race_points": 8.0,
     "formula1_sprint_agrees": true,
     "formula1_sprint_points": 7.0,
+    "gold_label_position": 6,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 8.0,
     "jolpica_sprint_agrees": true,
@@ -157581,11 +157641,11 @@
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:66a432a8c1882cf636213bfe3a640687e0a2efd600f531b5f0c91fe060549b3b:a09dc4410abb1ab1a9aadbc807655dc196a7f233a8b5001cf0efa6fd5024871c",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "ferrari",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "hamilton",
    "event": "Singapore Grand Prix",
    "event_id_if_known": "season=2026/round=17",
@@ -157593,7 +157653,7 @@
    "fia_documents_carrying_value": 1,
    "fia_driver_name": "L. HAMILTON",
    "first_published_at": "2026-10-11T16:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -157635,6 +157695,8 @@
     "formula1_race_points": 4.0,
     "formula1_sprint_agrees": true,
     "formula1_sprint_points": 2.0,
+    "gold_label_position": 8,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 4.0,
     "jolpica_sprint_agrees": true,
@@ -157644,11 +157706,11 @@
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:66a432a8c1882cf636213bfe3a640687e0a2efd600f531b5f0c91fe060549b3b:a09dc4410abb1ab1a9aadbc807655dc196a7f233a8b5001cf0efa6fd5024871c",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "audi",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "hulkenberg",
    "event": "Singapore Grand Prix",
    "event_id_if_known": "season=2026/round=17",
@@ -157656,7 +157718,7 @@
    "fia_documents_carrying_value": 1,
    "fia_driver_name": "N. HULKENBERG",
    "first_published_at": "2026-10-11T16:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -157698,6 +157760,8 @@
     "formula1_race_points": 6.0,
     "formula1_sprint_agrees": true,
     "formula1_sprint_points": 4.0,
+    "gold_label_position": 7,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 6.0,
     "jolpica_sprint_agrees": true,
@@ -157707,11 +157771,11 @@
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:66a432a8c1882cf636213bfe3a640687e0a2efd600f531b5f0c91fe060549b3b:a09dc4410abb1ab1a9aadbc807655dc196a7f233a8b5001cf0efa6fd5024871c",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "rb",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "lawson",
    "event": "Singapore Grand Prix",
    "event_id_if_known": "season=2026/round=17",
@@ -157719,7 +157783,7 @@
    "fia_documents_carrying_value": 1,
    "fia_driver_name": "L. LAWSON",
    "first_published_at": "2026-10-11T16:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -157761,6 +157825,8 @@
     "formula1_race_points": 18.0,
     "formula1_sprint_agrees": true,
     "formula1_sprint_points": 6.0,
+    "gold_label_position": 2,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 18.0,
     "jolpica_sprint_agrees": true,
@@ -157770,11 +157836,11 @@
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:66a432a8c1882cf636213bfe3a640687e0a2efd600f531b5f0c91fe060549b3b:a09dc4410abb1ab1a9aadbc807655dc196a7f233a8b5001cf0efa6fd5024871c",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "ferrari",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "leclerc",
    "event": "Singapore Grand Prix",
    "event_id_if_known": "season=2026/round=17",
@@ -157782,7 +157848,7 @@
    "fia_documents_carrying_value": 1,
    "fia_driver_name": "C. LECLERC",
    "first_published_at": "2026-10-11T16:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -157824,6 +157890,8 @@
     "formula1_race_points": 0.0,
     "formula1_sprint_agrees": true,
     "formula1_sprint_points": 0.0,
+    "gold_label_position": 15,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 0.0,
     "jolpica_sprint_agrees": true,
@@ -157833,11 +157901,11 @@
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:66a432a8c1882cf636213bfe3a640687e0a2efd600f531b5f0c91fe060549b3b:a09dc4410abb1ab1a9aadbc807655dc196a7f233a8b5001cf0efa6fd5024871c",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "rb",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "lindblad",
    "event": "Singapore Grand Prix",
    "event_id_if_known": "season=2026/round=17",
@@ -157845,7 +157913,7 @@
    "fia_documents_carrying_value": 1,
    "fia_driver_name": "A. LINDBLAD",
    "first_published_at": "2026-10-11T16:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -157887,6 +157955,8 @@
     "formula1_race_points": 25.0,
     "formula1_sprint_agrees": true,
     "formula1_sprint_points": 8.0,
+    "gold_label_position": 1,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 25.0,
     "jolpica_sprint_agrees": true,
@@ -157896,11 +157966,11 @@
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:66a432a8c1882cf636213bfe3a640687e0a2efd600f531b5f0c91fe060549b3b:a09dc4410abb1ab1a9aadbc807655dc196a7f233a8b5001cf0efa6fd5024871c",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "red_bull",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "max_verstappen",
    "event": "Singapore Grand Prix",
    "event_id_if_known": "season=2026/round=17",
@@ -157908,7 +157978,7 @@
    "fia_documents_carrying_value": 1,
    "fia_driver_name": "M. VERSTAPPEN",
    "first_published_at": "2026-10-11T16:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -157950,6 +158020,8 @@
     "formula1_race_points": 12.0,
     "formula1_sprint_agrees": true,
     "formula1_sprint_points": 1.0,
+    "gold_label_position": 4,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 12.0,
     "jolpica_sprint_agrees": true,
@@ -157959,11 +158031,11 @@
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:66a432a8c1882cf636213bfe3a640687e0a2efd600f531b5f0c91fe060549b3b:a09dc4410abb1ab1a9aadbc807655dc196a7f233a8b5001cf0efa6fd5024871c",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "mclaren",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "norris",
    "event": "Singapore Grand Prix",
    "event_id_if_known": "season=2026/round=17",
@@ -157971,7 +158043,7 @@
    "fia_documents_carrying_value": 1,
    "fia_driver_name": "L. NORRIS",
    "first_published_at": "2026-10-11T16:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -158013,6 +158085,8 @@
     "formula1_race_points": 0.0,
     "formula1_sprint_agrees": true,
     "formula1_sprint_points": 0.0,
+    "gold_label_position": 13,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 0.0,
     "jolpica_sprint_agrees": true,
@@ -158022,11 +158096,11 @@
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:66a432a8c1882cf636213bfe3a640687e0a2efd600f531b5f0c91fe060549b3b:a09dc4410abb1ab1a9aadbc807655dc196a7f233a8b5001cf0efa6fd5024871c",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "haas",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "ocon",
    "event": "Singapore Grand Prix",
    "event_id_if_known": "season=2026/round=17",
@@ -158034,7 +158108,7 @@
    "fia_documents_carrying_value": 1,
    "fia_driver_name": "E. OCON",
    "first_published_at": "2026-10-11T16:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -158076,6 +158150,8 @@
     "formula1_race_points": 0.0,
     "formula1_sprint_agrees": true,
     "formula1_sprint_points": 0.0,
+    "gold_label_position": 17,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 0.0,
     "jolpica_sprint_agrees": true,
@@ -158085,11 +158161,11 @@
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:66a432a8c1882cf636213bfe3a640687e0a2efd600f531b5f0c91fe060549b3b:a09dc4410abb1ab1a9aadbc807655dc196a7f233a8b5001cf0efa6fd5024871c",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "cadillac",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "perez",
    "event": "Singapore Grand Prix",
    "event_id_if_known": "season=2026/round=17",
@@ -158097,7 +158173,7 @@
    "fia_documents_carrying_value": 1,
    "fia_driver_name": "S. PEREZ",
    "first_published_at": "2026-10-11T16:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -158139,6 +158215,8 @@
     "formula1_race_points": 10.0,
     "formula1_sprint_agrees": true,
     "formula1_sprint_points": 0.0,
+    "gold_label_position": 5,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 10.0,
     "jolpica_sprint_agrees": true,
@@ -158148,11 +158226,11 @@
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:66a432a8c1882cf636213bfe3a640687e0a2efd600f531b5f0c91fe060549b3b:a09dc4410abb1ab1a9aadbc807655dc196a7f233a8b5001cf0efa6fd5024871c",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "mclaren",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "piastri",
    "event": "Singapore Grand Prix",
    "event_id_if_known": "season=2026/round=17",
@@ -158160,7 +158238,7 @@
    "fia_documents_carrying_value": 1,
    "fia_driver_name": "O. PIASTRI",
    "first_published_at": "2026-10-11T16:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -158202,6 +158280,8 @@
     "formula1_race_points": 2.0,
     "formula1_sprint_agrees": true,
     "formula1_sprint_points": 0.0,
+    "gold_label_position": 9,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 2.0,
     "jolpica_sprint_agrees": true,
@@ -158211,11 +158291,11 @@
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:66a432a8c1882cf636213bfe3a640687e0a2efd600f531b5f0c91fe060549b3b:a09dc4410abb1ab1a9aadbc807655dc196a7f233a8b5001cf0efa6fd5024871c",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "mercedes",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "russell",
    "event": "Singapore Grand Prix",
    "event_id_if_known": "season=2026/round=17",
@@ -158223,7 +158303,7 @@
    "fia_documents_carrying_value": 1,
    "fia_driver_name": "G. RUSSELL",
    "first_published_at": "2026-10-11T16:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -158265,6 +158345,8 @@
     "formula1_race_points": 0.0,
     "formula1_sprint_agrees": true,
     "formula1_sprint_points": 0.0,
+    "gold_label_position": 14,
+    "gold_position_agrees": true,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 0.0,
     "jolpica_sprint_agrees": true,
@@ -158274,11 +158356,11 @@
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:66a432a8c1882cf636213bfe3a640687e0a2efd600f531b5f0c91fe060549b3b:a09dc4410abb1ab1a9aadbc807655dc196a7f233a8b5001cf0efa6fd5024871c",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "williams",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "sainz",
    "event": "Singapore Grand Prix",
    "event_id_if_known": "season=2026/round=17",
@@ -158286,7 +158368,7 @@
    "fia_documents_carrying_value": 1,
    "fia_driver_name": "C. SAINZ",
    "first_published_at": "2026-10-11T16:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {
@@ -158328,6 +158410,7 @@
     "formula1_race_points": 0.0,
     "formula1_sprint_agrees": true,
     "formula1_sprint_points": 0.0,
+    "gold_label_position": null,
     "jolpica_race_agrees": true,
     "jolpica_race_points": 0.0,
     "jolpica_sprint_agrees": true,
@@ -158337,11 +158420,11 @@
    },
    "classification_source": {
     "fia_classification_documents": "see event_summaries[event_id].classification_documents",
-    "gold_label_audit_reference": null,
+    "gold_label_audit_reference": "fia-final-direct-v2:66a432a8c1882cf636213bfe3a640687e0a2efd600f531b5f0c91fe060549b3b:a09dc4410abb1ab1a9aadbc807655dc196a7f233a8b5001cf0efa6fd5024871c",
     "race_points_matrix_position_cell": "fia_championship_points_document"
    },
    "constructor": "aston_martin",
-   "constructor_source": "formula1_com_race_result_team",
+   "constructor_source": "gold_roster",
    "driver": "stroll",
    "event": "Singapore Grand Prix",
    "event_id_if_known": "season=2026/round=17",
@@ -158349,7 +158432,7 @@
    "fia_documents_carrying_value": 1,
    "fia_driver_name": "L. STROLL",
    "first_published_at": "2026-10-11T16:55:00+00:00",
-   "in_gold": false,
+   "in_gold": true,
    "penalties_or_adjustments": [],
    "points_timeline": [
     {

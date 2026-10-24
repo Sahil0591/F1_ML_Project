@@ -184,12 +184,12 @@ def audit_historical_practice(root: Path, coverage_report: Path) -> dict[str, An
                 ]
                 if len(matching) != 1:
                     raise ValueError("retained FIA registry does not bind the practice version")
-                response = client.get(selected["url"])
-                if response.status_code == 404 and selected["url"] in retained:
-                    # FIA has withdrawn some old files; an earlier audit retained the
-                    # exact bytes, and the cover checks below still apply to them.
+                if selected["url"] in retained:
+                    # A past race's PDF does not change, and FIA withdraws some old
+                    # files; the hash and cover checks below still apply to these bytes.
                     artifact = retained[selected["url"]]
                 else:
+                    response = client.get(selected["url"])
                     artifact = _retain_response(root, response)
                     if not response.content.startswith(b"%PDF"):
                         raise ValueError("practice response is not a PDF")

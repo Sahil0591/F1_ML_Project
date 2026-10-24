@@ -306,6 +306,17 @@ PYTHONPATH=src python scripts/audit-scoring-evidence.py collect
 PYTHONPATH=src python scripts/audit-scoring-evidence.py build data/raw/scoring_audit/collection-<sha>.json
 ```
 
+`collect` re-collects only the season of `AUDIT_AS_OF`. Earlier seasons are carried
+over from the newest earlier collection after every retained source hash is checked,
+and regulation and ICA documents already retained are not downloaded again. The
+regulation and ICA listings are still read in full: a new document that names an
+earlier season stops the run, and `collect --full` then re-collects every season.
+When FIA returns 404 for a file its listing still links, the exact bytes an earlier
+collection retained for that URL are used.
+
+Run `build` after the Gold enrichment that includes the newest race, because
+`in_gold` comes from the newest enrichment's Gold rows.
+
 The outputs in this commit were built from
 `collection-e9673cbbf1f0f97921a2d93f9d1a84d8c536b75cb66ed656420cf25685f9838e.json`.
 Model selection logic, Gold benchmarks and the feature pipeline were not

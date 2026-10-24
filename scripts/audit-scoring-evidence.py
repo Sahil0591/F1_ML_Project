@@ -242,33 +242,88 @@ def _retained_records(value: Any) -> Any:
             yield from _retained_records(item)
 
 
-def _retained_document(root: Path, url: str) -> dict[str, Any]:
-    collections = sorted(
-        (root / "data/raw/scoring_audit").glob("collection-*.json"),
-        key=lambda path: path.stat().st_mtime,
-        reverse=True,
-    )
-    for path in collections:
-        for document in _retained_records(json.loads(path.read_text(encoding="utf-8"))):
-            if unquote(document["url"]) != unquote(url):
+def _verified(root: Path, record: dict[str, Any]) -> dict[str, Any]:
+    content = (root / record["path"]).read_bytes()
+    if hashlib.sha256(content).hexdigest() != record["sha256"]:
+        raise ValueError(f"retained document {record['path']} fails its hash")
+    return record
+
+
+class _Retained:
+    """Everything earlier collections retained, newest collection first."""
+
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        self.collections = [
+            (path.name, json.loads(path.read_text(encoding="utf-8")))
+            for path in sorted(
+                (root / "data/raw/scoring_audit").glob("collection-*.json"),
+                key=lambda path: path.stat().st_mtime,
+                reverse=True,
+            )
+        ]
+        self.by_url: dict[str, tuple[str, dict[str, Any]]] = {}
+        for name, collection in reversed(self.collections):
+            for record in _retained_records(collection):
+                self.by_url[unquote(record["url"])] = (name, record)
+
+    def get(self, url: str) -> dict[str, Any] | None:
+        found = self.by_url.get(unquote(url))
+        if found is None:
+            return None
+        name, record = found
+        return {**_verified(self.root, record), "reused_from_collection": name}
+
+    def season(self, season: int) -> dict[str, Any] | None:
+        """The newest retained copy of a past season, with every source hash checked."""
+        for name, collection in self.collections:
+            data = collection["seasons"].get(str(season))
+            if data is None or collection.get("audit_as_of_utc", "") > AUDIT_AS_OF.isoformat():
                 continue
-            content = (root / document["path"]).read_bytes()
-            if hashlib.sha256(content).hexdigest() != document["sha256"]:
-                raise ValueError(f"retained document {document['path']} fails its hash")
-            return {**document, "reused_from_collection": path.name}
-    raise ValueError(f"{url} is gone and was never retained")
+            for record in _retained_records(data):
+                _verified(self.root, record)
+            return {**data, "carried_from_collection": name}
+        return None
 
 
-def _retain_or_reuse(root: Path, client: httpx.Client, url: str) -> dict[str, Any]:
-    # FIA listings still link some withdrawn files; reuse an earlier hash-verified
-    # retention of the exact URL instead.
+def _retain_or_reuse(
+    root: Path, client: httpx.Client, url: str, retained: _Retained, *, prefer_retained: bool
+) -> dict[str, Any]:
+    if prefer_retained and (record := retained.get(url)) is not None:
+        return record
     response = _get(client, url)
     if response.status_code == 404:
-        return _retained_document(root, url)
+        # FIA listings still link some withdrawn files; reuse an earlier
+        # hash-verified retention of the exact URL instead.
+        if (record := retained.get(url)) is None:
+            raise ValueError(f"{url} is gone and was never retained")
+        return record
     return _retain_response(root, response)
 
 
-def _collect_regulations(root: Path, client: httpx.Client) -> dict[str, Any]:
+_EARLIER_SEASON = re.compile(
+    "|".join(rf"\b{season}\b" for season in SEASONS if season < AUDIT_AS_OF.year)
+)
+
+
+def _guard_new_document(root: Path, document: dict[str, Any], label: str, full: bool) -> None:
+    """Stop a current-season run when a new ruling or regulation names an earlier season."""
+    if full or "reused_from_collection" in document:
+        return
+    text = label
+    if document["path"].endswith(".pdf"):
+        reader = PdfReader(root / document["path"])
+        text += " " + " ".join(page.extract_text() or "" for page in reader.pages[:2])
+    if _EARLIER_SEASON.search(text):
+        raise ValueError(
+            f"new FIA document {document['url']} names an earlier season; "
+            "re-audit every season with `collect --full`"
+        )
+
+
+def _collect_regulations(
+    root: Path, client: httpx.Client, retained: _Retained, full: bool
+) -> dict[str, Any]:
     listing = _get(client, FIA_REGULATIONS)
     record = {"listing_page": _retain_response(root, listing), "documents": []}
     seen = set()
@@ -286,30 +341,47 @@ def _collect_regulations(root: Path, client: httpx.Client) -> dict[str, Any]:
         ):
             continue
         seen.add(url)
-        document = _retain_or_reuse(root, client, url)
+        document = _retain_or_reuse(root, client, url, retained, prefer_retained=not full)
+        # A regulation names its own season, so only its title is checked.
+        _guard_new_document(root, {**document, "path": ""}, title, full)
         document["listing_title"] = title
         record["documents"].append(document)
     return record
 
 
-def _collect_ica(root: Path, client: httpx.Client) -> dict[str, Any]:
+def _collect_ica(
+    root: Path, client: httpx.Client, retained: _Retained, full: bool
+) -> dict[str, Any]:
     listing = _get(client, FIA_ICA_JUDGEMENTS)
     record = {"listing_page": _retain_response(root, listing), "documents": []}
-    for url, _title in _pdf_links(listing.text, "https://www.fia.com"):
-        record["documents"].append(_retain_or_reuse(root, client, url))
+    for url, title in _pdf_links(listing.text, "https://www.fia.com"):
+        document = _retain_or_reuse(root, client, url, retained, prefer_retained=not full)
+        _guard_new_document(root, document, title, full)
+        record["documents"].append(document)
     return record
 
 
-def collect(root: Path) -> Path:
+def collect(root: Path, *, full: bool = False) -> Path:
+    """Collect the current season; earlier seasons come from the last collection.
+
+    `full` re-collects every season, which a ruling on an earlier season needs.
+    """
     root = root.resolve()
     client = httpx.Client(headers=HEADERS, follow_redirects=True, timeout=90)
+    retained = _Retained(root)
     index: dict[str, Any] = {
         "audit_as_of_utc": AUDIT_AS_OF.isoformat(),
         "seasons": {},
-        "regulations": _collect_regulations(root, client),
-        "ica_judgements": _collect_ica(root, client),
+        "regulations": _collect_regulations(root, client, retained, full),
+        "ica_judgements": _collect_ica(root, client, retained, full),
     }
     for season in SEASONS:
+        if not full and season < AUDIT_AS_OF.year:
+            carried = retained.season(season)
+            if carried is None:
+                raise ValueError(f"no earlier collection holds {season}; run `collect --full`")
+            index["seasons"][str(season)] = carried
+            continue
         schedule_response = _get(client, f"{JOLPICA}/{season}.json?limit=100", pause=0.5)
         schedule_record = _retain_jolpica(root, schedule_response)
         races = schedule_response.json()["MRData"]["RaceTable"]["Races"]
@@ -396,7 +468,9 @@ def collect(root: Path) -> Path:
                 entry = dict(row)
                 entry["kind"] = "points" if POINTS_TITLE.search(row["title"]) else "review"
                 if row["url"] and not row["recalled"]:
-                    entry["retained"] = _retain_or_reuse(root, client, row["url"])
+                    entry["retained"] = _retain_or_reuse(
+                        root, client, row["url"], retained, prefer_retained=False
+                    )
                 documents.append(entry)
             event["documents"] = documents
             event["classification_documents"] = [
@@ -1073,7 +1147,13 @@ def build(root: Path, collection_path: Path) -> dict[str, Any]:
 
 
 def _load_gold_identities(root: Path) -> dict[str, dict[str, dict[str, Any]]]:
-    paths = sorted(root.glob("data/benchmarks/gold_historical_enrichment_v2/*/*/*/gold.parquet"))
+    # The newest enrichment holds the current Gold cohort; hash-named directories
+    # carry no order of their own.
+    paths = sorted(
+        root.glob("data/benchmarks/gold_historical_enrichment_v2/*/*/*/gold.parquet"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
     if not paths:
         return {}
     import pandas as pd
@@ -2198,12 +2278,15 @@ def main() -> None:
     commands = parser.add_subparsers(dest="command", required=True)
     collect_parser = commands.add_parser("collect")
     collect_parser.add_argument("--root", type=Path, default=Path.cwd())
+    collect_parser.add_argument(
+        "--full", action="store_true", help="Re-collect every season, not only the current one"
+    )
     build_parser = commands.add_parser("build")
     build_parser.add_argument("collection", type=Path)
     build_parser.add_argument("--root", type=Path, default=Path.cwd())
     args = parser.parse_args()
     if args.command == "collect":
-        print(collect(args.root))
+        print(collect(args.root, full=args.full))
         return
     collection = json.loads(args.collection.read_text(encoding="utf-8"))
     outputs = {

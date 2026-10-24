@@ -167,10 +167,9 @@ def _document(
     root: Path, client: httpx.Client, row: dict[str, Any], event: EventId
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     _official(row["url"])
-    response = client.get(row["url"])
-    # FIA has withdrawn some old files; reuse the exact bytes an earlier audit bound.
-    reused = _previously_bound(root, row["url"]) if response.status_code == 404 else None
-    artifact = reused or _retain_response(root, response)
+    # A past sprint's PDF does not change, and FIA withdraws some old files, so the
+    # exact bytes an earlier audit bound are reused; the checks below still apply.
+    artifact = _previously_bound(root, row["url"]) or _retain_response(root, client.get(row["url"]))
     pdf = inspect_pdf(root / artifact["path"])
     if row["document_id"] is not None and pdf["document_id"] not in {None, row["document_id"]}:
         raise ValueError("pdf_document_number_contradicts_registry")

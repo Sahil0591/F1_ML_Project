@@ -148,6 +148,16 @@ def race_grid_records(documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [doc for doc in documents if _RACE_GRID_TITLE.match(_plain(doc["title"]))]
 
 
+def _previously_retained(root: Path) -> dict[str, dict[str, str]]:
+    """Grid PDFs bound by earlier audits of either cohort, keyed by exact FIA URL."""
+    retained: dict[str, dict[str, str]] = {}
+    for path in (root / "data/benchmarks/historical_audit").glob("*grid-audit-*.json"):
+        for race in json.loads(path.read_text(encoding="utf-8"))["races"]:
+            if race["status"] == "audited":
+                retained[race["url"]] = race["document"]
+    return retained
+
+
 def audit_historical_grids(
     root: Path, coverage_report: Path, cohort: str = "post_qualifying"
 ) -> dict[str, Any]:
@@ -187,6 +197,7 @@ def audit_historical_grids(
     rows_by_event: dict[str, list[dict[str, Any]]] = {}
     for row in pq.read_table(source).to_pylist():
         rows_by_event.setdefault(row["event_id"], []).append(row)
+    retained = _previously_retained(root)
     audits = []
     with httpx.Client(
         timeout=30, follow_redirects=False, headers={"User-Agent": "f1-ml-predictor/0.1.0"}
@@ -273,10 +284,15 @@ def audit_historical_grids(
                 ]
                 if len(matching) != 1:
                     raise ValueError("retained FIA registry does not bind the exact grid version")
-                response = client.get(selected["url"])
-                artifact = _retain_response(root, response)
-                if not response.content.startswith(b"%PDF"):
-                    raise ValueError("grid response is not a PDF")
+                if selected["url"] in retained:
+                    # A past race's PDF does not change, and FIA withdraws some old
+                    # files; the hash and cover checks below still apply to these bytes.
+                    artifact = retained[selected["url"]]
+                else:
+                    response = client.get(selected["url"])
+                    artifact = _retain_response(root, response)
+                    if not response.content.startswith(b"%PDF"):
+                        raise ValueError("grid response is not a PDF")
                 pdf_path = _safe_file(root, artifact["path"], artifact["sha256"])
                 inspection = inspect_pdf(pdf_path)
                 cover = _plain(inspection["cover_text"])
