@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { ChampionshipPage } from "../pages/ChampionshipPage";
@@ -26,6 +26,24 @@ describe("championship page", () => {
     expect(wdc.tagName).toBe(wcc.tagName);
     expect(screen.getAllByTestId("wcc-row")).toHaveLength(11);
     expect(screen.getByRole("heading", { name: "Season in progress" })).toBeInTheDocument();
+  });
+
+  it("orders drivers by points now and keeps the projected position", async () => {
+    const snapshot = makeSnapshot();
+    // The projected leader D01 sits second on points now.
+    snapshot.championship.wdc.entries = snapshot.championship.wdc.entries.map((entry, index) =>
+      index < 2 ? { ...entry, points_now: index === 0 ? 290 : 310 } : entry,
+    );
+    stubFetch({
+      "2026/season.json": makeSeason(),
+      "2026/round-16/pre_weekend.json": snapshot,
+    });
+    renderChampionship();
+    const rows = await screen.findAllByTestId("wdc-row");
+    expect(within(rows[0] as HTMLElement).getByText("D02")).toBeInTheDocument();
+    // Proj. and Most Likely Finish both keep D02's projection.
+    expect(within(rows[0] as HTMLElement).getAllByText("P2")).toHaveLength(2);
+    expect(within(rows[1] as HTMLElement).getByText("D01")).toBeInTheDocument();
   });
 
   it("compares final standings with the last projection once the season is complete", async () => {
