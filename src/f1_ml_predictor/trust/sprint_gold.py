@@ -29,6 +29,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote
 
 import httpx
 import pyarrow as pa
@@ -149,11 +150,27 @@ def select_documents(
     return grid, starting[0], final
 
 
+def _previously_bound(root: Path, url: str) -> dict[str, Any] | None:
+    """A document an earlier sprint audit bound to the exact FIA URL, hash-checked."""
+    for manifest in (root / _ROOT).glob("*/manifest.json"):
+        for sprint in json.loads(manifest.read_text(encoding="utf-8"))["included"]:
+            for document in sprint["documents"]:
+                if unquote(document["url"]) != unquote(url):
+                    continue
+                if file_sha256(root / document["path"]) != document["sha256"]:
+                    raise ValueError("previously bound sprint document fails its hash")
+                return {"path": document["path"], "sha256": document["sha256"]}
+    return None
+
+
 def _document(
     root: Path, client: httpx.Client, row: dict[str, Any], event: EventId
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     _official(row["url"])
-    artifact = _retain_response(root, client.get(row["url"]))
+    response = client.get(row["url"])
+    # FIA has withdrawn some old files; reuse the exact bytes an earlier audit bound.
+    reused = _previously_bound(root, row["url"]) if response.status_code == 404 else None
+    artifact = reused or _retain_response(root, response)
     pdf = inspect_pdf(root / artifact["path"])
     if row["document_id"] is not None and pdf["document_id"] not in {None, row["document_id"]}:
         raise ValueError("pdf_document_number_contradicts_registry")

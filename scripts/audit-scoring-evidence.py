@@ -49,7 +49,7 @@ FIA_SEASON_PATHS = {
     2026: "season-2026-2072",
 }
 # The audit is frozen at this instant; later events are out of scope.
-AUDIT_AS_OF = datetime(2026, 10, 7, tzinfo=UTC)
+AUDIT_AS_OF = datetime(2026, 10, 20, tzinfo=UTC)
 JOLPICA = "https://api.jolpi.ca/ergast/f1"
 F1_RESULTS = "https://www.formula1.com/en/results"
 FIA_REGULATIONS = "https://www.fia.com/regulation/category/110"
@@ -231,6 +231,43 @@ def _pdf_links(html: str, base: str) -> list[tuple[str, str]]:
     return list(dict.fromkeys(links))
 
 
+def _retained_records(value: Any) -> Any:
+    if isinstance(value, dict):
+        if {"url", "path", "sha256"} <= value.keys():
+            yield value
+        for item in value.values():
+            yield from _retained_records(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _retained_records(item)
+
+
+def _retained_document(root: Path, url: str) -> dict[str, Any]:
+    collections = sorted(
+        (root / "data/raw/scoring_audit").glob("collection-*.json"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    for path in collections:
+        for document in _retained_records(json.loads(path.read_text(encoding="utf-8"))):
+            if unquote(document["url"]) != unquote(url):
+                continue
+            content = (root / document["path"]).read_bytes()
+            if hashlib.sha256(content).hexdigest() != document["sha256"]:
+                raise ValueError(f"retained document {document['path']} fails its hash")
+            return {**document, "reused_from_collection": path.name}
+    raise ValueError(f"{url} is gone and was never retained")
+
+
+def _retain_or_reuse(root: Path, client: httpx.Client, url: str) -> dict[str, Any]:
+    # FIA listings still link some withdrawn files; reuse an earlier hash-verified
+    # retention of the exact URL instead.
+    response = _get(client, url)
+    if response.status_code == 404:
+        return _retained_document(root, url)
+    return _retain_response(root, response)
+
+
 def _collect_regulations(root: Path, client: httpx.Client) -> dict[str, Any]:
     listing = _get(client, FIA_REGULATIONS)
     record = {"listing_page": _retain_response(root, listing), "documents": []}
@@ -249,7 +286,7 @@ def _collect_regulations(root: Path, client: httpx.Client) -> dict[str, Any]:
         ):
             continue
         seen.add(url)
-        document = _retain_response(root, _get(client, url))
+        document = _retain_or_reuse(root, client, url)
         document["listing_title"] = title
         record["documents"].append(document)
     return record
@@ -259,7 +296,7 @@ def _collect_ica(root: Path, client: httpx.Client) -> dict[str, Any]:
     listing = _get(client, FIA_ICA_JUDGEMENTS)
     record = {"listing_page": _retain_response(root, listing), "documents": []}
     for url, _title in _pdf_links(listing.text, "https://www.fia.com"):
-        record["documents"].append(_retain_response(root, _get(client, url)))
+        record["documents"].append(_retain_or_reuse(root, client, url))
     return record
 
 
@@ -359,7 +396,7 @@ def collect(root: Path) -> Path:
                 entry = dict(row)
                 entry["kind"] = "points" if POINTS_TITLE.search(row["title"]) else "review"
                 if row["url"] and not row["recalled"]:
-                    entry["retained"] = _retain_response(root, _get(client, row["url"]))
+                    entry["retained"] = _retain_or_reuse(root, client, row["url"])
                 documents.append(entry)
             event["documents"] = documents
             event["classification_documents"] = [

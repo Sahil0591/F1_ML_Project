@@ -82,6 +82,16 @@ def parse_practice_pdf(
     return parsed, max(field_positions)
 
 
+def _previously_retained(root: Path) -> dict[str, dict[str, str]]:
+    """Practice PDFs bound by earlier audits, keyed by their exact FIA URL."""
+    retained: dict[str, dict[str, str]] = {}
+    for path in (root / "data/benchmarks/historical_audit").glob("practice-audit-*.json"):
+        for race in json.loads(path.read_text(encoding="utf-8"))["races"]:
+            if race["status"] == "audited":
+                retained[race["url"]] = race["document"]
+    return retained
+
+
 def audit_historical_practice(root: Path, coverage_report: Path) -> dict[str, Any]:
     """Bind latest completed practice document at each existing Gold cutoff."""
     root = root.resolve()
@@ -117,6 +127,7 @@ def audit_historical_practice(root: Path, coverage_report: Path) -> dict[str, An
         _safe_file(gold, "gold.parquet", report["gold_dataset_sha256"])
     ).to_pylist():
         rows_by_event.setdefault(row["event_id"], []).append(row)
+    retained = _previously_retained(root)
     audits = []
     with httpx.Client(
         timeout=30, follow_redirects=False, headers={"User-Agent": "f1-ml-predictor/0.1.0"}
@@ -174,9 +185,14 @@ def audit_historical_practice(root: Path, coverage_report: Path) -> dict[str, An
                 if len(matching) != 1:
                     raise ValueError("retained FIA registry does not bind the practice version")
                 response = client.get(selected["url"])
-                artifact = _retain_response(root, response)
-                if not response.content.startswith(b"%PDF"):
-                    raise ValueError("practice response is not a PDF")
+                if response.status_code == 404 and selected["url"] in retained:
+                    # FIA has withdrawn some old files; an earlier audit retained the
+                    # exact bytes, and the cover checks below still apply to them.
+                    artifact = retained[selected["url"]]
+                else:
+                    artifact = _retain_response(root, response)
+                    if not response.content.startswith(b"%PDF"):
+                        raise ValueError("practice response is not a PDF")
                 pdf_path = _safe_file(root, artifact["path"], artifact["sha256"])
                 inspected = inspect_pdf(pdf_path)
                 cover = _plain(inspected["cover_text"])
