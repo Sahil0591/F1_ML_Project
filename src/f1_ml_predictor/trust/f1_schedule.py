@@ -170,6 +170,7 @@ _ROUNDS = {
     (2026, "red_bull_ring"): 8,
     (2026, "madring"): 14,
     (2026, "marina_bay"): 17,
+    (2026, "americas"): 18,
     (2025, "suzuka"): 3,
     (2025, "bahrain"): 4,
     (2025, "jeddah"): 5,

@@ -86,6 +86,26 @@
           }
         }
       ]
+    },
+    "season=2026/round=18": {
+      "conclusion": "no_race_classification_change",
+      "reviewed_at": "2026-10-31",
+      "audit_reference": "fia-2026-round-18-doc19-corrected-pu-infringement-2026-10-31",
+      "final_publication_cet": "26.10.26 01:03",
+      "later_documents": [
+        {
+          "document_id": "19",
+          "cover_document_id": "19",
+          "title": "(Infringement - Car 41 - Changes to PU Element (Corrected)",
+          "url": "https://www.fia.com/system/files/decision-document/2026_united_states_grand_prix_-_infringement_-_car_41_-_changes_to_pu_element_corrected.pdf",
+          "publication_cet": "26.10.26 11:30",
+          "scope": "pre_final_issue",
+          "artifact": {
+            "path": "data/raw/fia_audit/objects/dd3689868b4c56686e95a127136c0069e9a30d4e7a1bdb66795d45f802805a4e.pdf",
+            "sha256": "dd3689868b4c56686e95a127136c0069e9a30d4e7a1bdb66795d45f802805a4e"
+          }
+        }
+      ]
     }
   }
 }

@@ -488,3 +488,58 @@ def test_capture_ids_win_over_a_gold_alias_for_the_same_driver() -> None:
     # The alias target racing in the same capture under its own ID is a real conflict.
     with pytest.raises(ValueError, match="conflicts with exact FIA alias"):
         capture_driver_aliases(entries, {"arvid_lindblad", "lindblad"})
+
+
+def test_reviewed_later_document_does_not_defer_the_final(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from f1_ml_predictor.identifiers import EventId
+    from f1_ml_predictor.trust import winter
+
+    prefix = "https://www.fia.com/system/files/decision-document/2026_test_grand_prix_-_"
+
+    def row(identifier: int, title: str, clock: str) -> dict[str, Any]:
+        return {
+            "document_id": str(identifier),
+            "title": title,
+            "publication_cet": f"26.10.26 {clock}",
+            "url": prefix + f"{identifier}.pdf",
+            "recalled": False,
+        }
+
+    final = row(48, "Final Race Classification", "01:03")
+    corrected = row(19, "Infringement - Car 41 - Changes to PU Element (Corrected)", "11:30")
+    review = {
+        "conclusion": "no_race_classification_change",
+        "final_publication_cet": final["publication_cet"],
+        "later_documents": [
+            {"document_id": "19", "title": corrected["title"], "url": corrected["url"]}
+        ],
+    }
+    monkeypatch.setattr(winter, "verify_post_final_review", lambda review, root: None)
+    event = EventId(2026, 18)
+    with pytest.raises(ValueError, match="review"):
+        collected_outcomes._final([final, corrected], event, "Test Grand Prix")
+    selected = collected_outcomes._final(
+        [final, corrected], event, "Test Grand Prix", review=review, root=tmp_path
+    )
+    assert selected == final
+    unreviewed = row(52, "Decision - Car 4 - Technical Non-Compliance", "12:00")
+    with pytest.raises(ValueError, match="differ"):
+        collected_outcomes._final(
+            [final, corrected, unreviewed], event, "Test Grand Prix", review=review, root=tmp_path
+        )
+
+
+def test_later_review_is_read_from_the_season_review_file(tmp_path: Path) -> None:
+    from f1_ml_predictor.identifiers import EventId
+
+    (tmp_path / "docs").mkdir()
+    review = {"conclusion": "no_race_classification_change", "later_documents": []}
+    (tmp_path / "docs/HISTORICAL_2026_LATER_REVIEWS.json").write_text(
+        json.dumps({"version": 1, "reviews": {"season=2026/round=18": review}}),
+        encoding="utf-8",
+    )
+    assert collected_outcomes._later_review(tmp_path, EventId(2026, 18)) == review
+    assert collected_outcomes._later_review(tmp_path, EventId(2026, 19)) is None
+    assert collected_outcomes._later_review(tmp_path, EventId(2025, 18)) is None

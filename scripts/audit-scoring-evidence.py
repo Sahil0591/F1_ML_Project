@@ -49,7 +49,7 @@ FIA_SEASON_PATHS = {
     2026: "season-2026-2072",
 }
 # The audit is frozen at this instant; later events are out of scope.
-AUDIT_AS_OF = datetime(2026, 10, 20, tzinfo=UTC)
+AUDIT_AS_OF = datetime(2026, 10, 30, tzinfo=UTC)
 JOLPICA = "https://api.jolpi.ca/ergast/f1"
 F1_RESULTS = "https://www.formula1.com/en/results"
 FIA_REGULATIONS = "https://www.fia.com/regulation/category/110"
@@ -306,9 +306,20 @@ _EARLIER_SEASON = re.compile(
 )
 
 
+# Reviewed new documents that name an earlier season without touching any
+# championship result, bound to their exact bytes.
+_REVIEWED_UNRELATED = {
+    # ICA-2026-11 (27 October 2026): FAU appeal on the WMSC Ukraine-conflict
+    # measures; 2022 and 2023 appear only as dates of earlier WMSC decisions.
+    "d8880d8f5431a42fc8b51dd7e6abf2d85dee344d2fb2cbb52bf78544cb8b30c6",
+}
+
+
 def _guard_new_document(root: Path, document: dict[str, Any], label: str, full: bool) -> None:
     """Stop a current-season run when a new ruling or regulation names an earlier season."""
     if full or "reused_from_collection" in document:
+        return
+    if document["sha256"] in _REVIEWED_UNRELATED:
         return
     text = label
     if document["path"].endswith(".pdf"):

@@ -111,6 +111,14 @@ _CASES = [
         ["Singapore, Oct 11", "1700", "2100", "2000"],
         "2026-10-11T12:00:00Z",
     ),
+    (
+        2026,
+        18,
+        "americas",
+        "United States Grand Prix",
+        ["United States, Oct 25", "-", "1600", "1500"],
+        "2026-10-25T20:00:00Z",
+    ),
 ]
 
 

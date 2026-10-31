@@ -126,7 +126,23 @@ def _same_event_url(url: str | None, season: int, race_name: str) -> bool:
     return _tokens(prefix) == _tokens(f"{season} {race_name}")
 
 
-def _final(rows: list[dict[str, Any]], event: EventId, race_name: str) -> dict[str, Any]:
+def _later_review(root: Path, event: EventId) -> dict[str, Any] | None:
+    """The reviewed post-final documents that Gold also accepts for this event."""
+    path = root / f"docs/HISTORICAL_{event.season}_LATER_REVIEWS.json"
+    if not path.exists():
+        return None
+    reviews: dict[str, dict[str, Any]] = json.loads(path.read_text(encoding="utf-8"))["reviews"]
+    return reviews.get(event.partition())
+
+
+def _final(
+    rows: list[dict[str, Any]],
+    event: EventId,
+    race_name: str,
+    *,
+    review: dict[str, Any] | None = None,
+    root: Path | None = None,
+) -> dict[str, Any]:
     finals = [
         row
         for row in rows
@@ -141,7 +157,10 @@ def _final(rows: list[dict[str, Any]], event: EventId, race_name: str) -> dict[s
             "latest nonrecalled final classification is missing or belongs to another event"
         )
     selected = max(finals, key=lambda row: (_publication(row), int(row["document_id"])))
-    latest_final_record(rows, selected["url"], selected["document_id"])
+    latest_final_record(rows, selected["url"], selected["document_id"], review=review, root=root)
+    reviewed = {
+        (row["document_id"], row["url"]) for row in (review or {}).get("later_documents", [])
+    }
     key = (_publication(selected), int(selected["document_id"]))
     later = [
         row
@@ -149,6 +168,7 @@ def _final(rows: list[dict[str, Any]], event: EventId, race_name: str) -> dict[s
         if not row["recalled"]
         and (_publication(row), int(row["document_id"])) > key
         and not race_neutral_title(row["title"])
+        and (row["document_id"], row.get("url")) not in reviewed
     ]
     if later:
         raise ValueError("later same-event rulings require a newer final classification")
@@ -256,6 +276,7 @@ def collect_final_outcomes(
             if display in teams and teams[display] != constructor["constructorId"]:
                 raise ValueError("captured constructor identity conflicts with exact FIA alias")
             teams[display] = constructor["constructorId"]
+    review = _later_review(root, event)
     client = http_client or httpx.Client(timeout=10, follow_redirects=False)
     own = http_client is None
     observations: list[dict[str, Any]] = []
@@ -290,7 +311,11 @@ def collect_final_outcomes(
             raise ValueError("discovered FIA registry URL does not match the exact retained event")
         registry_artifact, registry_response = fetch(registry_url)
         selected = _final(
-            _registry(registry_response.text, event.season, race_name), event, race_name
+            _registry(registry_response.text, event.season, race_name),
+            event,
+            race_name,
+            review=review,
+            root=root,
         )
         final_artifact, final_response = fetch(selected["url"])
         if not final_response.content.startswith(b"%PDF"):
@@ -319,7 +344,11 @@ def collect_final_outcomes(
             raise ValueError("final FIA driver/constructor roster differs from retained qualifying")
         recheck_artifact, recheck_response = fetch(registry_url)
         rechecked = _final(
-            _registry(recheck_response.text, event.season, race_name), event, race_name
+            _registry(recheck_response.text, event.season, race_name),
+            event,
+            race_name,
+            review=review,
+            root=root,
         )
         if rechecked != selected:
             raise ValueError("final registry version changed while the PDF was captured")
