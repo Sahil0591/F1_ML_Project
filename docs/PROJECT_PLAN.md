@@ -1,6 +1,34 @@
 # F1 ML Predictor Project Plan
 
-Status: Phases 1 through 7 and Phase 9 simulation infrastructure are delivered. Historical Gold now contains 95 post-qualifying races and 1,927 driver-race observations. The audited championship scoring benchmark has 1,621 rows with point-in-time driver and constructor totals; its frozen evaluation has 92 paired outer test races. The separate audited binary DNF benchmark retains 29 races, with 547 known labels and 26 paired test races. Task-specific model selection remains `no_selection` because of baseline regressions or uncertain paired improvement. Historical Gold eligibility remains open to evidence-based upgrades; each experiment binds an immutable benchmark version. A historical held-out race has a `development_only` prediction artifact, and `predict-next-race` publishes `development_only` next-race and season predictions under cutoff-specific protocol v3, where the calibrated ensemble is the development primary at every cutoff and winner and podium remain `no_selection`. Validated race and championship forecasts still require prospective independent confirmation. The Windows prospective task remains disabled pending a local credential for signed-out network access; manual collection remains available. A React results frontend in `web/` now renders exported development predictions. Updated 2026-10-04.
+Status (updated 2026-11-06): Phases 1 through 7 and Phase 9 simulation infrastructure are delivered. Historical Gold contains 99 post-qualifying races (2022 to the 2026 Mexico City GP, 2,015 driver-race rows), with 26 audited Gold sprints and 1,589 audited binary DNF labels; the scoring ledger covers all 99 races. `predict-next-race` publishes `development_only` next-race and season predictions for every 2026 weekend under cutoff-specific protocol v3; the calibrated `ensemble_all` is the primary, and winner and podium remain `no_selection` against the frozen gate. Weather, strategy, grid-penalty and sharper-winner variants were evaluated as protocol v3 addenda and none beat the base contract, so they run as shadow predictions scored on new races, starting with the 2026 Brazilian GP. Validated race and championship forecasts still require prospective independent confirmation. The Windows prospective task remains disabled; collection ticks are run by hand. See the [pipeline overview](PIPELINE.md) for the current flow.
+
+## Weather, strategy and shadow tracking milestone (2026-11-06)
+
+A loss in Mexico City (podium right, winner given 13.5%) prompted a review of what
+could improve the predictions, tested only through the frozen protocol and
+recorded as addenda:
+
+- **Weather** ([addendum](WEATHER_FORECAST_ADDENDUM_2026-11-06.md)): archived ECMWF
+  runs released at least 12 hours before each cutoff, for 63 Gold races since
+  March 2024. Rain before and during the race, temperature and wind made no
+  difference overall. The first version counted only the race hours and called
+  Brazil 2024 dry; it now counts the six hours before the start too.
+- **Strategy** ([addendum](STRATEGY_ADDENDUM_2026-11-06.md)): free OpenF1 stints,
+  pit stops, laps and practice for 83 races since 2023, counted from 24 hours after
+  each race and 2 hours after each practice session. Tyre degradation, pit-lane
+  time, circuit stops and practice long runs made the ensemble worse.
+- **Wet-weather skill**: drivers differ in the wet (Verstappen won 4 of 8 races
+  that needed intermediates or wets against 1.9 expected), but the per-driver
+  adjustment is not yet significant on the backtest.
+- **Sharper winner draw**: a two-stage simulation (separate temperature for the
+  winner) improves finishing MAE but not winner log loss significantly.
+- **Verification against the track**: forecasts are checked against the tyres
+  teams fitted and the circuit weather station (`scripts/verify-weather.py`), not
+  only against their retained bytes.
+- **Shadow predictions**: the four variants are frozen next to each
+  post-qualifying and pre-race run, shown on the race page and scored by
+  `scripts/score-shadows.py`. A variant is considered for the official model only
+  if it keeps beating the official run on new races.
 
 ## Web results frontend milestone
 
@@ -490,3 +518,6 @@ The main agent owns architecture, phase integration, ML choices, final review, a
 - Store source publication time where available. For older records without it, strict historical backtests must use conservative availability rules or exclude that field.
 - Race calendar changes, sprint format changes, points rules, penalties, and constructor/driver transfers require season-aware handling in later phases.
 - Forecast archives, FastF1 coverage, and FIA document access may limit historical backtest depth. Report coverage explicitly rather than silently imputing future data.
+- Open-Meteo and OpenF1 do not record per-item publication times. The weather and strategy addenda bound them with fixed release margins (12 hours, 24 hours, 2 hours) larger than the documented delays; these inputs stay out of the frozen contracts.
+- Few races are genuinely wet (8 needed intermediates or wets since 2023), so wet-weather effects cannot yet be estimated precisely. Forecast-wet calls include many false alarms (11 of 18 since March 2024).
+- The FIA site has returned 404 or Cloudflare challenges for older PDFs; audits reuse retained bytes and re-collect only the current season.

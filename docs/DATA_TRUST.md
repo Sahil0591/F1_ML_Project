@@ -51,8 +51,9 @@ date. There is no invented FIA JSON API or automatic PDF extraction.
 Weather retains forecast initialization, actual availability, capture time and
 target time separately. Initialization or archive presence alone cannot certify
 release. Open-Meteo's model-update metadata distinguishes initialization from
-availability; retrospective release evidence must be independently supported.
-Observed race weather is not a pre-race forecast.
+availability; retrospective release evidence must be independently supported,
+or bounded by the documented release margin below. Observed race weather is not a
+pre-race forecast; it is used only to check forecasts and label past races.
 
 For historical Gold enrichment, FIA practice and grid values require a matching
 retained document-registry row, its publication time, exact PDF hash and cover,
@@ -70,6 +71,34 @@ percent is flagged; certified builds quarantine those session features. FastF1
 generated/deleted/inaccurate/pit laps are excluded. Missing OpenF1 quality flags
 are not proof of clean laps. Practice summaries are observations, not fuel-adjusted
 race pace, stint predictions, or tyre degradation estimates.
+
+### Release margins for archives without publication times (addenda)
+
+Two later addenda use sources that record when data was produced but not when it
+was published. Instead of a per-item certificate they apply a fixed margin that is
+larger than the provider's documented delay, and the rule is replayed on every
+load. These inputs feed only the weather and strategy addenda and the shadow
+predictions, never the frozen protocol v3 contracts.
+
+| Source | Documented delay | Margin used | Audit |
+| --- | --- | --- | --- |
+| Open-Meteo Single Runs archive (ECMWF IFS HRES, 00Z and 12Z) | Global runs public 4 to 6 hours after initialisation | Initialisation plus 12 hours | `scripts/audit-historical-weather.py` |
+| OpenF1 historical race data (stints, pit stops, laps, drivers, track weather) | Free from 30 minutes after a session ends | Race end plus 24 hours | `scripts/audit-strategy-history.py` |
+| OpenF1 historical practice data | Free from 30 minutes after a session ends | Session end plus 2 hours | Same audit, and fetched live for the current weekend |
+
+Both audits retain the response bytes under `data/raw/open_meteo_runs` and
+`data/raw/openf1_strategy`, freeze an audit file named by its content hash, and
+recompute every value from the retained bytes. OpenF1's "no results" 404 is
+retained as an empty session. Race starts come from the audited direct catalog,
+not the Jolpica schedule.
+
+A faithful copy of a forecast can still describe the wrong conditions (the 2024
+Brazil GP was forecast to dry out just before the start and was raced in the wet).
+`scripts/verify-weather.py` therefore compares each archived forecast with the
+tyres teams fitted and the circuit weather station, lists tyre and station
+disagreements for review, and freezes the report under its hash. On 63 races the
+forecast flagged all 7 that needed intermediates or wets, with 11 false alarms;
+forecast temperature was within 1.1 C of the station on average.
 
 ## Audited Outcomes
 

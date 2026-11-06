@@ -7,6 +7,29 @@ sharpness diagnostics, season uncertainty) follow the frozen
 [development predictions](DEVELOPMENT_PREDICTIONS.md). The v2 comparison below is
 unchanged and remains the post-qualifying record.
 
+## The live method in one picture
+
+```mermaid
+flowchart LR
+    R["Contract rows"] --> M["7 strength models<br/>3 Plackett-Luce linear,<br/>4 boosting"]
+    M --> T["Each calibrated:<br/>temperature + shrinkage<br/>towards a uniform order"]
+    T --> E["ensemble_all<br/>equal mixture"]
+    D["DNF model"] --> J
+    E --> J["Joint simulation<br/>(Gumbel race orders,<br/>retirements placed last)"]
+    J --> O["Win, podium, finish,<br/>expected position"]
+```
+
+Calibration parameters are fitted on earlier out-of-fold races only, from the
+grids in protocol v3 (temperatures 0.25 to 8, shrinkage 0 to 0.5). Shadow variants
+change this picture in one place each: `two_stage` pools the calibrated utilities
+and draws the winner with its own temperature, `wet_skill` adds a per-driver wet
+gain to the pooled utility when rain is forecast, and the weather and strategy
+shadows use addendum contracts for the rows. See
+[development predictions](DEVELOPMENT_PREDICTIONS.md#shadow-predictions) and the
+[pipeline overview](PIPELINE.md).
+
+## Phase 8 comparisons (v2 record)
+
 Phase 8 implements bounded comparisons of scikit-learn histogram boosting,
 XGBoost, LightGBM, and CatBoost. Real-world selection requires sufficient eligible
 Gold coverage and independent paired folds. Test fixtures verify software

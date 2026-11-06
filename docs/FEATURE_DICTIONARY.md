@@ -99,6 +99,71 @@ and constructor points windows stay null pending a complete audited scoring ledg
 covering race and sprint awards and revisions. Each added numeric feature has a
 missing flag; window features preserve observation counts and per-row reasons.
 
+## Cutoff contracts (protocol v3) and addenda
+
+Live predictions and `evaluate-cutoffs` use the cutoff contracts in
+`src/f1_ml_predictor/prediction/contracts.py` (`cutoff-contracts-v3`), not the
+snapshot builder above. Every contract shares 32 history predictors (driver and
+constructor form windows, audited DNF rates, championship points and positions
+from the scoring ledger, circuit history, Elo ratings, teammate qualifying
+head-to-head and similar-circuit deltas) and 11 counts; each later cutoff adds
+weekend values that were published by then. Every numeric predictor has a
+`_missing` flag, and each value carries its own publication clock, which must be
+at or before the cutoff.
+
+```mermaid
+flowchart LR
+    H["History: 32 predictors<br/>+ 11 counts"] --> PW["pre_weekend (32)"]
+    PW --> PP["post_practice (36)<br/>+ practice position, gap to fastest,<br/>teammate delta, relative rank"]
+    PP --> PQ["post_qualifying (42)<br/>+ qualifying position and time,<br/>teammate delta, sprint values"]
+    PQ --> PR["pre_race (43)<br/>+ grid position"]
+    PR -.-> GA["provisional_grid (45)<br/>+ grid places lost, pit-lane start"]
+    PQ -.-> WA["post_qualifying_weather (46)<br/>+ 4 forecast values"]
+    WA -.-> SA["post_qualifying_strategy (53)<br/>+ 7 tyre, pit and long-run values"]
+```
+
+Numbers are numeric predictors; dashed contracts are addenda used only as shadows
+(see the [pipeline overview](PIPELINE.md#cutoffs-and-contracts)).
+
+### Weather addendum predictors (`weather-addendum-v2`)
+
+Race-level values, the same for every driver, from the archived ECMWF IFS HRES
+run (00Z or 12Z) initialised at least 12 hours before the cutoff. They also enter
+the DNF model. Races before 14 March 2024 leave them missing.
+
+| Predictor | Definition |
+| --- | --- |
+| `forecast_pre_race_precipitation_mm` | Forecast rain summed over the six hourly values up to the audited race start |
+| `forecast_race_precipitation_mm` | Forecast rain summed over the first two race hours |
+| `forecast_temperature_2m` | Forecast air temperature at the first hour from the start, Celsius |
+| `forecast_wind_speed_10m` | Forecast 10 m wind speed at that hour, m/s |
+
+### Strategy addendum predictors (`strategy-addendum-v1`)
+
+From OpenF1 historical data (2023 onwards). A race counts from 24 hours after it
+ends and a practice session from 2 hours after it ends.
+
+| Predictor | Definition |
+| --- | --- |
+| `driver_tyre_degradation_10` | Mean over the driver's last 10 races of the lap-weighted dry-stint slope of lap time against tyre age, minus the race median slope on the same compound (seconds per lap of tyre age) |
+| `constructor_tyre_degradation_10` | The same over the constructor's drivers |
+| `constructor_pit_lane_delta_10` | Mean pit-lane time against each race's normal-stop median over the constructor's last 10 races; red-flag waits and repairs dropped |
+| `circuit_median_stops` | Mean of earlier races' median number of stops at this circuit |
+| `circuit_pit_lane_seconds` | Mean of earlier races' normal pit-lane time at this circuit |
+| `practice_long_run_gap` | This weekend's latest practice session with at least six long-running drivers: the driver's long-run median lap against the field median on the same compound, averaged over compounds (seconds) |
+| `practice_long_run_degradation` | That session's long-run slope against the field |
+
+A clean lap excludes out-laps, laps more than 5% slower than the stint median
+(safety car, slow in-laps) and, in races, the lap of each pit stop. A race stint
+needs six clean laps on a dry compound; a practice long run five.
+
+### Wet labels
+
+The `wet_skill` shadow labels a past race wet when any car fitted intermediates
+or wets (OpenF1 stints), and falls back to the forecast (at least 0.5 mm before or
+during) only where no tyre record exists. `scripts/verify-weather.py` compares the
+forecast, the tyre label and the circuit weather station for every race.
+
 ## Manifest and CLI
 
 Run `python -m f1_ml_predictor build-snapshot <manifest.json> --root <workspace>`.

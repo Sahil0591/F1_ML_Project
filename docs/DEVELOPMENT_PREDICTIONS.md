@@ -75,7 +75,7 @@ DNF-aware uniform race order, fitted only on earlier out-of-fold races, so winne
 podium, finish and DNF stay coherent. No probability floor is imposed.
 
 DNF uses the candidate with the best out-of-fold Brier score on audited binary
-labels (1,506 after the [v2 expansion](DNF_AUDIT_STATUS.md)). If that is the base
+labels (1,589 for the 99 current Gold races; see [DNF audit status](DNF_AUDIT_STATUS.md)). If that is the base
 rate, every driver gets the same DNF probability and the report labels it as a
 field-wide rate rather than an individualised prediction.
 
@@ -179,29 +179,31 @@ points table or the run stops.
 
 After a `post_qualifying` or `pre_race` race run, `predict-next-race` freezes
 shadow variants under `data/predictions/development/shadows/<event>/<run id>.json`
-and prints them below the report (`--no-shadows` skips them). They never change
-the official outputs:
+and prints them below the report (`--no-shadows` skips them). They are written
+after the official outputs, never change them, and a shadow failure never fails
+the run. Each file records the forecast the shadows were given (the ECMWF run the
+historical audit rule picks for this cutoff) and the official numbers they are
+compared with.
 
-- `two_stage`: the official members pooled into one utility, with one temperature
-  for the winner and another for the rest of the order, fitted on the contract's
-  out-of-fold history (cached next to it).
-- `wet_skill`: the pooled members plus each driver's wet-minus-dry gain over the
-  official out-of-fold expectation (shrunk towards zero, weight fitted on earlier
-  races that used intermediates or wets), applied only when the forecast has at least 0.5 mm of rain
-  in the six hours before the start and the first two race hours. On a dry
-  forecast it is the pooled model without the bonus.
-- `weather`: the `post_qualifying_weather` addendum with the ECMWF run the
-  historical audit rule picks for this cutoff. It is skipped when no weather audit
-  matches the current Gold races; re-run `scripts/audit-historical-weather.py`
-  after each new Gold race.
+| Shadow | Method | Needs |
+| --- | --- | --- |
+| `two_stage` | The official members pooled into one utility, with one temperature for the winner and another for the rest of the order, fitted on the contract's out-of-fold history | Nothing extra |
+| `wet_skill` | The pooled members plus each driver's wet-minus-dry gain over the official out-of-fold expectation, shrunk towards zero, learned from races that used intermediates or wets; applied only when the forecast has at least 0.5 mm of rain in the six hours before the start plus the first two race hours | Weather audit |
+| `weather` | The `post_qualifying_weather` addendum | Weather audit |
+| `strategy` | The `post_qualifying_strategy` addendum, with this weekend's practice fetched from OpenF1 once each session is past its 2 hour margin | Weather and strategy audits |
 
-- `strategy`: the `post_qualifying_strategy` addendum (tyre, pit-stop and practice
-  long-run predictors from OpenF1) with this weekend's practice fetched once each
-  session is past its 2 hour margin. It needs the strategy and weather audits for
-  the current Gold races (see the [strategy addendum](STRATEGY_ADDENDUM_2026-11-06.md)).
+A shadow that needs an audit is skipped, with the reason recorded, when no audit
+matches the current Gold races; re-run `scripts/audit-historical-weather.py` and
+`scripts/audit-strategy-history.py` after each new Gold race. None passed the Gold
+gate (see the [weather](WEATHER_FORECAST_ADDENDUM_2026-11-06.md) and
+[strategy](STRATEGY_ADDENDUM_2026-11-06.md) addenda); they exist to be scored on
+races they have not seen.
 
-None passed the Gold gate (see the
-[weather addendum](WEATHER_FORECAST_ADDENDUM_2026-11-06.md)); they are scored on
-races they have not seen. `scripts/score-shadows.py` scores every shadow file
-whose race is in the Gold registry and averages the races where all variants were
-published.
+After the race, `scripts/score-shadows.py` scores every shadow file whose race is
+in the Gold registry (winner log loss, whether the favourite won, podium Brier,
+podium hits, finishing MAE), reports the forecast against the tyres fitted and the
+circuit weather station, and averages each shadow's difference from the official
+run over the races where both were published. The race page's Shadow Predictions
+tab shows the same data. A rehearsal (rebuilt after a race to show the layout,
+marked by `publish_shadows(..., rehearsal=...)`) is labelled as one in the web app
+and never scored.

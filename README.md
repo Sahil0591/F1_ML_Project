@@ -1,146 +1,77 @@
 # F1 ML Project
 
-This repository is building point-in-time Formula 1 race and championship predictions.
-The first prediction snapshot is after qualifying and before the race. See the
-[project plan](docs/PROJECT_PLAN.md) for data sources, architecture, phases, and
-acceptance criteria.
+Point-in-time Formula 1 race and championship predictions. Every prediction uses
+only information that was public before its cutoff, and every training race is
+audited from official FIA documents.
 
-## Local setup
+**Status (6 November 2026):** development predictions are published for each
+2026 race weekend, trained on 99 audited Gold races (2022 to the 2026 Mexico
+City GP). No model has passed the formal selection gate yet, so every output is
+labelled `development_only`, not a validated forecast. Candidate improvements
+(weather, wet-weather skill, tyre and pit strategy, a sharper winner draw) run as
+**shadow predictions** next to the official one and are scored on new races.
 
-Use Python 3.11 or newer. From the repository root:
+Start with the [pipeline overview](docs/PIPELINE.md): it has diagrams of the data
+flow, trust rules, model, shadows, and the race-weekend and post-race checklists.
+
+```mermaid
+flowchart LR
+    S["FIA, formula1.com,<br/>Jolpica, OpenF1, Open-Meteo"] --> A["Audits<br/>(hash-bound evidence)"]
+    A --> G["Gold races and<br/>contract datasets"]
+    G --> E["evaluate-cutoffs<br/>(protocol v3)"]
+    E --> P["predict-next-race<br/>official + shadows"]
+    P --> W["export-web<br/>React app"]
+    P --> C["score-shadows.py<br/>after the race"]
+```
+
+## Setup
+
+Python 3.11 or newer, from the repository root:
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.\.venv\Scripts\python.exe -m pip install -e ".[xgboost,catboost,lightgbm,audit]"
+```
+
+Checks (all must pass before a commit):
+
+```powershell
 .\.venv\Scripts\python.exe -m pytest
 .\.venv\Scripts\python.exe -m ruff check .
 .\.venv\Scripts\python.exe -m ruff format --check .
 .\.venv\Scripts\python.exe -m mypy
+cd web; npm run typecheck; npm run lint; npm run test
 ```
 
-## Historical ingestion
+Tests use mocks and need no network access.
+
+## On a race weekend
 
 ```powershell
-.\.venv\Scripts\python.exe -m f1_ml_predictor ingest-season 2025
-```
+# Any time before qualifying: pre-weekend prediction
+.\.venv\Scripts\python.exe -m f1_ml_predictor predict-next-race
 
-Historical data is cached under `data/raw/jolpica`; typed Parquet tables go to
-`data/normalized`. Reruns skip unchanged historical data. Use `--refresh` to
-recheck an older season; current and future seasons refresh automatically.
-Run one ingestion process at a time to share the API request budget.
-
-## Session and forecast enrichment
-
-```powershell
-.\.venv\Scripts\python.exe -m f1_ml_predictor list-openf1-sessions 2025
-.\.venv\Scripts\python.exe -m f1_ml_predictor ingest-openf1-session 2025 1 9689
-.\.venv\Scripts\python.exe -m pip install -e ".[dev,fastf1]"
-.\.venv\Scripts\python.exe -m f1_ml_predictor ingest-fastf1-session 2025 1 Q
-```
-
-Ingest the Jolpica season first to establish event and driver-number crosswalks.
-OpenF1 session keys come from API discovery. Only completed practice and qualifying
-sessions are accepted. FastF1 loads lap timing and race-control metadata, not car
-telemetry. Cached responses and content-addressed Parquet summaries are reused.
-
-`capture-forecast <season> <round>` captures Open-Meteo weather for an event within
-the next seven days. Archived model runs require explicit release-time evidence
-through the Python client; model initialization alone is not publication proof.
-FIA document URLs and publication times can be recorded with `record_fia_evidence`.
-
-Normal tests use mocks and do not require external APIs. The project does not
-produce predictions yet. Retrospectively fetched sessions keep their capture-time
-availability; historical Jolpica publication times remain unknown. Strict backtests
-must exclude unsupported historical inputs rather than backdate them.
-
-## Pre-race features
-
-`build-snapshot <manifest.json>` creates deterministic Parquet features from verified
-as-of input versions. It rejects unknown/late required publications, excludes current
-and future race results, and leaves unavailable optional features missing. See the
-[feature dictionary](docs/FEATURE_DICTIONARY.md) for input contracts and manifest fields.
-
-An evidence manifest binds publication times to exact file hashes. It is not a way to
-backdate present-day downloads. Real training/backtests await verified historical
-snapshots or a prospective archive; offline fixture tests are not model-performance
-evidence.
-
-## Data Trust and Prospective Collection
-
-Evidence classes and Gold/Silver/Development certification now propagate into
-feature snapshots. Audited DNF categories, provider arbitration, explicit cutoffs,
-pit-lane starts and cancelled qualifying preserve provenance and missingness.
-See [data trust](docs/DATA_TRUST.md) for the audit contract and capture-plan format.
-
-`capture-weekend <plan.json>` freezes fresh pre-race API payloads;
-`verify-capture <bundle>` checks their integrity. No scheduler is armed and no past
-race is relabelled as a live capture. Benchmarks and baseline evaluation follow;
-historical evidence coverage remains the gate for primary accuracy claims.
-
-## Benchmark Datasets
-
-Run `build-benchmarks` to scan locally ingested race partitions, or pass
-`--catalog <catalog.json>` with feature/outcome Parquet paths, exact SHA-256 values,
-prediction timestamps, and cutoff kinds. The command writes Gold, Silver, and
-Development datasets plus `manifest.json` and `coverage.json` under
-`data/benchmarks`. Gold is the primary accuracy tier. Current local coverage is
-zero included and 24 excluded races: no feature snapshots or final audited outcome
-files are registered. The builder does not upgrade retrospective rows to fill them.
-
-## Baseline Backtests
-
-Run `backtest --tier Gold` after building benchmarks. The evaluator creates rolling
-race/cutoff cohorts, fits imputation and logistic/regression pipelines within each
-training fold, and gates training rows on audited label publication time. It writes
-metrics under `models/backtests` and out-of-fold predictions under
-`data/predictions/backtests`. Empty or undersized tiers return `insufficient_data`
-without accuracy metrics. Silver and Development results remain exploratory;
-fixture checks are not performance claims.
-
-## Probabilistic Race Models
-
-`compare-models --tier Gold` runs bounded histogram boosting and available optional
-XGBoost, LightGBM, and CatBoost configurations on chronological race folds. An earlier
-race calibrates DNF probabilities and race-order temperature. Winner, podium, DNF,
-and finish distributions come from one seeded joint simulation. Paired baseline
-comparisons record regressions and race-bootstrap intervals. The current 95-race
-Gold benchmark supports 92 paired outer test races. Audited binary DNF is a
-separate 29-race version. Each task currently remains `no_selection` because of
-baseline regressions or uncertain improvement, and validated forecasts stay gated.
-Benchmark manifests and data are copied to immutable `versions/dataset-<hash>`
-directories, while each model run gets a unique run ID. `publish-development`
-exports a coherent, label-free historical outer-fold race as `development_only`.
-
-Optional backends can be installed with `pip install -e ".[xgboost,catboost,lightgbm]"`.
-`model-hardware --workload-rows 32000` checks actual driver/runtime/library support and
-benchmarks CPU/GPU fits. `compare-models --device auto` uses a recent matching probe
-only when the workload and measured speed justify GPU training. CPU fallback and
-CUDA-independent offline tests remain supported. See [modeling](docs/MODELING.md)
-for calibration, selection, artifact, GPU, and distribution limitations.
-
-## Development Predictions
-
-```powershell
-.\.venv\Scripts\python.exe -m f1_ml_predictor evaluate-cutoffs
+# After qualifying, before the race: post-qualifying prediction plus shadows
 .\.venv\Scripts\python.exe -m f1_ml_predictor predict-next-race
 ```
 
-`evaluate-cutoffs` runs the frozen cutoff-specific protocol v3 for the
-`pre_weekend`, `post_practice`, `post_qualifying` and `pre_race` contracts.
-`predict-next-race` ticks the prospective collector, picks the contract for the
-current cutoff, freezes a point-in-time snapshot, and publishes calibrated race
-probabilities, a development WDC/WCC simulation with model-uncertainty worlds, OOD
-and sharpness diagnostics, and `report.md` under
-`data/predictions/development/next_race/`. Rerun it after qualifying to switch to
-the post-qualifying contract. On a sprint weekend, a run after sprint qualifying
-publishes a development sprint race prediction instead (see
-[sprint weekends](docs/DEVELOPMENT_PREDICTIONS.md#sprint-weekends)).
-`build-gold-sprints` audits historical sprint grids and classifications from FIA
-documents into the Gold sprint history those predictions train on. Every output is `development_only`, not a validated
-forecast. See [development predictions](docs/DEVELOPMENT_PREDICTIONS.md) and
-[protocol v3](docs/EVALUATION_PROTOCOL_V3.md).
+`predict-next-race` runs one collector tick, picks the contract for the current
+cutoff (pre-weekend, sprint, post-qualifying or pre-race), fits the models on
+Gold races before the cutoff and publishes race probabilities, a season
+simulation and `report.md` under `data/predictions/development/next_race/`. After
+a post-qualifying or pre-race run it also freezes the shadow predictions and
+prints them under the report (`--no-shadows` skips them). The Windows scheduled
+collector is disabled, so these runs are made by hand. Details:
+[development predictions](docs/DEVELOPMENT_PREDICTIONS.md).
 
-## Web Frontend
+## After a race
+
+A fixed chain of audits brings the new race into Gold, refreshes the weather,
+strategy and results data, and scores the shadows. The ordered checklist with
+every command is in [the pipeline overview](docs/PIPELINE.md#after-the-race).
+
+## Web frontend
 
 ```powershell
 .\.venv\Scripts\python.exe -m f1_ml_predictor export-web
@@ -149,17 +80,56 @@ npm install
 npm run dev
 ```
 
-`export-web` verifies the hashes and probability contracts of every
-cutoff-specific run under `data/predictions/development/next_race/` and writes
-display-ready JSON to `web/public/data/` (index, one file per race and cutoff,
-and one season file). The Vite, React and TypeScript app in `web/` renders the
-P1 to P22 predicted order, race probabilities, the projected Drivers and
-Constructors Championships, actual results from the existing Jolpica ingestion
-and model details. It never computes predictions. `npm run build` writes a static
-site to `web/dist`; `npm run typecheck`, `npm run lint` and `npm run test` are the
-frontend checks. Routes, the artifact flow, derived fields and deployment notes
-are in [web frontend](docs/WEB_FRONTEND.md).
+`export-web` verifies every run's hashes and probability contracts and writes
+display-ready JSON to `web/public/data/`. The React app shows the predicted order,
+race probabilities, both championships, the actual result against the
+prediction, the shadow predictions and model details; it never computes
+predictions. Stop the dev server before re-exporting on Windows. See
+[web frontend](docs/WEB_FRONTEND.md).
+
+## Documentation
+
+| Document | What it covers |
+| --- | --- |
+| [Pipeline overview](docs/PIPELINE.md) | Diagrams, trust rules, contracts, shadows, weekend and post-race checklists |
+| [Data trust](docs/DATA_TRUST.md) | Evidence classes, tiers, publication rules for every source |
+| [Gold workflow](docs/GOLD_WORKFLOW.md) | How races are audited into Gold |
+| [Feature dictionary](docs/FEATURE_DICTIONARY.md) | Every predictor and its availability rule |
+| [Protocol v3](docs/EVALUATION_PROTOCOL_V3.md) | The frozen evaluation, calibration and selection method |
+| [Modeling](docs/MODELING.md) | Candidate models, calibration, joint simulation |
+| [Development predictions](docs/DEVELOPMENT_PREDICTIONS.md) | `predict-next-race`, sprints, shadows, outputs |
+| [Simulation](docs/SIMULATION.md) | Championship simulation |
+| [Scoring ledger](docs/SCORING_LEDGER.md) | Audited championship points |
+| [Web frontend](docs/WEB_FRONTEND.md) | Export contract and React app |
+| [Project plan](docs/PROJECT_PLAN.md) | Milestones, decisions, open risks |
+
+Dated reports record individual results and are not edited afterwards:
+[weather addendum](docs/WEATHER_FORECAST_ADDENDUM_2026-11-06.md),
+[strategy addendum](docs/STRATEGY_ADDENDUM_2026-11-06.md),
+[provisional-grid cohort](docs/PROVISIONAL_GRID_COHORT_2026-10-11.md),
+[historical enrichment](docs/GOLD_HISTORICAL_ENRICHMENT_2026-10-01.md),
+[scoring evaluation](docs/SCORING_EVALUATION_2026-10-01.md),
+[DNF audit status](docs/DNF_AUDIT_STATUS.md),
+[baseline regression audit](docs/BASELINE_REGRESSION_AUDIT.md) and the Gold
+recovery and expansion reports.
+
+## Lower-level commands
+
+| Command | Purpose |
+| --- | --- |
+| `ingest-season <season>` | Jolpica schedules, results and standings into `data/normalized` (`--refresh` for an older season) |
+| `list-openf1-sessions`, `ingest-openf1-session`, `ingest-fastf1-session` | Session enrichment (FastF1 needs `.[fastf1]`) |
+| `capture-forecast <season> <round>` | Live Open-Meteo forecast for an event in the next seven days |
+| `collect-next-race`, `collection-status` | One prospective collector tick, and its state |
+| `build-benchmarks`, `backtest`, `compare-models` | Tiered benchmarks and earlier model comparisons |
+| `evaluate-cutoffs [--contracts ...]` | Protocol v3 evaluation per contract, cached by exact inputs |
+| `build-gold-enrichment`, `build-gold-scoring`, `build-gold-sprints` | Gold rebuild steps |
+| `model-hardware` | CPU/GPU probe for the boosting backends |
+| `export-web` | Frontend data |
+
+Run `python -m f1_ml_predictor <command> --help` for options.
 
 ## Graphify
 
-Graphify is configured through a git post-commit hook. After each commit, the hook updates the local knowledge graph outputs in `graphify-out/`.
+A git post-commit hook updates the local knowledge graph in `graphify-out/`
+after each commit.

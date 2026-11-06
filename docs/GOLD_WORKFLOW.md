@@ -346,3 +346,15 @@ Rerun the audit after each new Gold race, because the contract dataset only
 exists when an audit covers exactly the current Gold races. The
 [cohort report](PROVISIONAL_GRID_COHORT_2026-10-11.md) records the first
 evaluation and why live predictions do not use this contract yet.
+
+## Post-race update chain
+
+After each race, the new round enters Gold through a fixed sequence: schedule
+binding, expansion, grid and practice audits, enrichment, the scoring evidence
+collection and ledger, the scoring benchmark, binary DNF, Gold sprints, then the
+weather and strategy audits, forecast verification, the Jolpica season ingest, the
+web export and shadow scoring. The ordered checklist with every command is in the
+[pipeline overview](PIPELINE.md#after-the-race). A substitute driver who has not
+raced before needs an alias entry in `trust/winter.py` before Gold accepts the race,
+and audits reuse retained FIA bytes because the FIA site no longer serves many
+older PDFs.
