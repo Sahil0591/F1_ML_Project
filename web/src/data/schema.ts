@@ -191,6 +191,58 @@ export const actualResultSchema = z.object({
   }),
 });
 
+const shadowScoresSchema = z.object({
+  winner_id: z.string(),
+  winner_probability: probability,
+  winner_log_loss: z.number(),
+  favourite_won: z.boolean(),
+  podium_hits: z.number().int(),
+  position_mae: z.number().nullable(),
+});
+
+export const shadowVariantSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  description: z.string(),
+  backtest: z.string().nullable(),
+  status: z.enum(["published", "skipped"]),
+  reason: z.string().nullable(),
+  applied: z.boolean().nullable().optional(),
+  drivers: z
+    .array(
+      z.object({
+        driver_id: z.string(),
+        winner_probability: probability,
+        podium_probability: probability,
+        expected_position: z.number(),
+      }),
+    )
+    .nullable(),
+  scores: shadowScoresSchema.nullable(),
+});
+
+export const shadowsSchema = z.union([
+  z.object({ invalid_reason: z.string() }),
+  z.object({
+    source_path: z.string(),
+    source_sha256: z.string(),
+    created_at: timestamp,
+    rehearsal: z.string().nullable().optional(),
+    forecast: z.object({
+      status: z.string(),
+      model: z.string().nullable().optional(),
+      run_initialized_at: z.string().nullable().optional(),
+      available_at: z.string().nullable().optional(),
+      rain_before_mm: z.number().nullable(),
+      rain_during_mm: z.number().nullable(),
+      temperature_c: z.number().nullable(),
+      wind_ms: z.number().nullable(),
+      wet: z.boolean().nullable(),
+    }),
+    variants: z.array(shadowVariantSchema),
+  }),
+]);
+
 export const snapshotSchema = z.object({
   schema_version: z.literal(SCHEMA_VERSION),
   kind: z.literal("race_snapshot"),
@@ -281,6 +333,8 @@ export const snapshotSchema = z.object({
       })
       .nullable(),
   }),
+  // Older exports predate shadows; treat a missing field as none.
+  shadows: shadowsSchema.nullable().default(null),
   actual_result: actualResultSchema.nullable(),
 });
 
@@ -355,3 +409,5 @@ export type ActualResult = z.infer<typeof actualResultSchema>;
 export type ClassificationRow = z.infer<typeof classificationRowSchema>;
 export type Season = z.infer<typeof seasonSchema>;
 export type SeasonComparisonRow = z.infer<typeof seasonComparisonRowSchema>;
+export type Shadows = z.infer<typeof shadowsSchema>;
+export type ShadowVariant = z.infer<typeof shadowVariantSchema>;

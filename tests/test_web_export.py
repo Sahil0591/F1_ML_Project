@@ -432,3 +432,68 @@ def test_real_runs_export_with_exact_championship_values() -> None:
                 if snapshot["race"]["predicted_order_available"]:
                     positions = sorted(item["predicted_position"] for item in drivers)
                     assert positions == list(range(1, len(drivers) + 1))
+
+
+def _shadow_file(root: Path, snapshot: dict[str, Any], **changes: Any) -> Path:
+    official = {
+        row["driver_id"]: {
+            "winner": row["winner_probability"],
+            "podium": row["podium_probability"],
+            "expected": row["expected_position"],
+            "dnf": row["dnf_probability"],
+        }
+        for row in snapshot["race"]["drivers"]
+    }
+    sharper = {driver: {**item, "winner": item["winner"] / 2} for driver, item in official.items()}
+    payload = {
+        "official_run_id": "run1",
+        "created_at_utc": "2026-10-04T12:00:00+00:00",
+        "forecast": {
+            "status": "audited",
+            "model": "ecmwf_ifs",
+            "run_initialized_at": "2026-10-03T00:00:00+00:00",
+            "available_at": "2026-10-03T12:00:00+00:00",
+            "values": {
+                "forecast_pre_race_precipitation_mm": 0.4,
+                "forecast_race_precipitation_mm": 0.2,
+                "forecast_temperature_2m": 21.0,
+                "forecast_wind_speed_10m": 2.0,
+            },
+        },
+        "variants": {
+            "official": {"drivers": official},
+            "two_stage": {"drivers": sharper},
+            "weather": {"status": "skipped", "reason": "no audit"},
+        },
+        **changes,
+    }
+    path = root / "data/predictions/development/shadows/season=2026/round=02/run1.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+def test_shadows_are_exported_only_when_they_match_the_run(tmp_path: Path) -> None:
+    make_run(tmp_path)
+    key = "2026/round-02/pre_weekend.json"
+    assert build_export(tmp_path, now=NOW)[key]["shadows"] is None
+    _shadow_file(tmp_path, build_export(tmp_path, now=NOW)[key])
+    shadows = build_export(tmp_path, now=NOW)[key]["shadows"]
+    assert shadows["forecast"]["wet"] is True
+    by_id = {item["id"]: item for item in shadows["variants"]}
+    assert by_id["two_stage"]["status"] == "published"
+    assert by_id["weather"] == {**by_id["weather"], "status": "skipped", "reason": "no audit"}
+    assert by_id["strategy"]["reason"] == "not run"
+    snapshot = build_export(tmp_path, now=NOW)[key]
+    tampered = _shadow_file(tmp_path, snapshot)
+    payload = json.loads(tampered.read_text(encoding="utf-8"))
+    first = next(iter(payload["variants"]["official"]["drivers"]))
+    payload["variants"]["official"]["drivers"][first]["winner"] += 0.1
+    tampered.write_text(json.dumps(payload), encoding="utf-8")
+    exported = build_export(tmp_path, now=NOW)[key]
+    assert "differ from the published run" in exported["shadows"]["invalid_reason"]
+    # The official prediction itself is still exported.
+    assert exported["race"]["drivers"]
+    payload["rehearsal"] = "Rebuilt after the race."
+    tampered.write_text(json.dumps(payload), encoding="utf-8")
+    assert build_export(tmp_path, now=NOW)[key]["shadows"]["rehearsal"] == "Rebuilt after the race."

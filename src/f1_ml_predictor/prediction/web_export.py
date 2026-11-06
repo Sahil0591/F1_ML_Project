@@ -407,6 +407,171 @@ def _comparison(
     }
 
 
+SHADOWS = Path("data/predictions/development/shadows")
+# What each shadow is, and how it did out of fold before going live (docs:
+# WEATHER_FORECAST_ADDENDUM and STRATEGY_ADDENDUM, 2026-11-06).
+SHADOW_VARIANTS = {
+    "two_stage": (
+        "Two-stage",
+        "The official members pooled, with a sharper draw for the winner than for the "
+        "rest of the order.",
+        "Backtest: winner log loss -0.047, not significant; finishing MAE slightly better.",
+    ),
+    "weather": (
+        "Weather",
+        "Adds the archived race forecast (rain before and during, temperature, wind) as "
+        "model inputs.",
+        "Backtest: no change overall.",
+    ),
+    "wet_skill": (
+        "Wet skill",
+        "Lifts drivers who gain in the wet, learned from races that used intermediates or "
+        "wets; switches on only when rain is forecast.",
+        "Backtest on forecast-wet races: winner log loss -0.038, not significant.",
+    ),
+    "strategy": (
+        "Strategy",
+        "Adds tyre degradation, pit-lane time, circuit stops and practice long-run pace "
+        "from OpenF1.",
+        "Backtest: worse, winner log loss +0.031.",
+    ),
+}
+
+
+def _shadow_scores(
+    drivers: dict[str, dict[str, float]], actual: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    """Scores against the ingested classification, on the predicted drivers only."""
+    if actual is None:
+        return None
+    finish = {row["driver_id"]: row for row in actual["rows"] if row["driver_id"] in drivers}
+    winners = [driver for driver, row in finish.items() if row["position"] == 1]
+    if len(winners) != 1:
+        return None
+    winner = winners[0]
+    favourite = max(drivers, key=lambda driver: drivers[driver]["winner"])
+    podium = sorted(drivers, key=lambda driver: -drivers[driver]["podium"])[:3]
+    classified = [
+        driver for driver, row in finish.items() if _classified(row) and row["position"] is not None
+    ]
+    on_podium = {driver for driver in classified if finish[driver]["position"] <= 3}
+    return {
+        "winner_id": winner,
+        "winner_probability": drivers[winner]["winner"],
+        "winner_log_loss": -math.log(max(drivers[winner]["winner"], 1e-15)),
+        "favourite_won": favourite == winner,
+        "podium_hits": len(on_podium & set(podium)),
+        "position_mae": sum(
+            abs(drivers[driver]["expected"] - finish[driver]["position"]) for driver in classified
+        )
+        / len(classified)
+        if classified
+        else None,
+    }
+
+
+def _shadows(
+    root: Path, run: Run, rows: list[dict[str, Any]], actual: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    """Shadow variants frozen with this run, or None when it has none.
+
+    A shadow's official column must equal the published run; a rehearsal (rebuilt
+    after the race from audited history) is shown as one and never as frozen.
+    """
+    path = root / SHADOWS / f"season={run.season}/round={run.round:02d}" / f"{run.run_id}.json"
+    if not path.exists():
+        return None
+    payload = _read_json(path)
+    _require(payload.get("official_run_id") == run.run_id, "shadow names another run")
+    rehearsal = payload.get("rehearsal")
+    official = payload["variants"]["official"]["drivers"]
+    published = {row["driver_id"]: row for row in rows}
+    _require(set(official) == set(published), "shadow roster differs from the run")
+    if rehearsal is None:
+        for driver, item in official.items():
+            _require(
+                abs(item["winner"] - published[driver]["winner_probability"]) <= _TOLERANCE
+                and abs(item["podium"] - published[driver]["podium_probability"]) <= _TOLERANCE,
+                "shadow official values differ from the published run",
+            )
+    forecast = payload["forecast"]
+    values = forecast.get("values") or {}
+    variants = []
+    for name in ("official", *SHADOW_VARIANTS):
+        item = payload["variants"].get(name, {"status": "skipped", "reason": "not run"})
+        label, description, backtest = SHADOW_VARIANTS.get(
+            name,
+            (
+                "Official" if rehearsal is None else "Official model, rebuilt",
+                "The published prediction."
+                if rehearsal is None
+                else "The official method rerun for this rehearsal.",
+                "",
+            ),
+        )
+        drivers = item.get("drivers")
+        if drivers is not None:
+            _require(set(drivers) == set(published), f"shadow {name} roster differs")
+            for values_ in drivers.values():
+                _probability(values_["winner"], f"{name} winner")
+                _probability(values_["podium"], f"{name} podium")
+        variants.append(
+            {
+                "id": name,
+                "label": label,
+                "description": description,
+                "backtest": backtest or None,
+                "status": "published" if drivers is not None else "skipped",
+                "reason": None if drivers is not None else item.get("reason"),
+                "applied": item.get("applied"),
+                "drivers": None
+                if drivers is None
+                else [
+                    {
+                        "driver_id": driver,
+                        "winner_probability": drivers[driver]["winner"],
+                        "podium_probability": drivers[driver]["podium"],
+                        "expected_position": drivers[driver]["expected"],
+                    }
+                    for driver in sorted(drivers)
+                ],
+                "scores": None if drivers is None else _shadow_scores(drivers, actual),
+            }
+        )
+    rain = [
+        values.get("forecast_pre_race_precipitation_mm"),
+        values.get("forecast_race_precipitation_mm"),
+    ]
+    return {
+        "source_path": path.relative_to(root).as_posix(),
+        "source_sha256": file_sha256(path),
+        "created_at": payload["created_at_utc"],
+        "rehearsal": rehearsal,
+        "forecast": {
+            "status": forecast["status"],
+            "model": forecast.get("model"),
+            "run_initialized_at": forecast.get("run_initialized_at"),
+            "available_at": forecast.get("available_at"),
+            "rain_before_mm": rain[0],
+            "rain_during_mm": rain[1],
+            "temperature_c": values.get("forecast_temperature_2m"),
+            "wind_ms": values.get("forecast_wind_speed_10m"),
+            "wet": None if None in rain else sum(rain) >= 0.5,  # type: ignore[arg-type]
+        },
+        "variants": variants,
+    }
+
+
+def _verified_shadows(
+    root: Path, run: Run, rows: list[dict[str, Any]], actual: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    """Shadows, or the reason they failed verification; never fails the official run."""
+    try:
+        return _shadows(root, run, rows, actual)
+    except (ExportError, KeyError, TypeError, ValueError) as exc:
+        return {"invalid_reason": str(exc)}
+
+
 def _ranked(values: dict[str, float], title: dict[str, float]) -> list[str]:
     """Projected order: mean final points, then title probability, then identifier."""
     return sorted(values, key=lambda name: (-values[name], -title[name], name))
@@ -650,6 +815,7 @@ def snapshot(root: Path, run: Run, names: Names, schedule: list[dict[str, Any]])
             "sharpness": manifest["sharpness"]["live"],
             "historical": _historical(root, manifest),
         },
+        "shadows": _verified_shadows(root, run, drivers, actual),
         "actual_result": None
         if actual is None
         else {

@@ -79,6 +79,9 @@ def main() -> None:
     for path in sorted((root / "data/predictions/development/shadows").glob("*/*/*.json")):
         payload = json.loads(path.read_text(encoding="utf-8"))
         event = payload["event_id"]
+        if payload.get("rehearsal") is not None:
+            # Rebuilt after the race, so it is not a test on an unseen race.
+            continue
         if event not in outcomes:
             races.append({"event_id": event, "status": "awaiting_gold_outcome"})
             continue

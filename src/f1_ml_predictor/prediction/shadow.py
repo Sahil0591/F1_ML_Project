@@ -535,8 +535,12 @@ def publish_shadows(
     draws: int,
     seed: int,
     http_client: httpx.Client | None = None,
+    rehearsal: str | None = None,
 ) -> dict[str, Any]:
-    """Freeze the shadow variants for one official race run."""
+    """Freeze the shadow variants for one official race run.
+
+    ``rehearsal`` marks a replay rebuilt after the fact, which is never scored.
+    """
     unseen = not bool(rows[0]["circuit_seen_before"])
     variants: dict[str, Any] = {"official": {"drivers": _summary(rows, official)}}
     components = model.components(rows, unseen)
@@ -658,6 +662,8 @@ def publish_shadows(
         },
         "variants": variants,
     }
+    if rehearsal is not None:
+        payload["rehearsal"] = rehearsal
     path = root / _OUTPUT / event.partition() / f"{run_id}.json"
     _immutable(path, _json(payload))
     return {"path": path.relative_to(root).as_posix(), "forecast": payload["forecast"]}

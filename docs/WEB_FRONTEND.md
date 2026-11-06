@@ -115,3 +115,17 @@ browser.
 
 Branding is original. No Formula 1 logos, fonts, CSS or imagery are used; team
 colours are plain identification stripes.
+
+## Shadow predictions tab
+
+Each race snapshot carries `shadows` when `data/predictions/development/shadows/`
+holds a file for its run ID (see [development predictions](DEVELOPMENT_PREDICTIONS.md)).
+The exporter checks that the file names the run, covers the same drivers and, unless
+it is marked as a rehearsal, that its official column equals the published win and
+podium chances. A file that fails is exported as `invalid_reason` and the official
+prediction is unaffected. Once the classification is ingested, each version is
+scored on the winner's chance, whether the favourite won, podium hits and
+finishing MAE. The tab shows the forecast the shadows were given, what each version
+is and how it did in the backtest, and win and podium chances with the gap to the
+official ones. A rehearsal (rebuilt after the race) is labelled as one and is never
+scored by `scripts/score-shadows.py`.

@@ -6,6 +6,7 @@ import { EventHero } from "../components/EventHero";
 import { LineChart } from "../components/LineChart";
 import { ModelDetails } from "../components/ModelDetails";
 import { RaceNavigator } from "../components/RaceNavigator";
+import { ShadowPanel } from "../components/ShadowPanel";
 import { PredictedOrderTable, RaceProbabilitiesTable } from "../components/RaceTables";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import { Tabs } from "../components/Tabs";
@@ -21,6 +22,7 @@ const RACE_TABS = [
   { id: "wdc", label: "Drivers Championship" },
   { id: "wcc", label: "Constructors Championship" },
   { id: "result", label: "Actual Result" },
+  { id: "shadows", label: "Shadow Predictions" },
   { id: "model", label: "Model Details" },
 ] as const;
 
@@ -143,6 +145,7 @@ export function RacePage({ index }: { index: ExportIndex }) {
                 <ChampionshipTable kind="wcc" championship={snapshot.data.championship} />
               ) : null}
               {tab === "result" ? <ActualResultPanel snapshot={snapshot.data} /> : null}
+              {tab === "shadows" ? <ShadowPanel snapshot={snapshot.data} /> : null}
               {tab === "model" ? <ModelDetails snapshot={snapshot.data} /> : null}
             </Tabs>
           </>
