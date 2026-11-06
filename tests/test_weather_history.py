@@ -20,14 +20,18 @@ START = datetime(2025, 3, 16, 4, 0, tzinfo=UTC)
 
 
 def _payload(start: datetime, rain: list[float | None]) -> dict:
-    times = [start - timedelta(hours=2) + timedelta(hours=hour) for hour in range(6)]
+    """Twelve hourly values from eight hours before the start.
+
+    ``rain`` covers the valid times from two hours before to three hours after.
+    """
+    times = [start - timedelta(hours=8) + timedelta(hours=hour) for hour in range(12)]
     return {
         "utc_offset_seconds": 0,
         "hourly": {
             "time": [at.strftime("%Y-%m-%dT%H:%M") for at in times],
-            "temperature_2m": [15.0, 16.0, 17.0, 18.0, 19.0, 20.0],
-            "precipitation": rain,
-            "wind_speed_10m": [1.0, 2.0, 7.5, 4.0, 5.0, 6.0],
+            "temperature_2m": [10.0] * 8 + [17.0, 18.0, 19.0, 20.0],
+            "precipitation": [0.0] * 6 + rain,
+            "wind_speed_10m": [1.0] * 8 + [7.5, 4.0, 5.0, 6.0],
         },
     }
 
@@ -44,14 +48,17 @@ def test_run_is_the_latest_main_run_released_with_margin() -> None:
 
 def test_race_window_sums_the_hours_after_the_start() -> None:
     values = race_weather(_payload(START, [9.0, 9.0, 0.5, 1.5, 2.0, 9.0]), START)
-    # Valid times start+1h and start+2h hold the rain that fell during the race.
+    # Valid times start+1h and start+2h hold the rain that fell during the race;
+    # the six valid times up to the start hold the rain that soaked the track.
     assert values == {
         "forecast_temperature_2m": 17.0,
         "forecast_wind_speed_10m": 7.5,
         "forecast_race_precipitation_mm": 3.5,
+        "forecast_pre_race_precipitation_mm": 18.5,
     }
     gap = race_weather(_payload(START, [0.0, 0.0, 0.0, None, 0.0, 0.0]), START)
     assert gap["forecast_race_precipitation_mm"] is None
+    assert gap["forecast_pre_race_precipitation_mm"] == 0.0
 
 
 def test_audit_replays_retained_bytes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

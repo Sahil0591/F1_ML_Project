@@ -99,6 +99,7 @@ PENALTY_NUMERIC = ("grid_places_lost", "pit_lane_start")
 # Weather addendum: race-level forecast values, the same for every driver.
 WEATHER_NUMERIC = (
     "forecast_race_precipitation_mm",
+    "forecast_pre_race_precipitation_mm",
     "forecast_temperature_2m",
     "forecast_wind_speed_10m",
 )

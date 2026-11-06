@@ -27,11 +27,13 @@ RELEASE_MARGIN = timedelta(hours=12)
 RUN_HOURS = (0, 12)
 VARIABLES = ("temperature_2m", "precipitation", "wind_speed_10m")
 RACE_HOURS = 2
+# Rain in the hours before the start leaves the track wet even if it stops.
+PRE_RACE_HOURS = 6
 AVAILABILITY_EVIDENCE = (
     "Open-Meteo Single Runs API: global model output is generally available 4-6 hours "
     "after initialisation; a 12 hour margin bounds publication"
 )
-AUDIT_VERSION = "weather-forecast-audit-v1"
+AUDIT_VERSION = "weather-forecast-audit-v2"
 _RAW = Path("data/raw/open_meteo_runs")
 _AUDITS = Path("data/benchmarks/historical_audit")
 
@@ -44,10 +46,11 @@ def forecast_run(cutoff: datetime) -> datetime:
 
 
 def race_weather(payload: dict[str, Any], race_start: datetime) -> dict[str, float | None]:
-    """Temperature and wind at the first hour from the start; rain over the race window.
+    """Temperature and wind at the first hour from the start; rain before and during.
 
     Open-Meteo precipitation at a valid time is the sum over the preceding hour,
-    so the race window is the RACE_HOURS valid times after the start.
+    so the race window is the RACE_HOURS valid times after the start and the
+    pre-race window the PRE_RACE_HOURS valid times up to the start.
     """
     if payload.get("utc_offset_seconds", 0) != 0:
         raise ValueError("forecast response must use UTC")
@@ -81,6 +84,11 @@ def race_weather(payload: dict[str, Any], race_start: datetime) -> dict[str, flo
         if race_start < at <= race_start + timedelta(hours=RACE_HOURS)
     ]
     rain = [value("precipitation", index) for index in window]
+    before = [
+        value("precipitation", index)
+        for index, at in enumerate(times)
+        if race_start - timedelta(hours=PRE_RACE_HOURS) < at <= race_start
+    ]
     return {
         "forecast_temperature_2m": None if start is None else value("temperature_2m", start),
         "forecast_wind_speed_10m": None if start is None else value("wind_speed_10m", start),
@@ -88,6 +96,11 @@ def race_weather(payload: dict[str, Any], race_start: datetime) -> dict[str, flo
             None
             if len(window) != RACE_HOURS or any(item is None for item in rain)
             else float(sum(rain))  # type: ignore[arg-type]
+        ),
+        "forecast_pre_race_precipitation_mm": (
+            None
+            if len(before) != PRE_RACE_HOURS or any(item is None for item in before)
+            else float(sum(before))  # type: ignore[arg-type]
         ),
     }
 

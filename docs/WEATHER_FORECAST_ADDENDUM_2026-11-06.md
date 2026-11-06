@@ -21,17 +21,21 @@ HRES run per Gold race from the Open-Meteo
 - Response bytes are retained under `data/raw/open_meteo_runs/objects`. Every
   value is replayed from them when Gold history loads.
 
-The audit `weather-forecast-audit-ba9063c6...` covers all 99 Gold races: 63
-audited and 36 before the archive. Eight races had at least 0.5 mm forecast
-over the first two race hours, among them Canada and Britain 2024, Australia and
-Belgium 2025, and 2026 rounds 4 and 16.
+The audit `weather-forecast-audit-ec1b1b0c...` covers all 99 Gold races: 63
+audited and 36 before the archive. Rain is measured over the first two race hours
+and over the six hours before the start, since a soaked track stays wet. The
+first version counted only the race hours and called Brazil 2024 dry: its forecast
+had rain all morning (2.8 mm in the six hours before the start) easing just
+before the start. With both windows, 18 races had at least 0.5 mm forecast,
+against 8 before; some, such as Miami 2024, were probably dry by the start.
 
 ## Contract
 
-`post_qualifying_weather` is addendum `weather-addendum-v1` to protocol v3. It
+`post_qualifying_weather` is addendum `weather-addendum-v2` to protocol v3. It
 uses the post-qualifying cutoff and predictors and adds
-`forecast_race_precipitation_mm`, `forecast_temperature_2m` and
-`forecast_wind_speed_10m`, on the forecast's release clock. The DNF model also
+`forecast_race_precipitation_mm`, `forecast_pre_race_precipitation_mm`,
+`forecast_temperature_2m` and `forecast_wind_speed_10m`, on the forecast's
+release clock. The DNF model also
 gets them. Run it with
 `evaluate-cutoffs --contracts post_qualifying post_qualifying_weather`.
 
@@ -42,16 +46,20 @@ race bootstrap):
 
 | Model | Races | Winner log loss | Podium Brier | Position MAE |
 | --- | ---: | ---: | ---: | ---: |
-| ensemble_all | 96 | -0.001 [-0.009, +0.007] | +0.0001 [-0.0002, +0.0003] | +0.003 [-0.001, +0.007] |
-| ensemble_all | 8 wet | +0.040 [+0.003, +0.078] | +0.0013 [+0.0002, +0.0025] | -0.004 [-0.018, +0.008] |
-| selected_pipeline | 96 | +0.003 [-0.008, +0.013] | -0.0001 [-0.0005, +0.0003] | +0.001 [-0.004, +0.006] |
+| ensemble_all | 96 | -0.002 [-0.012, +0.006] | +0.0001 [-0.0002, +0.0003] | +0.002 [-0.001, +0.007] |
+| ensemble_all | 18 wet | -0.002 [-0.044, +0.030] | +0.0002 [-0.0006, +0.0009] | +0.004 [-0.006, +0.016] |
+| selected_pipeline | 96 | +0.003 [-0.006, +0.013] | -0.0001 [-0.0004, +0.0003] | +0.002 [-0.004, +0.007] |
 
-Logistic DNF Brier is worse with weather (+0.019 [+0.001, +0.046]).
+Logistic DNF Brier is worse with weather (+0.020 [+0.001, +0.047]). The race-only
+first version was worse on its 8 wet races (ensemble winner log loss +0.040).
 
-Forecast-wet races were not less predictable either. Widening the race-order
-temperature by a factor of 1.4 to 2.8 on those races raised their mean
-calibration objective from 1.98 to between 2.24 and 3.10, so a rain-variance
-rule is not supported. Favourites won most of them.
+Race-level weather is the same for every driver, so it cannot say who gains in
+the wet. Against the official out-of-fold expectations, drivers differ in the
+wet: over the 18 wet races Verstappen finished 1.3 places further ahead of the
+expectation than in dry races (95% bootstrap +0.16 to +2.57), as did Norris
+(+1.7) and Hulkenberg (+2.0), while Russell and Leclerc leaned the other way.
+Nineteen drivers were compared, so one such interval is expected by chance. A
+per-driver wet skill applied when rain is forecast is the next test.
 
 Live predictions keep the frozen `post_qualifying` and `pre_race` contracts. Re-run
 the weather audit after each new Gold race; a new audit is needed whenever the

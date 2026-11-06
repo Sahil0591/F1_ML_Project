@@ -118,7 +118,7 @@ CONTRACTS: tuple[str, ...] = (*CUTOFFS, GRID_CONTRACT)
 # race for race with the frozen post_qualifying contract.
 WEATHER_CONTRACT = "post_qualifying_weather"
 WEATHER_ADDENDUM = {
-    "version": "weather-addendum-v1",
+    "version": "weather-addendum-v2",
     "base_protocol": PROTOCOL_V3_VERSION,
     "base_protocol_sha256": PROTOCOL_V3_SHA256,
     "tier": "Gold",
@@ -130,6 +130,8 @@ WEATHER_ADDENDUM = {
     "weather_inputs": {
         "forecast_race_precipitation_mm": "forecast precipitation summed over the two hours "
         "after the audited race start",
+        "forecast_pre_race_precipitation_mm": "forecast precipitation summed over the six "
+        "hours up to the audited race start, since a soaked track stays wet",
         "forecast_temperature_2m": "forecast air temperature at the first hour from the start",
         "forecast_wind_speed_10m": "forecast 10 m wind speed, m/s, at that hour",
     },
