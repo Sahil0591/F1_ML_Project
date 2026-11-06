@@ -64,3 +64,36 @@ per-driver wet skill applied when rain is forecast is the next test.
 Live predictions keep the frozen `post_qualifying` and `pre_race` contracts. Re-run
 the weather audit after each new Gold race; a new audit is needed whenever the
 Gold race set changes.
+
+## Verification against the track
+
+`scripts/verify-weather.py` compares, for every race with both audits, the
+archived forecast (what the model sees) with tyres actually fitted (the wet
+label) and the circuit weather station from OpenF1 (share of readings with rain
+falling, and air temperature; part of `strategy-audit-v2`). Tyre and station
+disagreements are listed for review, and the report is frozen under its hash.
+Run it after the post-race audits; `score-shadows.py` reports the same three
+sources for each scored race.
+
+On the 63 races from March 2024 (report `weather-verification-c034991a...`):
+
+| | Tyres wet | Tyres dry |
+| --- | ---: | ---: |
+| Forecast wet | 7 | 11 |
+| Forecast dry | 0 | 45 |
+
+- The forecast, with rain before and during the race, flagged every race that
+  needed intermediates or wets, including Brazil 2024 (station: rain in 58% of
+  readings; race-window forecast 0.0 mm). It also raised 11 false alarms, such as
+  2026 round 4 (34 mm forecast, no intermediates).
+- Tyres and station agree on 62 of 63 races; Britain 2025 used intermediates with
+  rain in 18% of readings (a wet start that dried), below the 25% station
+  threshold but not a contradiction.
+- Forecast air temperature at the start was within 1.1 C of the station on
+  average (bias -0.3 C) and never more than 5 C out.
+
+So the archived values are checked twice: replayed from the retained ECMWF bytes
+(it is what the forecast said, published before the cutoff) and compared with
+the track (how often what it said happened). Wet skill learns from fitted tyres;
+only the live switch uses the forecast, and its false alarms count against it in
+the shadow scorecard.

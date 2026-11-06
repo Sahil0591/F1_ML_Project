@@ -3,6 +3,8 @@
 Each shadow file is scored once its race is in the Gold registry. Per variant:
 winner log loss, whether the favourite won, podium Brier, podium hits among the
 three highest podium probabilities and finishing MAE on classified drivers.
+Each race also reports the conditions the shadows were given (the forecast)
+against what happened: tyres fitted and the circuit weather station.
 Each shadow is also averaged against the official run over the races where both
 were published (negative is better for every metric except favourite_won and
 podium_hits).
@@ -17,6 +19,8 @@ from typing import Any
 import pyarrow.parquet as pq
 
 from f1_ml_predictor.benchmarks.builder import _safe_file
+from f1_ml_predictor.prediction.shadow import wet_forecast
+from f1_ml_predictor.prediction.workspace import load_audited_history
 
 VARIANTS = ("official", "two_stage", "weather", "wet_skill", "strategy")
 
@@ -69,6 +73,8 @@ def main() -> None:
     args = parser.parse_args()
     root = args.root.resolve()
     outcomes = _outcomes(root)
+    history, _, _ = load_audited_history(root)
+    strategy = history.strategy
     races = []
     for path in sorted((root / "data/predictions/development/shadows").glob("*/*/*.json")):
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -82,15 +88,32 @@ def main() -> None:
             for name in VARIANTS
             if "drivers" in payload["variants"].get(name, {})
         }
+        forecast = payload["forecast"]
+        values = forecast.get("values") or {}
+        actual = strategy.get(event, {}).get("race")
         races.append(
             {
                 "event_id": event,
                 "cutoff_kind": payload["cutoff_kind"],
                 "official_run_id": payload["official_run_id"],
-                "forecast_rain_mm": (payload["forecast"].get("values") or {}).get(
-                    "forecast_race_precipitation_mm"
-                ),
                 "winner": next(driver for driver, row in labels.items() if row["winner"]),
+                # What the shadows were told, against what happened at the track.
+                "conditions": {
+                    "forecast_wet": wet_forecast(forecast),
+                    "forecast_rain_before_mm": values.get("forecast_pre_race_precipitation_mm"),
+                    "forecast_rain_during_mm": values.get("forecast_race_precipitation_mm"),
+                    "forecast_temperature_c": values.get("forecast_temperature_2m"),
+                    "tyres_wet": None if actual is None else actual["wet"],
+                    "station_rain_fraction": None
+                    if actual is None
+                    else actual.get("track_rain_fraction"),
+                    "station_temperature_c": None
+                    if actual is None
+                    else actual.get("track_air_temperature"),
+                    "status": "checked"
+                    if actual is not None
+                    else "run audit-strategy-history.py to check against the track",
+                },
                 "scores": scores,
             }
         )

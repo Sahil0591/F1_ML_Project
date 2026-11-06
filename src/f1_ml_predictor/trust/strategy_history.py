@@ -27,7 +27,7 @@ BASE_URL = "https://api.openf1.org/v1"
 FIRST_SEASON = 2023
 RACE_MARGIN = timedelta(hours=24)
 PRACTICE_MARGIN = timedelta(hours=2)
-RACE_ENDPOINTS = ("drivers", "stints", "pit", "laps")
+RACE_ENDPOINTS = ("drivers", "stints", "pit", "laps", "weather")
 PRACTICE_ENDPOINTS = ("drivers", "stints", "laps")
 DRY = ("SOFT", "MEDIUM", "HARD")
 WET = ("INTERMEDIATE", "WET")
@@ -36,9 +36,9 @@ CLEAN_FACTOR = 1.05
 MIN_STINT_LAPS = 6
 MIN_RUN_LAPS = 5
 LANE_DELTA_BOUNDS = (-5.0, 10.0)
-AUDIT_VERSION = "strategy-audit-v1"
+AUDIT_VERSION = "strategy-audit-v2"
 # Bump when race_summary or practice_summary changes, to invalidate cached replays.
-SUMMARY_VERSION = "strategy-summary-v1"
+SUMMARY_VERSION = "strategy-summary-v2"
 _RAW = Path("data/raw/openf1_strategy")
 _AUDITS = Path("data/benchmarks/historical_audit")
 _LIMITS = ((3, 1.0), (28, 60.0))
@@ -186,6 +186,30 @@ def race_summary(documents: dict[str, list[dict[str, Any]]], roster: set[str]) -
         "lane_median": lane_median,
         "median_stops": float(np.median(stints)) - 1 if stints else None,
         "drivers": drivers,
+        **track_weather(documents.get("weather", [])),
+    }
+
+
+def track_weather(readings: list[dict[str, Any]]) -> dict[str, float | None]:
+    """The circuit weather station over the race session: share of readings with
+    rain falling, and median air and track temperature. An independent measure
+    of the conditions, to check forecasts and the fitted-tyre wet label against.
+    """
+    rain = [item["rainfall"] for item in readings if isinstance(item.get("rainfall"), (int, float))]
+    air = [
+        item["air_temperature"]
+        for item in readings
+        if isinstance(item.get("air_temperature"), (int, float))
+    ]
+    track = [
+        item["track_temperature"]
+        for item in readings
+        if isinstance(item.get("track_temperature"), (int, float))
+    ]
+    return {
+        "track_rain_fraction": float(np.mean([value > 0 for value in rain])) if rain else None,
+        "track_air_temperature": float(np.median(air)) if air else None,
+        "track_surface_temperature": float(np.median(track)) if track else None,
     }
 
 

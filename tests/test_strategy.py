@@ -125,3 +125,24 @@ def test_strategy_values_ignore_races_not_yet_available() -> None:
     assert values["circuit_pit_lane_seconds"] == 22.0
     assert values["driver_tyre_degradation_10_available_at"] <= start - timedelta(hours=2)
     assert "practice_long_run_gap" not in values
+
+
+def test_track_weather_from_station_readings() -> None:
+    from f1_ml_predictor.trust.strategy_history import track_weather
+
+    readings = [
+        {"rainfall": 1, "air_temperature": 18.0, "track_temperature": 22.0},
+        {"rainfall": 0, "air_temperature": 19.0, "track_temperature": 24.0},
+        {"rainfall": 1, "air_temperature": 20.0, "track_temperature": 26.0},
+        {"rainfall": None, "air_temperature": None, "track_temperature": None},
+    ]
+    assert track_weather(readings) == {
+        "track_rain_fraction": pytest.approx(2 / 3),
+        "track_air_temperature": 19.0,
+        "track_surface_temperature": 24.0,
+    }
+    assert track_weather([]) == {
+        "track_rain_fraction": None,
+        "track_air_temperature": None,
+        "track_surface_temperature": None,
+    }
