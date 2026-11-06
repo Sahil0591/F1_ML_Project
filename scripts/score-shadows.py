@@ -3,7 +3,9 @@
 Each shadow file is scored once its race is in the Gold registry. Per variant:
 winner log loss, whether the favourite won, podium Brier, podium hits among the
 three highest podium probabilities and finishing MAE on classified drivers.
-Totals cover only races where every listed variant was published.
+Each shadow is also averaged against the official run over the races where both
+were published (negative is better for every metric except favourite_won and
+podium_hits).
 """
 
 import argparse
@@ -16,7 +18,7 @@ import pyarrow.parquet as pq
 
 from f1_ml_predictor.benchmarks.builder import _safe_file
 
-VARIANTS = ("official", "two_stage", "weather")
+VARIANTS = ("official", "two_stage", "weather", "wet_skill")
 
 
 def _outcomes(root: Path) -> dict[str, Path]:
@@ -92,19 +94,23 @@ def main() -> None:
                 "scores": scores,
             }
         )
-    complete = [race for race in races if set(race.get("scores", {})) == set(VARIANTS)]
-    totals = (
-        {
-            name: {
-                metric: sum(race["scores"][name][metric] for race in complete) / len(complete)
-                for metric in complete[0]["scores"][name]
-            }
-            for name in VARIANTS
+    totals = {}
+    for name in VARIANTS[1:]:
+        paired = [race for race in races if {"official", name} <= set(race.get("scores", {}))]
+        if not paired:
+            continue
+        totals[name] = {
+            "races": len(paired),
+            **{
+                f"{metric}_minus_official": sum(
+                    race["scores"][name][metric] - race["scores"]["official"][metric]
+                    for race in paired
+                )
+                / len(paired)
+                for metric in paired[0]["scores"]["official"]
+            },
         }
-        if complete
-        else {}
-    )
-    print(json.dumps({"races": races, "complete_races": len(complete), "mean": totals}, indent=2))
+    print(json.dumps({"races": races, "mean_paired_with_official": totals}, indent=2))
 
 
 if __name__ == "__main__":

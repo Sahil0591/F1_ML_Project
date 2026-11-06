@@ -185,6 +185,11 @@ the official outputs:
 - `two_stage`: the official members pooled into one utility, with one temperature
   for the winner and another for the rest of the order, fitted on the contract's
   out-of-fold history (cached next to it).
+- `wet_skill`: the pooled members plus each driver's wet-minus-dry gain over the
+  official out-of-fold expectation (shrunk towards zero, weight fitted on earlier
+  forecast-wet races), applied only when the forecast has at least 0.5 mm of rain
+  in the six hours before the start and the first two race hours. On a dry
+  forecast it is the pooled model without the bonus.
 - `weather`: the `post_qualifying_weather` addendum with the ECMWF run the
   historical audit rule picks for this cutoff. It is skipped when no weather audit
   matches the current Gold races; re-run `scripts/audit-historical-weather.py`

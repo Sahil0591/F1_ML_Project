@@ -53,3 +53,30 @@ def test_live_weather_reports_an_unavailable_run(tmp_path: Path) -> None:
         )
     assert record["status"] == "unavailable"
     assert record["available_at"] <= cutoff
+
+
+def test_wet_skill_uses_only_earlier_labelled_races() -> None:
+    from types import SimpleNamespace
+
+    from f1_ml_predictor.prediction.shadow import wet_forecast, wet_skills
+
+    def race(positions: list[float]) -> SimpleNamespace:
+        return SimpleNamespace(drivers=["a", "b"], positions=np.array(positions))
+
+    records = [race([1.0, 2.0]), race([2.0, 1.0]), race([1.0, 2.0]), race([2.0, 1.0])]
+    expected = [{"expected": np.array([1.5, 1.5])} for _ in records]
+    wet = [True, False, None, True]
+    skills = wet_skills(records, expected, wet, upto=3)
+    # Driver a gained 0.5 in the one wet race and lost 0.5 in the dry one; shrunk by 1/(1+5).
+    assert skills["a"] == 1.0 / 6
+    assert skills["b"] == -1.0 / 6
+    assert wet_skills(records, expected, wet, upto=1) == {}
+    rainy = {
+        "status": "audited",
+        "values": {
+            "forecast_pre_race_precipitation_mm": 0.3,
+            "forecast_race_precipitation_mm": 0.2,
+        },
+    }
+    assert wet_forecast(rainy) is True
+    assert wet_forecast({"status": "before_archive"}) is None
