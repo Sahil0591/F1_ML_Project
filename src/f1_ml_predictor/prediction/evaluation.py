@@ -478,10 +478,10 @@ def analyse(
     if outputs is not None:
         outputs.update({**calibrated, "selected_pipeline": selected})
     results: dict[str, Any] = {}
-    for name, values in [*calibrated.items(), ("selected_pipeline", selected)]:
-        metrics = _metrics(records, values)
+    for name, per_race in [*calibrated.items(), ("selected_pipeline", selected)]:
+        metrics = _metrics(records, per_race)
         paired = {
-            base: _paired(records, values, baseline_outputs[base], seed)
+            base: _paired(records, per_race, baseline_outputs[base], seed)
             for base in baseline_outputs
         }
         results[name] = {

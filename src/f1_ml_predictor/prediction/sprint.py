@@ -281,8 +281,8 @@ def openf1_grid(
     seconds: dict[str, float | None] = {}
     # A non-numeric position ("RT" for a driver who set no time) ranks behind every
     # numeric one in result order, as Jolpica and the FIA classification place them.
-    numeric = [row.get("position") for row in results if isinstance(row.get("position"), int)]
-    behind = max(numeric, default=0)
+    numeric = [position for row in results if isinstance(position := row.get("position"), int)]
+    behind: int = max(numeric, default=0)
     for row in results:
         number = int(row["driver_number"])
         if number not in by_number:
