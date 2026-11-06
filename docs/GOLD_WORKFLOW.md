@@ -297,7 +297,10 @@ to improve these scores.
 Archived forecasts stay omitted until exact operational run bytes and historical
 release evidence are available. Open-Meteo [Single Runs documentation](https://open-meteo.com/en/docs/single-runs-api)
 distinguishes initialization from release. Hindcasts and stitched historical
-weather do not establish a past race-time forecast.
+weather do not establish a past race-time forecast. The frozen contracts still
+omit weather. The `post_qualifying_weather` addendum bounds release with a 12 hour
+margin on retained ECMWF runs from March 2024; it did not improve predictions (see
+[the weather addendum](WEATHER_FORECAST_ADDENDUM_2026-11-06.md)).
 
 ## Historical feature enrichment of the 95-race cohort
 

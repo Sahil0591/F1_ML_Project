@@ -111,4 +111,33 @@ GRID_ADDENDUM = {
 GRID_ADDENDUM_SHA256 = hashlib.sha256(
     json.dumps(GRID_ADDENDUM, sort_keys=True, separators=(",", ":")).encode()
 ).hexdigest()
-CONTRACTS = (*CUTOFFS, GRID_CONTRACT)
+CONTRACTS: tuple[str, ...] = (*CUTOFFS, GRID_CONTRACT)
+
+# Addendum adding archived race-time weather forecasts to the post-qualifying
+# prediction. The cutoff is unchanged; only the predictors differ, so it pairs
+# race for race with the frozen post_qualifying contract.
+WEATHER_CONTRACT = "post_qualifying_weather"
+WEATHER_ADDENDUM = {
+    "version": "weather-addendum-v1",
+    "base_protocol": PROTOCOL_V3_VERSION,
+    "base_protocol_sha256": PROTOCOL_V3_SHA256,
+    "tier": "Gold",
+    "contract": WEATHER_CONTRACT,
+    "cutoff": "the audited Gold post-qualifying cutoff",
+    "forecast": "Open-Meteo Single Runs archive, ECMWF IFS HRES; the latest 00Z or 12Z run "
+    "initialised at least 12 hours before the cutoff (documented release 4-6 hours after "
+    "initialisation); races whose run predates the archive keep weather missing",
+    "weather_inputs": {
+        "forecast_race_precipitation_mm": "forecast precipitation summed over the two hours "
+        "after the audited race start",
+        "forecast_temperature_2m": "forecast air temperature at the first hour from the start",
+        "forecast_wind_speed_10m": "forecast 10 m wind speed, m/s, at that hour",
+    },
+    "other_inputs": "the post_qualifying contract predictors; weather also enters the DNF model",
+    "evaluation": "protocol v3 outer split, label gate, candidates, calibration and gate",
+    "selection": "protocol v3 formal gate; no change to the frozen v3 cutoffs",
+}
+WEATHER_ADDENDUM_SHA256 = hashlib.sha256(
+    json.dumps(WEATHER_ADDENDUM, sort_keys=True, separators=(",", ":")).encode()
+).hexdigest()
+CONTRACTS = (*CONTRACTS, WEATHER_CONTRACT)

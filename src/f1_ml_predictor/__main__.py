@@ -237,7 +237,8 @@ def main() -> None:
     sprints.add_argument("--root", type=Path, default=Path.cwd())
     cutoff_eval = subcommands.add_parser(
         "evaluate-cutoffs",
-        help="Run the frozen cutoff-specific v3 Gold evaluation (provisional_grid: addendum)",
+        help="Run the frozen cutoff-specific v3 Gold evaluation (provisional_grid and "
+        "post_qualifying_weather: addenda)",
     )
     cutoff_eval.add_argument("--contracts", choices=CONTRACTS, nargs="+", default=list(CUTOFFS))
     cutoff_eval.add_argument("--seed", type=int, default=42)

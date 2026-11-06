@@ -35,11 +35,14 @@ from f1_ml_predictor.prediction.protocol import (
     JOINT_CANDIDATES,
     MIN_TRAIN_EVENTS,
     PROTOCOL_V3_SHA256,
+    WEATHER_ADDENDUM_SHA256,
+    WEATHER_CONTRACT,
 )
 from f1_ml_predictor.prediction.schedules import retained_schedules
 from f1_ml_predictor.scoring.ledger import load_scoring_ledger
 from f1_ml_predictor.trust.grid_history import load_provisional_grids
 from f1_ml_predictor.trust.sprint_gold import load_gold_sprints
+from f1_ml_predictor.trust.weather_history import load_weather_forecasts
 
 COLLECTION_VERSION = "oof-fits-v1"
 
@@ -82,6 +85,12 @@ def load_audited_history(
     )
     if grids is not None:
         history.grids, history.grid_audit = grids
+    weather = load_weather_forecasts(
+        root,
+        {event_id: rows[0]["prediction_timestamp"] for event_id, rows in history.by_event.items()},
+    )
+    if weather is not None:
+        history.weather, history.weather_audit = weather
     return history, dnf_version, sources
 
 
@@ -143,6 +152,8 @@ def evaluate_contract(
     }
     if contract == GRID_CONTRACT:
         key_payload["addendum_sha256"] = GRID_ADDENDUM_SHA256
+    if contract == WEATHER_CONTRACT:
+        key_payload["addendum_sha256"] = WEATHER_ADDENDUM_SHA256
     key = hashlib.sha256(_canonical(key_payload)).hexdigest()
     path = (
         root
@@ -209,9 +220,13 @@ def evaluate_cutoffs(
     summary = {}
     for contract in contracts:
         if contract not in datasets:
+            script = (
+                "audit-historical-weather.py"
+                if contract == WEATHER_CONTRACT
+                else "audit-historical-grids.py with --cohort provisional_grid"
+            )
             raise ValueError(
-                f"no {contract} dataset; run scripts/audit-historical-grids.py with "
-                "--cohort provisional_grid on the current Gold coverage report"
+                f"no {contract} dataset; run scripts/{script} on the current Gold coverage report"
             )
         dataset = datasets[contract]
         report, path = evaluate_contract(
