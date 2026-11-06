@@ -33,6 +33,7 @@ from f1_ml_predictor.paths import StoragePaths
 from f1_ml_predictor.prediction.legacy import predict_next_race_c52b674
 from f1_ml_predictor.prediction.pipeline import predict_next_race
 from f1_ml_predictor.prediction.protocol import CONTRACTS, CUTOFFS
+from f1_ml_predictor.prediction.shadow import render_shadows
 from f1_ml_predictor.prediction.web_export import write_export
 from f1_ml_predictor.prediction.workspace import evaluate_cutoffs
 from f1_ml_predictor.sources.jolpica import JolpicaClient
@@ -223,6 +224,11 @@ def main() -> None:
         default="auto",
         help="auto publishes the sprint between sprint qualifying and the sprint",
     )
+    nextrace.add_argument(
+        "--no-shadows",
+        action="store_true",
+        help="Skip the weather and two-stage shadow predictions after a race run",
+    )
     nextrace.add_argument("--benchmark-dir", type=Path)
     nextrace.add_argument("--dnf-benchmark-dir", type=Path)
     nextrace.add_argument("--root", type=Path, default=Path.cwd())
@@ -381,8 +387,11 @@ def main() -> None:
                     dnf_dir=args.dnf_benchmark_dir,
                     progress=lambda message: print(message, flush=True),
                     session=args.session,
+                    shadows=not args.no_shadows,
                 )
             print(prediction["report"])
+            if "shadows" in prediction:
+                print(render_shadows(paths.root, prediction["shadows"]))
             print(f"status: {prediction['status']}")
             print(f"event: {prediction['event_id']}")
             print(f"cutoff: {prediction['cutoff_kind']} {prediction['prediction_timestamp_utc']}")

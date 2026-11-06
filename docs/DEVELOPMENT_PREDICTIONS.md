@@ -174,3 +174,24 @@ post-qualifying and pre-race cutoffs use the captured sprint qualifying position
 sprint position and classified flag (contract `cutoff-contracts-v3`), trained on the
 Gold sprint history. Captured sprint points must match the season's audited sprint
 points table or the run stops.
+
+## Shadow predictions
+
+After a `post_qualifying` or `pre_race` race run, `predict-next-race` freezes
+shadow variants under `data/predictions/development/shadows/<event>/<run id>.json`
+and prints them below the report (`--no-shadows` skips them). They never change
+the official outputs:
+
+- `two_stage`: the official members pooled into one utility, with one temperature
+  for the winner and another for the rest of the order, fitted on the contract's
+  out-of-fold history (cached next to it).
+- `weather`: the `post_qualifying_weather` addendum with the ECMWF run the
+  historical audit rule picks for this cutoff. It is skipped when no weather audit
+  matches the current Gold races; re-run `scripts/audit-historical-weather.py`
+  after each new Gold race.
+
+Neither passed the Gold gate (see the
+[weather addendum](WEATHER_FORECAST_ADDENDUM_2026-11-06.md)); they are scored on
+races they have not seen. `scripts/score-shadows.py` scores every shadow file
+whose race is in the Gold registry and averages the races where all variants were
+published.

@@ -62,6 +62,7 @@ from f1_ml_predictor.prediction.season import (
     published_standings,
     remaining_sessions,
 )
+from f1_ml_predictor.prediction.shadow import publish_shadows
 from f1_ml_predictor.prediction.sprint import (
     SPRINT_CONTRACT,
     SprintEvent,
@@ -589,6 +590,7 @@ def predict_next_race(
     progress: Callable[[str], None] | None = None,
     candidates: tuple[str, ...] = JOINT_CANDIDATES,
     session: str = "auto",
+    shadows: bool = True,
 ) -> dict[str, Any]:
     """Freeze a cutoff-specific snapshot and publish development race and title outputs.
 
@@ -1335,7 +1337,7 @@ def predict_next_race(
         rows,
     )
     (run_dir / "report.md").write_text(report, encoding="utf-8")
-    return {
+    result = {
         "status": STATUS,
         "run_dir": run_dir.relative_to(root).as_posix(),
         "manifest_sha256": manifest_sha,
@@ -1344,6 +1346,38 @@ def predict_next_race(
         "prediction_timestamp_utc": cutoff.isoformat(),
         "report": report,
     }
+    if shadows and contract in {"post_qualifying", "pre_race"} and weekend_values is not None:
+        # Shadows run after the official outputs are written and never change them.
+        race_entry = next(
+            item
+            for item in payload["MRData"]["RaceTable"]["Races"]
+            if int(item["round"]) == target.event.round
+        )
+        location = race_entry["Circuit"]["Location"]
+        try:
+            result["shadows"] = publish_shadows(
+                root,
+                history=history,
+                datasets=datasets,
+                model=model,
+                model_factory=lambda name, shadow_rows: ContractModel(
+                    root, history, datasets, name, shadow_rows, progress=progress, **common
+                ),
+                official=final,
+                rows=rows,
+                weekend_values=weekend_values,
+                event=target.event,
+                circuit_id=target.circuit_id,
+                cutoff=cutoff,
+                race_start=target.race_start,
+                location=(float(location["lat"]), float(location["long"])),
+                run_id=run_id,
+                draws=draws,
+                seed=seed,
+            )
+        except (ValueError, OSError, KeyError) as exc:
+            result["shadows"] = {"status": "failed", "reason": str(exc)}
+    return result
 
 
 def _compare(
