@@ -35,6 +35,8 @@ from f1_ml_predictor.prediction.protocol import (
     JOINT_CANDIDATES,
     MIN_TRAIN_EVENTS,
     PROTOCOL_V3_SHA256,
+    STRATEGY_ADDENDUM_SHA256,
+    STRATEGY_CONTRACT,
     WEATHER_ADDENDUM_SHA256,
     WEATHER_CONTRACT,
 )
@@ -42,6 +44,7 @@ from f1_ml_predictor.prediction.schedules import retained_schedules
 from f1_ml_predictor.scoring.ledger import load_scoring_ledger
 from f1_ml_predictor.trust.grid_history import load_provisional_grids
 from f1_ml_predictor.trust.sprint_gold import load_gold_sprints
+from f1_ml_predictor.trust.strategy_history import load_strategy_history
 from f1_ml_predictor.trust.weather_history import load_weather_forecasts
 
 COLLECTION_VERSION = "oof-fits-v1"
@@ -91,6 +94,15 @@ def load_audited_history(
     )
     if weather is not None:
         history.weather, history.weather_audit = weather
+    strategy = load_strategy_history(
+        root,
+        {
+            event_id: {row["driver_id"] for row in rows}
+            for event_id, rows in history.by_event.items()
+        },
+    )
+    if strategy is not None:
+        history.strategy, history.strategy_audit = strategy
     return history, dnf_version, sources
 
 
@@ -154,6 +166,8 @@ def evaluate_contract(
         key_payload["addendum_sha256"] = GRID_ADDENDUM_SHA256
     if contract == WEATHER_CONTRACT:
         key_payload["addendum_sha256"] = WEATHER_ADDENDUM_SHA256
+    if contract == STRATEGY_CONTRACT:
+        key_payload["addendum_sha256"] = STRATEGY_ADDENDUM_SHA256
     key = hashlib.sha256(_canonical(key_payload)).hexdigest()
     path = (
         root
@@ -220,11 +234,10 @@ def evaluate_cutoffs(
     summary = {}
     for contract in contracts:
         if contract not in datasets:
-            script = (
-                "audit-historical-weather.py"
-                if contract == WEATHER_CONTRACT
-                else "audit-historical-grids.py with --cohort provisional_grid"
-            )
+            script = {
+                WEATHER_CONTRACT: "audit-historical-weather.py",
+                STRATEGY_CONTRACT: "audit-historical-weather.py and audit-strategy-history.py",
+            }.get(contract, "audit-historical-grids.py with --cohort provisional_grid")
             raise ValueError(
                 f"no {contract} dataset; run scripts/{script} on the current Gold coverage report"
             )

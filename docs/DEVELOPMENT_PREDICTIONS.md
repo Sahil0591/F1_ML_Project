@@ -187,7 +187,7 @@ the official outputs:
   out-of-fold history (cached next to it).
 - `wet_skill`: the pooled members plus each driver's wet-minus-dry gain over the
   official out-of-fold expectation (shrunk towards zero, weight fitted on earlier
-  forecast-wet races), applied only when the forecast has at least 0.5 mm of rain
+  races that used intermediates or wets), applied only when the forecast has at least 0.5 mm of rain
   in the six hours before the start and the first two race hours. On a dry
   forecast it is the pooled model without the bonus.
 - `weather`: the `post_qualifying_weather` addendum with the ECMWF run the
@@ -195,7 +195,12 @@ the official outputs:
   matches the current Gold races; re-run `scripts/audit-historical-weather.py`
   after each new Gold race.
 
-Neither passed the Gold gate (see the
+- `strategy`: the `post_qualifying_strategy` addendum (tyre, pit-stop and practice
+  long-run predictors from OpenF1) with this weekend's practice fetched once each
+  session is past its 2 hour margin. It needs the strategy and weather audits for
+  the current Gold races (see the [strategy addendum](STRATEGY_ADDENDUM_2026-11-06.md)).
+
+None passed the Gold gate (see the
 [weather addendum](WEATHER_FORECAST_ADDENDUM_2026-11-06.md)); they are scored on
 races they have not seen. `scripts/score-shadows.py` scores every shadow file
 whose race is in the Gold registry and averages the races where all variants were

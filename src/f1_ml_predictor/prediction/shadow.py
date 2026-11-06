@@ -21,7 +21,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -29,7 +29,12 @@ import httpx
 import joblib
 import numpy as np
 
-from f1_ml_predictor.prediction.contracts import AuditedHistory, build_rows, with_weather
+from f1_ml_predictor.prediction.contracts import (
+    AuditedHistory,
+    build_rows,
+    with_strategy,
+    with_weather,
+)
 from f1_ml_predictor.prediction.evaluation import _brier, _pooled, analyse
 from f1_ml_predictor.prediction.joint import marginals, mix, objective, sample_orders
 from f1_ml_predictor.prediction.protocol import (
@@ -37,10 +42,19 @@ from f1_ml_predictor.prediction.protocol import (
     MIN_CALIBRATION_EVENTS,
     MIN_SELECTION_EVENTS,
     SHRINKAGE,
+    STRATEGY_CONTRACT,
     WEATHER_CONTRACT,
 )
 from f1_ml_predictor.prediction.workspace import out_of_fold_path
+from f1_ml_predictor.sources.http import JsonSourceClient, SourceError
 from f1_ml_predictor.trust.historical import _immutable, _json
+from f1_ml_predictor.trust.strategy_history import _LIMITS as STRATEGY_LIMITS
+from f1_ml_predictor.trust.strategy_history import (
+    PRACTICE_ENDPOINTS,
+    PRACTICE_MARGIN,
+    practice_summary,
+)
+from f1_ml_predictor.trust.strategy_history import _Fetcher as StrategyFetcher
 from f1_ml_predictor.trust.weather_history import (
     ENDPOINT,
     MODEL,
@@ -314,8 +328,12 @@ def fit_wet_skill(
     primary: str,
     weather: dict[str, dict[str, Any]],
     seed: int = 42,
+    observed: dict[str, bool] | None = None,
 ) -> dict[str, Any]:
     """Pooled temperature, shrinkage and wet-skill weight, fitted out of fold.
+
+    A past race is wet when intermediates or wets were fitted (``observed``) and
+    otherwise when its archived forecast was wet; the live switch is the forecast.
 
     Skills for each wet race use only earlier races. The weight minimises the v3
     objective over the forecast-wet races with at least MIN_WET_RACES labelled
@@ -326,7 +344,13 @@ def fit_wet_skill(
     parameters = report["calibration_parameters"]
     expected = outputs[primary]
     used = _dnf_choices(records)
-    wet = [wet_forecast(weather.get(record.event_id)) for record in records]
+    known = observed or {}
+    wet = [
+        known[record.event_id]
+        if record.event_id in known
+        else wet_forecast(weather.get(record.event_id))
+        for record in records
+    ]
     utilities = [
         _pooled_utility(
             [record.utilities[name] for name in members],
@@ -404,6 +428,7 @@ def wet_skill_parameters(
                 "members": model.members,
                 "primary": model.primary,
                 "weather_audit": history.weather_audit,
+                "strategy_audit": history.strategy_audit,
                 "version": SHADOW_VERSION,
             }
         )
@@ -412,10 +437,71 @@ def wet_skill_parameters(
     if cache.exists():
         return dict(json.loads(cache.read_text(encoding="utf-8")))
     fitted = fit_wet_skill(
-        joblib.load(path), list(model.members), model.primary, history.weather, seed
+        joblib.load(path),
+        list(model.members),
+        model.primary,
+        history.weather,
+        seed,
+        {event: item["race"]["wet"] for event, item in history.strategy.items()},
     )
     _immutable(cache, _json(fitted))
     return fitted
+
+
+def live_practice(
+    root: Path,
+    race_start: datetime,
+    roster: set[str],
+    cutoff: datetime,
+    *,
+    client: JsonSourceClient | None = None,
+) -> list[dict[str, Any]]:
+    """This weekend's practice summaries from OpenF1, for sessions past the margin.
+
+    OpenF1 serves a session free from 30 minutes after it ends, inside the margin.
+    An unreachable OpenF1 leaves practice missing rather than failing the shadow.
+    """
+    owned = client is None
+    source = client or JsonSourceClient(STRATEGY_LIMITS)
+    fetcher = StrategyFetcher(root, source)
+    result = []
+    try:
+        sessions, _ = fetcher.get("sessions", {"year": race_start.year})
+        races = [
+            item
+            for item in sessions
+            if item.get("session_name") == "Race"
+            and abs(datetime.fromisoformat(item["date_start"]) - race_start) <= timedelta(hours=3)
+        ]
+        if len(races) != 1:
+            return []
+        for session in sessions:
+            if (
+                session.get("meeting_key") != races[0]["meeting_key"]
+                or session.get("session_type") != "Practice"
+                or session.get("is_cancelled")
+            ):
+                continue
+            available = datetime.fromisoformat(session["date_end"]) + PRACTICE_MARGIN
+            if available > cutoff:
+                continue
+            documents = {
+                endpoint: fetcher.get(endpoint, {"session_key": session["session_key"]})[0]
+                for endpoint in PRACTICE_ENDPOINTS
+            }
+            result.append(
+                {
+                    "session_name": session["session_name"],
+                    "available_at": available,
+                    "drivers": practice_summary(documents, roster),
+                }
+            )
+    except (SourceError, ValueError, KeyError):
+        return []
+    finally:
+        if owned:
+            source.close()
+    return result
 
 
 def _summary(rows: list[dict[str, Any]], values: dict[str, Any]) -> dict[str, dict[str, float]]:
@@ -516,6 +602,48 @@ def publish_shadows(
             "dataset_sha256": weather_model.dataset_sha256,
             "drivers": _summary(weather_rows, values),
         }
+    roster = {row["driver_id"]: row["constructor_id"] for row in rows}
+    if weather["status"] != "audited" or STRATEGY_CONTRACT not in datasets:
+        variants["strategy"] = {
+            "status": "skipped",
+            "reason": "needs a complete forecast plus weather and strategy audits for the "
+            "current Gold races",
+        }
+    else:
+        practice = live_practice(root, race_start, set(roster), cutoff)
+        strategy_rows, _ = build_rows(
+            history,
+            STRATEGY_CONTRACT,
+            event=event,
+            circuit_id=circuit_id,
+            cutoff=cutoff,
+            roster=roster,
+            weekend=with_strategy(
+                history,
+                with_weather(weekend_values, weather),
+                event.partition(),
+                circuit_id,
+                cutoff,
+                roster,
+                practice=practice,
+            ),
+        )
+        strategy_model = model_factory(STRATEGY_CONTRACT, strategy_rows)
+        values = strategy_model.distribution(
+            strategy_rows,
+            strategy_model.components(strategy_rows, unseen),
+            draws=draws,
+            seed=seed,
+        )
+        variants["strategy"] = {
+            "status": "published",
+            "dataset_sha256": strategy_model.dataset_sha256,
+            "practice_sessions": [
+                {"session_name": item["session_name"], "drivers": len(item["drivers"])}
+                for item in practice
+            ],
+            "drivers": _summary(strategy_rows, values),
+        }
     payload = {
         "version": SHADOW_VERSION,
         "official_run_id": run_id,
@@ -554,7 +682,7 @@ def render_shadows(root: Path, result: dict[str, Any], top: int = 8) -> str:
     else:
         lines.append(f"Forecast: {forecast['status']} {forecast.get('reason', '')}".rstrip())
     variants = payload["variants"]
-    shadows = ("two_stage", "weather", "wet_skill")
+    shadows = ("two_stage", "weather", "wet_skill", "strategy")
     names = ["official", *(name for name in shadows if "drivers" in variants[name])]
     for name in shadows:
         if name not in names:

@@ -58,6 +58,23 @@ class JsonSourceClient:
             self._sleep(delay)
 
     def get_json(self, url: str, params: dict[str, str | int | float]) -> Any:
+        response = self.get_response(url, params)
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise SourceError("source returned an invalid or unsuccessful response") from exc
+
+    def get_response(
+        self,
+        url: str,
+        params: dict[str, str | int | float],
+        *,
+        accept: tuple[int, ...] = (),
+    ) -> httpx.Response:
+        """A successful throttled response, retried on transport errors, 429 and 5xx.
+
+        Status codes in ``accept`` (such as a source's "no results" 404) are returned.
+        """
         for attempt in range(3):
             self._throttle()
             try:
@@ -83,9 +100,11 @@ class JsonSourceClient:
                     delay = 0.5 * 2**attempt
                 self._sleep(delay)
                 continue
+            if response.status_code in accept:
+                return response
             try:
                 response.raise_for_status()
-                return response.json()
-            except (httpx.HTTPStatusError, ValueError) as exc:
+            except httpx.HTTPStatusError as exc:
                 raise SourceError("source returned an invalid or unsuccessful response") from exc
+            return response
         raise AssertionError("unreachable retry loop")

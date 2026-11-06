@@ -33,11 +33,15 @@ from f1_ml_predictor.prediction.protocol import (
     GRID_ADDENDUM,
     GRID_ADDENDUM_SHA256,
     GRID_CONTRACT,
+    STRATEGY_ADDENDUM,
+    STRATEGY_ADDENDUM_SHA256,
+    STRATEGY_CONTRACT,
     WEATHER_ADDENDUM,
     WEATHER_ADDENDUM_SHA256,
     WEATHER_CONTRACT,
 )
 from f1_ml_predictor.prediction.schedules import Weekend
+from f1_ml_predictor.prediction.strategy_features import STRATEGY_NUMERIC, strategy_values
 from f1_ml_predictor.prediction.strength_features import (
     CIRCUIT_PROFILES,
     STRENGTH_COUNTS,
@@ -116,6 +120,13 @@ _WEEKEND = {
         *SPRINT_NUMERIC,
     ),
     WEATHER_CONTRACT: (*PRACTICE_NUMERIC, *QUALIFYING_NUMERIC, *SPRINT_NUMERIC, *WEATHER_NUMERIC),
+    STRATEGY_CONTRACT: (
+        *PRACTICE_NUMERIC,
+        *QUALIFYING_NUMERIC,
+        *SPRINT_NUMERIC,
+        *WEATHER_NUMERIC,
+        *STRATEGY_NUMERIC,
+    ),
 }
 DNF_FEATURES = (
     "driver_dnf_rate_any_10",
@@ -195,6 +206,9 @@ class AuditedHistory:
     # Verified archived weather forecasts by event, and that audit's hash.
     weather: dict[str, dict[str, Any]] = field(default_factory=dict)
     weather_audit: str | None = None
+    # Verified OpenF1 strategy summaries by event, and that audit's hash.
+    strategy: dict[str, dict[str, Any]] = field(default_factory=dict)
+    strategy_audit: str | None = None
     rows: list[dict[str, Any]] = field(init=False)
     by_event: dict[str, list[dict[str, Any]]] = field(init=False)
     order: list[str] = field(init=False)
@@ -592,6 +606,32 @@ def with_weather(
     return {driver: {**source, **values} for driver, source in weekend.items()}
 
 
+def with_strategy(
+    history: AuditedHistory,
+    weekend: dict[str, dict[str, Any]],
+    event_id: str,
+    circuit_id: str,
+    cutoff: datetime,
+    roster: dict[str, str],
+    practice: list[dict[str, Any]] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Add audited tyre, pit and long-run values, each on its evidence clock."""
+    values = strategy_values(
+        history.strategy,
+        {
+            key: {row["driver_id"]: row["constructor_id"] for row in rows}
+            for key, rows in history.by_event.items()
+        },
+        {key: rows[0]["circuit_id"] for key, rows in history.by_event.items()},
+        event_id=event_id,
+        circuit_id=circuit_id,
+        cutoff=cutoff,
+        roster=roster,
+        practice=practice,
+    )
+    return {driver: {**weekend.get(driver, {}), **values.get(driver, {})} for driver in roster}
+
+
 def sprint_weekend_values(row: dict[str, Any] | None) -> dict[str, Any]:
     """Race-contract sprint values from one Gold sprint row, each with its own clock."""
     if row is None:
@@ -682,6 +722,7 @@ def build_contract_datasets(
         *CUTOFFS,
         *((GRID_CONTRACT,) if history.grid_audit else ()),
         *((WEATHER_CONTRACT,) if history.weather_audit else ()),
+        *((STRATEGY_CONTRACT,) if history.weather_audit and history.strategy_audit else ()),
     )
     for contract in contracts:
         rows = []
@@ -693,8 +734,12 @@ def build_contract_datasets(
             weekend = historical_weekend(history, event_id, clocks)
             if contract == GRID_CONTRACT:
                 weekend = _with_audited_grid(history, event_id, weekend)
-            if contract == WEATHER_CONTRACT:
+            if contract in {WEATHER_CONTRACT, STRATEGY_CONTRACT}:
                 weekend = with_weather(weekend, history.weather.get(event_id))
+            if contract == STRATEGY_CONTRACT:
+                weekend = with_strategy(
+                    history, weekend, event_id, gold[0]["circuit_id"], cutoff, roster
+                )
             built, _ = build_rows(
                 history,
                 contract,
@@ -715,6 +760,8 @@ def build_contract_datasets(
             directory = directory / str(history.grid_audit)
         if contract == WEATHER_CONTRACT:
             directory = directory / str(history.weather_audit)
+        if contract == STRATEGY_CONTRACT:
+            directory = directory / f"{history.weather_audit}-{history.strategy_audit}"
         directory.mkdir(parents=True, exist_ok=True)
         pending = directory / ".pending.parquet"
         pq.write_table(table, pending)
@@ -749,6 +796,11 @@ def build_contract_datasets(
             manifest["addendum"] = WEATHER_ADDENDUM["version"]
             manifest["addendum_sha256"] = WEATHER_ADDENDUM_SHA256
             manifest["weather_audit_sha256"] = history.weather_audit
+        if contract == STRATEGY_CONTRACT:
+            manifest["addendum"] = STRATEGY_ADDENDUM["version"]
+            manifest["addendum_sha256"] = STRATEGY_ADDENDUM_SHA256
+            manifest["weather_audit_sha256"] = history.weather_audit
+            manifest["strategy_audit_sha256"] = history.strategy_audit
         manifest_path = directory / "manifest.json"
         manifest_bytes = _canonical(manifest)
         if manifest_path.exists():

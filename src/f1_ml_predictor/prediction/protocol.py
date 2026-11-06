@@ -143,3 +143,38 @@ WEATHER_ADDENDUM_SHA256 = hashlib.sha256(
     json.dumps(WEATHER_ADDENDUM, sort_keys=True, separators=(",", ":")).encode()
 ).hexdigest()
 CONTRACTS = (*CONTRACTS, WEATHER_CONTRACT)
+
+# Addendum adding OpenF1 tyre, pit-stop and practice long-run predictors on top of
+# the weather addendum, so strategy values can interact with the forecast.
+STRATEGY_CONTRACT = "post_qualifying_strategy"
+STRATEGY_ADDENDUM = {
+    "version": "strategy-addendum-v1",
+    "base_protocol": PROTOCOL_V3_VERSION,
+    "base_protocol_sha256": PROTOCOL_V3_SHA256,
+    "base_addendum_sha256": WEATHER_ADDENDUM_SHA256,
+    "tier": "Gold",
+    "contract": STRATEGY_CONTRACT,
+    "cutoff": "the audited Gold post-qualifying cutoff",
+    "evidence": "OpenF1 historical stints, pit stops, laps and drivers from 2023; a race "
+    "counts from 24 hours after its end and a practice session from 2 hours after its end "
+    "(OpenF1 serves completed sessions free from 30 minutes after they end)",
+    "strategy_inputs": {
+        "driver_tyre_degradation_10": "mean over the driver's last 10 races of lap-weighted "
+        "dry-stint lap-time slope against tyre age, minus the race median on that compound",
+        "constructor_tyre_degradation_10": "the same over the constructor's drivers",
+        "constructor_pit_lane_delta_10": "mean pit-lane time against the race's normal-stop "
+        "median over the constructor's last 10 races, red-flag waits and repairs dropped",
+        "circuit_median_stops": "mean of earlier races' median stops at this circuit",
+        "circuit_pit_lane_seconds": "mean of earlier races' normal pit-lane time here",
+        "practice_long_run_gap": "this weekend's latest practice long-run median lap against "
+        "the field median on the same compound, averaged over compounds",
+        "practice_long_run_degradation": "that session's long-run slope against the field",
+    },
+    "other_inputs": "the post_qualifying_weather contract predictors",
+    "evaluation": "protocol v3 outer split, label gate, candidates, calibration and gate",
+    "selection": "protocol v3 formal gate; no change to the frozen v3 cutoffs",
+}
+STRATEGY_ADDENDUM_SHA256 = hashlib.sha256(
+    json.dumps(STRATEGY_ADDENDUM, sort_keys=True, separators=(",", ":")).encode()
+).hexdigest()
+CONTRACTS = (*CONTRACTS, STRATEGY_CONTRACT)

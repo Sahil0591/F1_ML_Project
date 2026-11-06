@@ -18,7 +18,7 @@ import pyarrow.parquet as pq
 
 from f1_ml_predictor.benchmarks.builder import _safe_file
 
-VARIANTS = ("official", "two_stage", "weather", "wet_skill")
+VARIANTS = ("official", "two_stage", "weather", "wet_skill", "strategy")
 
 
 def _outcomes(root: Path) -> dict[str, Path]:
