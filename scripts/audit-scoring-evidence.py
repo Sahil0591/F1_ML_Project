@@ -49,7 +49,7 @@ FIA_SEASON_PATHS = {
     2026: "season-2026-2072",
 }
 # The audit is frozen at this instant; later events are out of scope.
-AUDIT_AS_OF = datetime(2026, 10, 30, tzinfo=UTC)
+AUDIT_AS_OF = datetime(2026, 11, 5, tzinfo=UTC)
 JOLPICA = "https://api.jolpi.ca/ergast/f1"
 F1_RESULTS = "https://www.formula1.com/en/results"
 FIA_REGULATIONS = "https://www.fia.com/regulation/category/110"

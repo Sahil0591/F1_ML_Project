@@ -88,6 +88,7 @@ _VENUE_NAMES = {
     (2022, "silverstone"): "Great Britain",
     (2026, "catalunya"): "Barcelona",
     (2026, "madring"): "Spain",
+    (2026, "rodriguez"): "Mexico",
 }
 
 
@@ -171,6 +172,7 @@ _ROUNDS = {
     (2026, "madring"): 14,
     (2026, "marina_bay"): 17,
     (2026, "americas"): 18,
+    (2026, "rodriguez"): 19,
     (2025, "suzuka"): 3,
     (2025, "bahrain"): 4,
     (2025, "jeddah"): 5,
