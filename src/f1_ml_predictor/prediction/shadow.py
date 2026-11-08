@@ -14,6 +14,10 @@ that did not pass the Gold gate are scored on races they have not seen:
   driver's wet-minus-dry over-performance against the official out-of-fold
   expectation, shrunk towards zero and scaled by a weight fitted on earlier
   forecast-wet races. On a dry forecast it is the pooled model unchanged.
+- ``provisional_grid``: the provisional-grid addendum contract, given the latest
+  FIA race starting grid published by the cutoff (grid slot, places lost against
+  qualifying, pit-lane start). Pre-race runs only in practice, since the grid is
+  published after the post-qualifying cutoff.
 """
 
 from __future__ import annotations
@@ -32,6 +36,7 @@ import numpy as np
 from f1_ml_predictor.prediction.contracts import (
     AuditedHistory,
     build_rows,
+    grid_weekend_values,
     with_strategy,
     with_weather,
 )
@@ -39,6 +44,7 @@ from f1_ml_predictor.prediction.evaluation import _brier, _pooled, analyse
 from f1_ml_predictor.prediction.joint import marginals, mix, objective, sample_orders
 from f1_ml_predictor.prediction.protocol import (
     DNF_CANDIDATES,
+    GRID_CONTRACT,
     MIN_CALIBRATION_EVENTS,
     MIN_SELECTION_EVENTS,
     SHRINKAGE,
@@ -536,10 +542,12 @@ def publish_shadows(
     seed: int,
     http_client: httpx.Client | None = None,
     rehearsal: str | None = None,
+    grid: tuple[dict[str, dict[str, Any]], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Freeze the shadow variants for one official race run.
 
     ``rehearsal`` marks a replay rebuilt after the fact, which is never scored.
+    ``grid`` is the parsed FIA race grid published by the cutoff and its provenance.
     """
     unseen = not bool(rows[0]["circuit_seen_before"])
     variants: dict[str, Any] = {"official": {"drivers": _summary(rows, official)}}
@@ -648,6 +656,48 @@ def publish_shadows(
             ],
             "drivers": _summary(strategy_rows, values),
         }
+    if GRID_CONTRACT not in datasets:
+        variants["provisional_grid"] = {
+            "status": "skipped",
+            "reason": "no provisional-grid audit for the current Gold races; run "
+            "scripts/audit-historical-grids.py with --cohort provisional_grid",
+        }
+    elif grid is None:
+        variants["provisional_grid"] = {
+            "status": "skipped",
+            "reason": "no FIA race starting grid published by the cutoff",
+        }
+    else:
+        parsed, source = grid
+        grid_values = grid_weekend_values(parsed, datetime.fromisoformat(source["available_at"]))
+        grid_rows, _ = build_rows(
+            history,
+            GRID_CONTRACT,
+            event=event,
+            circuit_id=circuit_id,
+            cutoff=cutoff,
+            roster=roster,
+            weekend={
+                driver: {**values, **grid_values.get(driver, {})}
+                for driver, values in weekend_values.items()
+            },
+        )
+        grid_model = model_factory(GRID_CONTRACT, grid_rows)
+        values = grid_model.distribution(
+            grid_rows, grid_model.components(grid_rows, unseen), draws=draws, seed=seed
+        )
+        variants["provisional_grid"] = {
+            "status": "published",
+            "dataset_sha256": grid_model.dataset_sha256,
+            "grid": {
+                **source,
+                "positions": {
+                    driver: None if item["pit_lane_start"] else item["grid_position"]
+                    for driver, item in sorted(parsed.items())
+                },
+            },
+            "drivers": _summary(grid_rows, values),
+        }
     payload = {
         "version": SHADOW_VERSION,
         "official_run_id": run_id,
@@ -688,10 +738,11 @@ def render_shadows(root: Path, result: dict[str, Any], top: int = 8) -> str:
     else:
         lines.append(f"Forecast: {forecast['status']} {forecast.get('reason', '')}".rstrip())
     variants = payload["variants"]
-    shadows = ("two_stage", "weather", "wet_skill", "strategy")
-    names = ["official", *(name for name in shadows if "drivers" in variants[name])]
+    shadows = ("two_stage", "weather", "wet_skill", "strategy", "provisional_grid")
+    names = ["official", *(name for name in shadows if "drivers" in variants.get(name, {}))]
     for name in shadows:
-        if name not in names:
+        # Files frozen before a shadow existed have no entry for it.
+        if name not in names and name in variants:
             lines.append(f"{name}: {variants[name].get('reason', 'skipped')}")
     if "drivers" in variants["wet_skill"]:
         wet = variants["wet_skill"]

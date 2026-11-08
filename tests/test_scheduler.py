@@ -9,7 +9,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
-from f1_ml_predictor.trust import collector, prospective
+from f1_ml_predictor.trust import collector, prospective, scheduler
 from f1_ml_predictor.trust.locking import advisory_lock
 from f1_ml_predictor.trust.outcomes import DNF_TAXONOMY_VERSION, OUTCOME_SCHEMA
 from f1_ml_predictor.trust.prospective import load_bundle
@@ -18,6 +18,14 @@ from f1_ml_predictor.trust.scheduler import (
     scheduler_status,
     scheduler_tick,
 )
+
+
+@pytest.fixture(autouse=True)
+def _no_fia_grid(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The race grid tick reads the FIA site; these tests cover Jolpica captures.
+    monkeypatch.setattr(
+        scheduler, "grid_tick", lambda *args, **kwargs: {"status": "waiting_for_fia_grid"}
+    )
 
 
 class Clock:

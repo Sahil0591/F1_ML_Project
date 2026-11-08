@@ -69,9 +69,9 @@ def _pit_lane_lines(text: str) -> list[str]:
     return result
 
 
-def _aliases() -> list[tuple[str, str]]:
+def _aliases(names: dict[str, str] | None = None) -> list[tuple[str, str]]:
     return sorted(
-        ((_plain(name), driver) for name, driver in DRIVER_ALIASES.items()),
+        ((_plain(name), driver) for name, driver in (names or DRIVER_ALIASES).items()),
         key=lambda item: -len(item[0]),
     )
 
@@ -101,13 +101,18 @@ def grid_drivers(path: Path) -> set[str]:
     return {driver for _, driver in _grid_rows(_pdf_text(path), _aliases())}
 
 
-def parse_grid_pdf(path: Path, expected_drivers: set[str]) -> dict[str, dict[str, Any]]:
-    """Extract explicit grid ordinals; unsupported layouts remain unaudited."""
+def parse_grid_pdf(
+    path: Path, expected_drivers: set[str], *, aliases: dict[str, str] | None = None
+) -> dict[str, dict[str, Any]]:
+    """Extract explicit grid ordinals; unsupported layouts remain unaudited.
+
+    ``aliases`` maps printed names to driver IDs; the Gold aliases by default.
+    """
     text = _pdf_text(path)
-    aliases = _aliases()
+    known = _aliases(aliases)
     grid: dict[str, dict[str, Any]] = {}
     ordinals: set[int] = set()
-    for position, driver in _grid_rows(text, aliases):
+    for position, driver in _grid_rows(text, known):
         if driver not in expected_drivers or driver in grid or position in ordinals:
             raise ValueError("grid PDF has duplicate or non-roster driver/ordinal")
         grid[driver] = {"grid_position": position, "pit_lane_start": False}
@@ -127,7 +132,7 @@ def parse_grid_pdf(path: Path, expected_drivers: set[str]) -> dict[str, dict[str
         if not any(
             alias in line
             for line in pit_lane_lines
-            for alias, identity in aliases
+            for alias, identity in known
             if identity == driver
         ):
             raise ValueError("pit-lane statement lacks exact driver identity")

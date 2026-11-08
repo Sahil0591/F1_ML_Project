@@ -22,7 +22,7 @@ from f1_ml_predictor.benchmarks.builder import _safe_file
 from f1_ml_predictor.prediction.shadow import wet_forecast
 from f1_ml_predictor.prediction.workspace import load_audited_history
 
-VARIANTS = ("official", "two_stage", "weather", "wet_skill", "strategy")
+VARIANTS = ("official", "two_stage", "weather", "wet_skill", "strategy", "provisional_grid")
 
 
 def _outcomes(root: Path) -> dict[str, Path]:

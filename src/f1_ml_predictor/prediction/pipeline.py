@@ -79,6 +79,7 @@ from f1_ml_predictor.prediction.sprint import weekend_values as openf1_qualifyin
 from f1_ml_predictor.prediction.workspace import evaluate_contract, load_audited_history
 from f1_ml_predictor.simulation import EventSimulation, simulate_championship
 from f1_ml_predictor.time import require_known_by, require_utc
+from f1_ml_predictor.trust.grid_capture import captured_grid, grid_by
 from f1_ml_predictor.trust.practice_capture import PRACTICE, captured_practice_values
 from f1_ml_predictor.trust.prospective import load_bundle
 from f1_ml_predictor.trust.qualifying_fallback import QUALIFYING_OPENF1
@@ -1355,6 +1356,16 @@ def predict_next_race(
         )
         location = race_entry["Circuit"]["Location"]
         try:
+            grid = (
+                captured_grid(
+                    root,
+                    grid_by(root, target.event, clock, cutoff),
+                    root / capture_record["bundle"],
+                    cutoff,
+                )
+                if capture_record is not None
+                else None
+            )
             result["shadows"] = publish_shadows(
                 root,
                 history=history,
@@ -1374,6 +1385,7 @@ def predict_next_race(
                 run_id=run_id,
                 draws=draws,
                 seed=seed,
+                grid=grid,
             )
         except (ValueError, OSError, KeyError) as exc:
             result["shadows"] = {"status": "failed", "reason": str(exc)}

@@ -191,10 +191,20 @@ compared with.
 | `wet_skill` | The pooled members plus each driver's wet-minus-dry gain over the official out-of-fold expectation, shrunk towards zero, learned from races that used intermediates or wets; applied only when the forecast has at least 0.5 mm of rain in the six hours before the start plus the first two race hours | Weather audit |
 | `weather` | The `post_qualifying_weather` addendum | Weather audit |
 | `strategy` | The `post_qualifying_strategy` addendum, with this weekend's practice fetched from OpenF1 once each session is past its 2 hour margin | Weather and strategy audits |
+| `provisional_grid` | The `provisional_grid` addendum (grid slot, places lost against qualifying, pit-lane start), given the latest FIA race starting grid published by the cutoff. The grid usually appears after the post-qualifying cutoff, so in practice this runs only on pre-race runs | Provisional-grid audit |
+
+Each collector tick after qualifying freezes the latest non-recalled FIA race
+starting grid (provisional, final or revised) under
+`data/raw/prospective_sprint/<event>/race_grid-*.json`, available from its registry
+publication minute plus one, as in the historical provisional-grid audit. The grid
+is parsed when a run uses it, with the qualifying capture's own driver names, so a
+substitute Gold has not seen yet still gets a slot. The grid never reaches the
+official numbers: `provisional_grid` scored worse on the winner than `pre_race` on
+2022-2024 races (see [grid addendum](EVALUATION_PROTOCOL_V3.md)).
 
 A shadow that needs an audit is skipped, with the reason recorded, when no audit
-matches the current Gold races; re-run `scripts/audit-historical-weather.py` and
-`scripts/audit-strategy-history.py` after each new Gold race. None passed the Gold
+matches the current Gold races; re-run `scripts/audit-historical-weather.py`,
+`scripts/audit-strategy-history.py` and `scripts/audit-historical-grids.py --cohort provisional_grid` after each new Gold race. None passed the Gold
 gate (see the [weather](WEATHER_FORECAST_ADDENDUM_2026-11-06.md) and
 [strategy](STRATEGY_ADDENDUM_2026-11-06.md) addenda); they exist to be scored on
 races they have not seen.

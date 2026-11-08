@@ -435,6 +435,12 @@ SHADOW_VARIANTS = {
         "from OpenF1.",
         "Backtest: worse, winner log loss +0.031.",
     ),
+    "provisional_grid": (
+        "Starting grid",
+        "Adds the FIA starting grid published before the race: grid slot, places lost "
+        "to penalties and pit-lane starts.",
+        "Backtest (2022-2024): worse, winner log loss +0.050.",
+    ),
 }
 
 

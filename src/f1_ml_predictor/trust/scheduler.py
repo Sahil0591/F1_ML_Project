@@ -30,6 +30,7 @@ from f1_ml_predictor.time import require_utc
 from f1_ml_predictor.trust.collected_features import attach_audited_outcomes, certify_capture
 from f1_ml_predictor.trust.collected_outcomes import collect_final_outcomes
 from f1_ml_predictor.trust.collector import collect_weekend
+from f1_ml_predictor.trust.grid_capture import grid_tick
 from f1_ml_predictor.trust.locking import advisory_lock
 from f1_ml_predictor.trust.outcomes import OUTCOME_SCHEMA, validate_audited_outcomes
 from f1_ml_predictor.trust.practice_capture import practice_tick
@@ -338,6 +339,11 @@ def _tick(
             )
         except (ValueError, SourceError, OSError, KeyError, TypeError, httpx.HTTPError) as exc:
             entry["practice"] = {"status": "error", "error": str(exc)}
+        # The race grid feeds only a shadow; its failure never blocks other captures.
+        try:
+            entry["grid"] = grid_tick(root, event, weekend, now=now, http_client=http_client)
+        except (ValueError, SourceError, OSError, KeyError, TypeError, httpx.HTTPError) as exc:
+            entry["grid"] = {"status": "error", "error": str(exc)}
         if raw.get("Sprint"):
             # Sprint captures are separate bundles; a sprint failure never blocks the
             # main qualifying capture.
