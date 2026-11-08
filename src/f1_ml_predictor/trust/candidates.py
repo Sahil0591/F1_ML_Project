@@ -35,11 +35,18 @@ _FIA_EVENT_LABELS = {
     (2026, 7): "Barcelona-Catalunya Grand Prix",
     # Held at Sepang; the FIA registry keeps the original event name.
     (2026, 16): "Bahrain Grand Prix",
+    # Jolpica calls it the Brazilian Grand Prix; the FIA registry keeps São Paulo.
+    (2026, 20): "São Paulo Grand Prix",
 }
 _FIA_DOCUMENT_STEMS = {
     (2026, 7): "/system/files/decision-document/2026_barcelona-catalunya_grand_prix_-_",
     (2026, 16): "/system/files/decision-document/2026_bahrain_grand_prix_in_malaysia_-_",
 }
+
+
+def fia_event_name(season: int, round_number: int, race_name: str) -> str:
+    """The FIA registry's name for an event Jolpica may title differently."""
+    return _FIA_EVENT_LABELS.get((season, round_number), race_name)
 
 
 class _Selectors(HTMLParser):
@@ -401,9 +408,7 @@ def discover_candidates(
                 if season not in season_pages:
                     season_url = _selector(root_html, f"SEASON {season}", season=season)
                     season_pages[season] = fia_html(season_url)
-                fia_name = _FIA_EVENT_LABELS.get(
-                    (season, candidate["round"]), candidate["event_name"]
-                )
+                fia_name = fia_event_name(season, candidate["round"], candidate["event_name"])
                 candidate["fia_event_name"] = fia_name
                 index_url = _selector(season_pages[season], fia_name, season=season, event=True)
                 candidate["index_url"] = index_url

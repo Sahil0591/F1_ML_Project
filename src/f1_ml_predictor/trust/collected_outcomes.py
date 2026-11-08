@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import unicodedata
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from html.parser import HTMLParser
@@ -20,6 +21,7 @@ from f1_ml_predictor.identifiers import EventId
 from f1_ml_predictor.normalization.jolpica import normalize_qualifying, normalize_schedule
 from f1_ml_predictor.sources.jolpica import BASE_URL
 from f1_ml_predictor.time import require_utc
+from f1_ml_predictor.trust.candidates import fia_event_name
 from f1_ml_predictor.trust.collected_features import _collection
 from f1_ml_predictor.trust.fia_tables import parse_final_text
 from f1_ml_predictor.trust.historical import (
@@ -115,7 +117,39 @@ def _registry(text: str, season: int, race_name: str) -> list[dict[str, Any]]:
 
 
 def _tokens(value: str) -> str:
-    return " ".join(re.sub(r"[\W_]+", " ", value.casefold()).split())
+    # FIA filenames spell São Paulo as sao_paulo, so compare accent-free text.
+    ascii_text = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode()
+    return " ".join(re.sub(r"[\W_]+", " ", ascii_text.casefold()).split())
+
+
+_MONTHS = "january february march april may june july august september october november december"
+
+
+def _weekend_cover(cover: str, race_start: datetime) -> bool:
+    """A cover whose weekend span and issue date bracket the race day.
+
+    Some FIA timing sheets print the event name only as an image. Their cover
+    still carries the weekend span ("23 - 25 October 2026") and the issue date.
+    """
+    text = _tokens(cover)
+    months = "|".join(_MONTHS.split())
+    span = re.search(rf"\b(\d{{1,2}}) (\d{{1,2}}) ({months}) (\d{{4}})\b", text)
+    issued = re.search(rf"\bdate (\d{{1,2}}) ({months}) (\d{{4}})\b", text)
+    if span is None or issued is None:
+        return False
+    month = _MONTHS.split().index(span[3]) + 1
+    first = datetime(int(span[4]), month, int(span[1])).date()
+    last = datetime(int(span[4]), month, int(span[2])).date()
+    issue_day = datetime(
+        int(issued[3]), _MONTHS.split().index(issued[2]) + 1, int(issued[1])
+    ).date()
+    # A late local start can fall on the next UTC day.
+    race_days = {race_start.date(), (race_start - timedelta(hours=12)).date()}
+    return (
+        first <= last
+        and any(first <= day <= last for day in race_days)
+        and issue_day in race_days | {last + timedelta(days=1)}
+    )
 
 
 def _same_event_url(url: str | None, season: int, race_name: str) -> bool:
@@ -266,7 +300,8 @@ def collect_final_outcomes(
     normalized_race = normalize_schedule([raw_race], event.season).to_pylist()[0]
     if normalized_race["race_start_utc"] != race_start:
         raise ValueError("retained outcome schedule disagrees with frozen prediction window")
-    race_name = normalized_race["race_name"]
+    jolpica_name = normalized_race["race_name"]
+    race_name = fia_event_name(event.season, event.round, jolpica_name)
     drivers = capture_driver_aliases(raw_entries, set(constructors))
     teams = dict(CONSTRUCTOR_ALIASES)
     for entry in raw_entries:
@@ -329,12 +364,19 @@ def collect_final_outcomes(
         if inspected["document_id"] != selected["document_id"]:
             raise ValueError("final PDF document number differs from the exact registered version")
         text = _tokens(inspected.get("cover_text", "") + "\n" + inspected["text"])
-        names = [race_name, race_name.removesuffix("Grand Prix") + "GP"]
+        names = [
+            spelled
+            for name in {race_name, jolpica_name}
+            for spelled in (name, name.removesuffix("Grand Prix") + "GP")
+        ]
         if (
-            not any(
-                _tokens(f"{event.season} {name}") in text
-                or _tokens(f"{name} {event.season}") in text
-                for name in names
+            not (
+                any(
+                    _tokens(f"{event.season} {name}") in text
+                    or _tokens(f"{name} {event.season}") in text
+                    for name in names
+                )
+                or _weekend_cover(inspected.get("cover_text", ""), race_start)
             )
             or "final race classification" not in text
         ):

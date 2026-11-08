@@ -543,3 +543,33 @@ def test_later_review_is_read_from_the_season_review_file(tmp_path: Path) -> Non
     assert collected_outcomes._later_review(tmp_path, EventId(2026, 18)) == review
     assert collected_outcomes._later_review(tmp_path, EventId(2026, 19)) is None
     assert collected_outcomes._later_review(tmp_path, EventId(2025, 18)) is None
+
+
+def test_image_header_final_is_identified_by_its_weekend_cover() -> None:
+    # The 2026 Austin final prints the event name only as an image.
+    cover = (
+        "23\xa0-\xa025\xa0October\xa02026\nThe\xa0Stewards\nDocument 57\n"
+        "Date 25\xa0October\xa02026\nTime 19:00\nTitle Final\xa0Race\xa0Classification\n"
+    )
+    race_start = datetime(2026, 10, 25, 20, tzinfo=UTC)
+    assert collected_outcomes._weekend_cover(cover, race_start)
+    assert collected_outcomes._weekend_cover(cover, race_start + timedelta(hours=8))
+    assert not collected_outcomes._weekend_cover(cover, race_start + timedelta(days=14))
+    assert not collected_outcomes._weekend_cover(cover.replace("Date 25", "Date 29"), race_start)
+    assert not collected_outcomes._weekend_cover(
+        "Document 57\nFinal Race Classification", race_start
+    )
+
+
+def test_sao_paulo_registry_and_filenames_match_the_jolpica_brazil_event() -> None:
+    name = collected_outcomes.fia_event_name(2026, 20, "Brazilian Grand Prix")
+    assert name == "São Paulo Grand Prix"
+    assert collected_outcomes._same_event_url(
+        "https://www.fia.com/system/files/decision-document/"
+        "2026_sao_paulo_grand_prix_-_final_race_classification.pdf",
+        2026,
+        name,
+    )
+    assert collected_outcomes.fia_event_name(2026, 18, "United States Grand Prix") == (
+        "United States Grand Prix"
+    )

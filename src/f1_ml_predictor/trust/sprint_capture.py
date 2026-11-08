@@ -37,6 +37,7 @@ from f1_ml_predictor.prediction.sprint import (
 from f1_ml_predictor.sources.http import JsonSourceClient
 from f1_ml_predictor.sources.jolpica import BASE_URL
 from f1_ml_predictor.time import require_utc
+from f1_ml_predictor.trust.candidates import fia_event_name
 from f1_ml_predictor.trust.collected_outcomes import (
     _ROOT_URL,
     _exact_option,
@@ -247,6 +248,7 @@ def _capture_fia_sprint(
             raise ValueError("FIA sprint capture cannot follow an unverified redirect")
         return _retain_response(root, response), response
 
+    race_name = fia_event_name(event.season, event.round, race_name)
     _, root_response = fetch(_ROOT_URL)
     season_url = _exact_option(root_response.text, f"SEASON {event.season}")
     _, season_response = fetch(season_url)
