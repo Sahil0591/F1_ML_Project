@@ -100,6 +100,14 @@ disagreements for review, and freezes the report under its hash. On 63 races the
 forecast flagged all 7 that needed intermediates or wets, with 11 false alarms;
 forecast temperature was within 1.1 C of the station on average.
 
+A race counts as wet when at least 20% of its race laps were run on intermediates
+or wets (`WET_SHARE`), so a wet start that dries within a few laps stays dry: Spa
+2025 and 2026 round 16 had long rain delays but only 2% of laps on wet tyres.
+OpenF1 tyre data starts in 2023, so the 16 Gold races from 2022 are labelled from
+race reports retained under `data/raw/wet_race_reports/` and recorded with their
+Wikipedia revision and SHA-256 in `docs/WET_RACE_LABELS_2022.json` (Imola,
+Monaco, Singapore and Japan wet). The loader refuses a report whose bytes changed.
+
 ## Audited Outcomes
 
 `audited-dnf-v1` separates finished, mechanical retirement, incident retirement,

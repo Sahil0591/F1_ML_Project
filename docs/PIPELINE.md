@@ -170,7 +170,7 @@ flowchart LR
 | Shadow | What it does | Backtest |
 | --- | --- | --- |
 | `two_stage` | Pools the members; one temperature for the winner, another for the rest | Winner log loss -0.047, not significant |
-| `wet_skill` | Adds each driver's wet-minus-dry gain, learned from races that used intermediates or wets | -0.038 on forecast-wet races, not significant |
+| `wet_skill` | Adds each driver's wet-minus-dry gain, learned from races run at least 20% on intermediates or wets | -0.038 on forecast-wet races, not significant |
 | `weather` | The weather addendum | No change |
 | `strategy` | The strategy addendum | Worse (+0.031) |
 

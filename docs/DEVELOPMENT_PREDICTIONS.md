@@ -188,7 +188,7 @@ compared with.
 | Shadow | Method | Needs |
 | --- | --- | --- |
 | `two_stage` | The official members pooled into one utility, with one temperature for the winner and another for the rest of the order, fitted on the contract's out-of-fold history | Nothing extra |
-| `wet_skill` | The pooled members plus each driver's wet-minus-dry gain over the official out-of-fold expectation, shrunk towards zero, learned from races that used intermediates or wets; applied only when the forecast has at least 0.5 mm of rain in the six hours before the start plus the first two race hours | Weather audit |
+| `wet_skill` | The pooled members plus each driver's wet-minus-dry gain over the official out-of-fold expectation, shrunk towards zero, learned from wet races (at least 20% of race laps on intermediates or wets; 2022 from reviewed race reports in `docs/WET_RACE_LABELS_2022.json`); applied only when the forecast has at least 0.5 mm of rain in the six hours before the start plus the first two race hours | Weather audit |
 | `weather` | The `post_qualifying_weather` addendum | Weather audit |
 | `strategy` | The `post_qualifying_strategy` addendum, with this weekend's practice fetched from OpenF1 once each session is past its 2 hour margin | Weather and strategy audits |
 | `provisional_grid` | The `provisional_grid` addendum (grid slot, places lost against qualifying, pit-lane start), given the latest FIA race starting grid published by the cutoff. The grid usually appears after the post-qualifying cutoff, so in practice this runs only on pre-race runs | Provisional-grid audit |

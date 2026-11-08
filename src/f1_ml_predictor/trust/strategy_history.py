@@ -31,6 +31,9 @@ RACE_ENDPOINTS = ("drivers", "stints", "pit", "laps", "weather")
 PRACTICE_ENDPOINTS = ("drivers", "stints", "laps")
 DRY = ("SOFT", "MEDIUM", "HARD")
 WET = ("INTERMEDIATE", "WET")
+# A race is wet when at least this share of its laps ran on wet tyres; a wet start
+# that dries within a few laps stays dry.
+WET_SHARE = 0.2
 # A clean lap is within this factor of its stint's median (drops safety car laps).
 CLEAN_FACTOR = 1.05
 MIN_STINT_LAPS = 6
@@ -38,7 +41,7 @@ MIN_RUN_LAPS = 5
 LANE_DELTA_BOUNDS = (-5.0, 10.0)
 AUDIT_VERSION = "strategy-audit-v2"
 # Bump when race_summary or practice_summary changes, to invalidate cached replays.
-SUMMARY_VERSION = "strategy-summary-v2"
+SUMMARY_VERSION = "strategy-summary-v3"
 _RAW = Path("data/raw/openf1_strategy")
 _AUDITS = Path("data/benchmarks/historical_audit")
 _LIMITS = ((3, 1.0), (28, 60.0))
@@ -157,7 +160,9 @@ def race_summary(documents: dict[str, list[dict[str, Any]]], roster: set[str]) -
         if stop_median is not None and isinstance(stop, (int, float)) and stop > 0:
             if stop - stop_median <= 8.0:
                 entry["stop_deltas"].append(min(stop - stop_median, 5.0))
-    compounds = {str(item.get("compound") or "").upper() for item in documents["stints"]}
+    share = wet_share(
+        [item for item in documents["stints"] if item.get("driver_number") in numbers]
+    )
     for stint in documents["stints"]:
         if stint.get("driver_number") in numbers:
             drivers[numbers[stint["driver_number"]]]["stints"] += 1
@@ -182,12 +187,26 @@ def race_summary(documents: dict[str, list[dict[str, Any]]], roster: set[str]) -
                 drivers[driver]["degradation"].append([slope - median, laps])
     stints = [entry["stints"] for entry in drivers.values() if entry["stints"]]
     return {
-        "wet": bool(compounds & set(WET)),
+        "wet": share is not None and share >= WET_SHARE,
+        "wet_share": share,
         "lane_median": lane_median,
         "median_stops": float(np.median(stints)) - 1 if stints else None,
         "drivers": drivers,
         **track_weather(documents.get("weather", [])),
     }
+
+
+def wet_share(stints: list[dict[str, Any]]) -> float | None:
+    """Share of stint laps run on intermediate or wet tyres, or None without laps."""
+    total = wet = 0
+    for stint in stints:
+        start, end = stint.get("lap_start"), stint.get("lap_end")
+        if not isinstance(start, int) or not isinstance(end, int) or end < start:
+            continue
+        total += end - start + 1
+        if str(stint.get("compound") or "").upper() in WET:
+            wet += end - start + 1
+    return wet / total if total else None
 
 
 def track_weather(readings: list[dict[str, Any]]) -> dict[str, float | None]:

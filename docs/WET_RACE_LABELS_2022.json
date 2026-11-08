@@ -1,0 +1,232 @@
+{
+  "version": "wet-race-labels-2022-v1",
+  "rule": "A race is wet when at least 20% of race laps were run on intermediate or wet tyres (WET_SHARE in trust/strategy_history.py).",
+  "why": "OpenF1 tyre data starts in 2023, so 2022 Gold races are labelled from retained race reports. Shares are estimated from the lap numbers each report gives.",
+  "reviewed_at": "2026-11-08",
+  "races": [
+    {
+      "event_id": "season=2022/round=01",
+      "title": "2022 Bahrain Grand Prix",
+      "source": {
+        "url": "https://en.wikipedia.org/w/index.php?oldid=1381931709",
+        "revision_id": 1381931709,
+        "path": "data/raw/wet_race_reports/2022-01.json",
+        "sha256": "09730c992d169bb819ccc5b25021a1a08fe2f3254fec594e627cd8fde67fe799"
+      },
+      "wet": false,
+      "estimated_wet_share": 0.0,
+      "evidence": null,
+      "note": "Race section does not mention intermediate or wet-weather tyres."
+    },
+    {
+      "event_id": "season=2022/round=03",
+      "title": "2022 Australian Grand Prix",
+      "source": {
+        "url": "https://en.wikipedia.org/w/index.php?oldid=1383865201",
+        "revision_id": 1383865201,
+        "path": "data/raw/wet_race_reports/2022-03.json",
+        "sha256": "dbfb444a8aca18a682c811183ce2ef1b8174aa04a2ef18b6e1d06eb1bc371b55"
+      },
+      "wet": false,
+      "estimated_wet_share": 0.0,
+      "evidence": null,
+      "note": "Race section does not mention intermediate or wet-weather tyres."
+    },
+    {
+      "event_id": "season=2022/round=04",
+      "title": "2022 Emilia-Romagna Grand Prix",
+      "source": {
+        "url": "https://en.wikipedia.org/w/index.php?oldid=1383811009",
+        "revision_id": 1383811009,
+        "path": "data/raw/wet_race_reports/2022-04.json",
+        "sha256": "af8aea427cc03543f1d47444c4a80760add8c1987011124dcffcf315f245525f"
+      },
+      "wet": true,
+      "estimated_wet_share": 0.3,
+      "evidence": "With rain falling in the circuit in the preceding hours and the track being wet, all cars on the grid started on intermediate tyres.",
+      "note": "Field on intermediates until laps 18-20 of 63 (Ricciardo pitted for mediums on lap 18)."
+    },
+    {
+      "event_id": "season=2022/round=06",
+      "title": "2022 Spanish Grand Prix",
+      "source": {
+        "url": "https://en.wikipedia.org/w/index.php?oldid=1383811228",
+        "revision_id": 1383811228,
+        "path": "data/raw/wet_race_reports/2022-06.json",
+        "sha256": "ad8dad472bba2a352756070ea1159b6a20fd691348b27020a9475927417553a6"
+      },
+      "wet": false,
+      "estimated_wet_share": 0.0,
+      "evidence": null,
+      "note": "Race section does not mention intermediate or wet-weather tyres."
+    },
+    {
+      "event_id": "season=2022/round=07",
+      "title": "2022 Monaco Grand Prix",
+      "source": {
+        "url": "https://en.wikipedia.org/w/index.php?oldid=1371628053",
+        "revision_id": 1371628053,
+        "path": "data/raw/wet_race_reports/2022-07.json",
+        "sha256": "6a67c348c721b1788a07aeeb19261d391c9d6b0640ad44261799764128e7dc28"
+      },
+      "wet": true,
+      "estimated_wet_share": 0.3,
+      "evidence": "The race began as the safety car led the field out of the pit lane at 16:05, with all drivers on wet tyres and a rolling start planned.",
+      "note": "Wets, then intermediates from laps 4-19; leader Sainz switched to slicks on lap 21 of 64."
+    },
+    {
+      "event_id": "season=2022/round=08",
+      "title": "2022 Azerbaijan Grand Prix",
+      "source": {
+        "url": "https://en.wikipedia.org/w/index.php?oldid=1355170008",
+        "revision_id": 1355170008,
+        "path": "data/raw/wet_race_reports/2022-08.json",
+        "sha256": "b1321839bc6618e0ee2135b8f601161e1fc99474d24d066732e42522d74e5ff5"
+      },
+      "wet": false,
+      "estimated_wet_share": 0.0,
+      "evidence": null,
+      "note": "Race section does not mention intermediate or wet-weather tyres."
+    },
+    {
+      "event_id": "season=2022/round=09",
+      "title": "2022 Canadian Grand Prix",
+      "source": {
+        "url": "https://en.wikipedia.org/w/index.php?oldid=1371628253",
+        "revision_id": 1371628253,
+        "path": "data/raw/wet_race_reports/2022-09.json",
+        "sha256": "fa4156935d49fb40175a1621610aea74d92b674edb3e4c2bf44784907e0a95f5"
+      },
+      "wet": false,
+      "estimated_wet_share": 0.0,
+      "evidence": null,
+      "note": "Race section does not mention intermediate or wet-weather tyres."
+    },
+    {
+      "event_id": "season=2022/round=10",
+      "title": "2022 British Grand Prix",
+      "source": {
+        "url": "https://en.wikipedia.org/w/index.php?oldid=1371628645",
+        "revision_id": 1371628645,
+        "path": "data/raw/wet_race_reports/2022-10.json",
+        "sha256": "abcdd465fb938dcc0cc12cdded362afabb9a4a18d2c59065cf47cceea432954c"
+      },
+      "wet": false,
+      "estimated_wet_share": 0.0,
+      "evidence": null,
+      "note": "Race section does not mention intermediate or wet-weather tyres."
+    },
+    {
+      "event_id": "season=2022/round=11",
+      "title": "2022 Austrian Grand Prix",
+      "source": {
+        "url": "https://en.wikipedia.org/w/index.php?oldid=1371772387",
+        "revision_id": 1371772387,
+        "path": "data/raw/wet_race_reports/2022-11.json",
+        "sha256": "ac53329d9a3f7758b546dfcdab6487d59fbc5e9d034f6f8c5bafe2c4458c2653"
+      },
+      "wet": false,
+      "estimated_wet_share": 0.0,
+      "evidence": null,
+      "note": "Race section does not mention intermediate or wet-weather tyres."
+    },
+    {
+      "event_id": "season=2022/round=12",
+      "title": "2022 French Grand Prix",
+      "source": {
+        "url": "https://en.wikipedia.org/w/index.php?oldid=1356221402",
+        "revision_id": 1356221402,
+        "path": "data/raw/wet_race_reports/2022-12.json",
+        "sha256": "5f96e78d38a9ec6d5a49e867bf3d1945d082f277def853dd1cff722338d91b50"
+      },
+      "wet": false,
+      "estimated_wet_share": 0.0,
+      "evidence": null,
+      "note": "Race section does not mention intermediate or wet-weather tyres."
+    },
+    {
+      "event_id": "season=2022/round=14",
+      "title": "2022 Belgian Grand Prix",
+      "source": {
+        "url": "https://en.wikipedia.org/w/index.php?oldid=1346111268",
+        "revision_id": 1346111268,
+        "path": "data/raw/wet_race_reports/2022-14.json",
+        "sha256": "4fa65d05d3f2880458f0032465cd57ac0a4edf57d570d3df2519da8a8381e818"
+      },
+      "wet": false,
+      "estimated_wet_share": 0.0,
+      "evidence": null,
+      "note": "Race section does not mention intermediate or wet-weather tyres."
+    },
+    {
+      "event_id": "season=2022/round=15",
+      "title": "2022 Dutch Grand Prix",
+      "source": {
+        "url": "https://en.wikipedia.org/w/index.php?oldid=1346111443",
+        "revision_id": 1346111443,
+        "path": "data/raw/wet_race_reports/2022-15.json",
+        "sha256": "697401071c9f926cd25c51589a0247c7beff2a6a9788391efefb773c975d7314"
+      },
+      "wet": false,
+      "estimated_wet_share": 0.0,
+      "evidence": null,
+      "note": "Race section does not mention intermediate or wet-weather tyres."
+    },
+    {
+      "event_id": "season=2022/round=16",
+      "title": "2022 Italian Grand Prix",
+      "source": {
+        "url": "https://en.wikipedia.org/w/index.php?oldid=1380054905",
+        "revision_id": 1380054905,
+        "path": "data/raw/wet_race_reports/2022-16.json",
+        "sha256": "de25b501ff5ebb0dc0b4c6ed9f4dcae927beab22048816ccbf95bead08fbe2ec"
+      },
+      "wet": false,
+      "estimated_wet_share": 0.0,
+      "evidence": null,
+      "note": "Race section does not mention intermediate or wet-weather tyres."
+    },
+    {
+      "event_id": "season=2022/round=17",
+      "title": "2022 Singapore Grand Prix",
+      "source": {
+        "url": "https://en.wikipedia.org/w/index.php?oldid=1376300545",
+        "revision_id": 1376300545,
+        "path": "data/raw/wet_race_reports/2022-17.json",
+        "sha256": "6e3e2d06392cd8a9fc44a57a2158533e0085dba93783c11f21d84bd88be09fb5"
+      },
+      "wet": true,
+      "estimated_wet_share": 0.55,
+      "evidence": "The race started with all cars on the intermediate tyres.",
+      "note": "Intermediates until the first slick stop on lap 34 of 59."
+    },
+    {
+      "event_id": "season=2022/round=18",
+      "title": "2022 Japanese Grand Prix",
+      "source": {
+        "url": "https://en.wikipedia.org/w/index.php?oldid=1379616427",
+        "revision_id": 1379616427,
+        "path": "data/raw/wet_race_reports/2022-18.json",
+        "sha256": "83caf18e868f3dde0c2c3176ffd73acfe0883c750c41317949772ae5fc0394a5"
+      },
+      "wet": true,
+      "estimated_wet_share": 1.0,
+      "evidence": "The race started at 14:00 local time on 9 October 2022 under torrential rain",
+      "note": "All 28 completed laps wet; red flag on lap 2, race curtailed at the time limit."
+    },
+    {
+      "event_id": "season=2022/round=21",
+      "title": "2022 São Paulo Grand Prix",
+      "source": {
+        "url": "https://en.wikipedia.org/w/index.php?oldid=1383944339",
+        "revision_id": 1383944339,
+        "path": "data/raw/wet_race_reports/2022-21.json",
+        "sha256": "ada45220f9bc0693cc12db9d69d0873a7ec9730363cf82fa01ba75d0413568b8"
+      },
+      "wet": false,
+      "estimated_wet_share": 0.0,
+      "evidence": null,
+      "note": "Race section does not mention intermediate or wet-weather tyres."
+    }
+  ]
+}

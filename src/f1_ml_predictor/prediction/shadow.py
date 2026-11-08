@@ -60,6 +60,7 @@ from f1_ml_predictor.trust.strategy_history import (
     PRACTICE_MARGIN,
     practice_summary,
 )
+from f1_ml_predictor.trust.strategy_history import SUMMARY_VERSION as STRATEGY_SUMMARY_VERSION
 from f1_ml_predictor.trust.strategy_history import _Fetcher as StrategyFetcher
 from f1_ml_predictor.trust.weather_history import (
     ENDPOINT,
@@ -81,6 +82,7 @@ WET_THRESHOLD_MM = 0.5
 WET_SHRINK_RACES = 5.0
 WET_WEIGHTS = (0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.8)
 MIN_WET_RACES = 4
+REVIEWED_WET_LABELS = Path("docs/WET_RACE_LABELS_2022.json")
 _OUTPUT = Path("data/predictions/development/shadows")
 
 
@@ -263,6 +265,22 @@ def two_stage_parameters(
     return fitted
 
 
+def reviewed_wet_labels(root: Path) -> dict[str, bool]:
+    """Wet labels for races before OpenF1 tyre data, checked against retained reports."""
+    path = root / REVIEWED_WET_LABELS
+    if not path.exists():
+        return {}
+    document = json.loads(path.read_text(encoding="utf-8"))
+    labels = {}
+    for race in document["races"]:
+        source = race["source"]
+        data = (root / source["path"]).read_bytes()
+        if hashlib.sha256(data).hexdigest() != source["sha256"]:
+            raise ValueError(f"retained race report changed: {source['path']}")
+        labels[race["event_id"]] = bool(race["wet"])
+    return labels
+
+
 def wet_forecast(record: dict[str, Any] | None) -> bool | None:
     """Rain before plus during the race at or above the threshold; None if unknown."""
     if record is None or record.get("status") != "audited":
@@ -427,6 +445,9 @@ def wet_skill_parameters(
     )
     if not path.exists():
         raise ValueError("the official contract has no cached out-of-fold records")
+    reviewed = reviewed_wet_labels(root)
+    observed = {event: item["race"]["wet"] for event, item in history.strategy.items()}
+    observed.update({event: wet for event, wet in reviewed.items() if event not in observed})
     key = hashlib.sha256(
         _json(
             {
@@ -435,6 +456,8 @@ def wet_skill_parameters(
                 "primary": model.primary,
                 "weather_audit": history.weather_audit,
                 "strategy_audit": history.strategy_audit,
+                "strategy_summary": STRATEGY_SUMMARY_VERSION,
+                "observed": observed,
                 "version": SHADOW_VERSION,
             }
         )
@@ -448,7 +471,7 @@ def wet_skill_parameters(
         model.primary,
         history.weather,
         seed,
-        {event: item["race"]["wet"] for event, item in history.strategy.items()},
+        observed,
     )
     _immutable(cache, _json(fitted))
     return fitted

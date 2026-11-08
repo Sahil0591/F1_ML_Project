@@ -1,13 +1,21 @@
 """Two-stage shadow orders and the live forecast fallback."""
 
+import hashlib
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
 import numpy as np
+import pytest
 
 from f1_ml_predictor.prediction.joint import marginals
-from f1_ml_predictor.prediction.shadow import live_weather, two_stage_orders
+from f1_ml_predictor.prediction.shadow import (
+    REVIEWED_WET_LABELS,
+    live_weather,
+    reviewed_wet_labels,
+    two_stage_orders,
+)
 
 
 def test_two_stage_orders_are_coherent_permutations() -> None:
@@ -80,3 +88,20 @@ def test_wet_skill_uses_only_earlier_labelled_races() -> None:
     }
     assert wet_forecast(rainy) is True
     assert wet_forecast({"status": "before_archive"}) is None
+
+
+def test_reviewed_wet_labels_check_the_retained_report(tmp_path: Path) -> None:
+    assert reviewed_wet_labels(tmp_path) == {}
+    report = tmp_path / "data/raw/wet_race_reports/2022-18.json"
+    report.parent.mkdir(parents=True)
+    report.write_bytes(b"torrential rain")
+    source = {"path": "data/raw/wet_race_reports/2022-18.json"}
+    source["sha256"] = hashlib.sha256(b"torrential rain").hexdigest()
+    labels = tmp_path / REVIEWED_WET_LABELS
+    labels.parent.mkdir(parents=True)
+    race = {"event_id": "season=2022/round=18", "wet": True, "source": source}
+    labels.write_text(json.dumps({"races": [race]}), encoding="utf-8")
+    assert reviewed_wet_labels(tmp_path) == {"season=2022/round=18": True}
+    report.write_bytes(b"dry")
+    with pytest.raises(ValueError, match="retained race report changed"):
+        reviewed_wet_labels(tmp_path)

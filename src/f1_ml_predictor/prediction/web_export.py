@@ -425,8 +425,8 @@ SHADOW_VARIANTS = {
     ),
     "wet_skill": (
         "Wet skill",
-        "Lifts drivers who gain in the wet, learned from races that used intermediates or "
-        "wets; switches on only when rain is forecast.",
+        "Lifts drivers who gain in the wet, learned from races run at least a fifth on "
+        "intermediates or wets; switches on only when rain is forecast.",
         "Backtest on forecast-wet races: winner log loss -0.038, not significant.",
     ),
     "strategy": (

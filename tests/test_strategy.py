@@ -75,6 +75,40 @@ def test_race_summary_degradation_pit_deltas_and_wet_flag() -> None:
         {"drivers": DRIVERS, "stints": _stints("INTERMEDIATE"), "pit": [], "laps": []}, ROSTER
     )
     assert wet["wet"] is True
+    assert wet["wet_share"] == 1.0
+
+
+def _mixed(wet_laps: int, total: int = 20) -> list[dict]:
+    return [
+        stint
+        for number in (1, 4, 27, 99)
+        for stint in (
+            {
+                "driver_number": number,
+                "lap_start": 1,
+                "lap_end": wet_laps,
+                "compound": "INTERMEDIATE",
+            },
+            {
+                "driver_number": number,
+                "lap_start": wet_laps + 1,
+                "lap_end": total,
+                "compound": "SOFT",
+            },
+        )
+    ]
+
+
+def test_wet_label_needs_a_fifth_of_the_laps_on_wet_tyres() -> None:
+    def summary(wet_laps: int) -> dict:
+        documents = {"drivers": DRIVERS, "stints": _mixed(wet_laps), "pit": [], "laps": []}
+        return race_summary(documents, ROSTER)
+
+    # A wet start that dries after two laps stays dry.
+    assert summary(2)["wet"] is False
+    assert summary(2)["wet_share"] == pytest.approx(0.1)
+    assert summary(4)["wet"] is True
+    assert summary(4)["wet_share"] == pytest.approx(0.2)
 
 
 def test_practice_long_runs_against_the_field() -> None:
