@@ -92,6 +92,8 @@ _DRIVERS = {
     "Logan SARGEANT": "sargeant",
     "Arvid LINDBLAD": "lindblad",
     "Ryo HIRAKAWA": "hirakawa",
+    "Rafael CAMARA": "rafael_camara",
+    "Rafael CÂMARA": "rafael_camara",
 }
 _CONSTRUCTORS = {
     "Oracle Red Bull Racing": "red_bull",

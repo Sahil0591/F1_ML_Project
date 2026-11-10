@@ -80,6 +80,7 @@ _VENUES = {
 _EVENT_NAMES = {
     (2022, "interlagos"): "São Paulo Grand Prix",
     (2026, "catalunya"): "Barcelona Grand Prix",
+    (2026, "interlagos"): "Brazilian Grand Prix",
 }
 _VENUE_NAMES = {
     (2022, "interlagos"): "Brazil",
@@ -89,6 +90,7 @@ _VENUE_NAMES = {
     (2026, "catalunya"): "Barcelona",
     (2026, "madring"): "Spain",
     (2026, "rodriguez"): "Mexico",
+    (2026, "interlagos"): "Brazil",
 }
 
 
@@ -173,6 +175,7 @@ _ROUNDS = {
     (2026, "marina_bay"): 17,
     (2026, "americas"): 18,
     (2026, "rodriguez"): 19,
+    (2026, "interlagos"): 20,
     (2025, "suzuka"): 3,
     (2025, "bahrain"): 4,
     (2025, "jeddah"): 5,

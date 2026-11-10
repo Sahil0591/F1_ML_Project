@@ -49,7 +49,7 @@ FIA_SEASON_PATHS = {
     2026: "season-2026-2072",
 }
 # The audit is frozen at this instant; later events are out of scope.
-AUDIT_AS_OF = datetime(2026, 11, 5, tzinfo=UTC)
+AUDIT_AS_OF = datetime(2026, 11, 9, tzinfo=UTC)
 JOLPICA = "https://api.jolpi.ca/ergast/f1"
 F1_RESULTS = "https://www.formula1.com/en/results"
 FIA_REGULATIONS = "https://www.fia.com/regulation/category/110"
@@ -67,6 +67,7 @@ EXTRA_FIA_EVENT_NAMES = {
     (2022, "Mexico City Grand Prix"): "Mexican Grand Prix",
     (2022, "São Paulo Grand Prix"): "Brazilian Grand Prix",
     (2026, "Barcelona Grand Prix"): "Barcelona-Catalunya Grand Prix",
+    (2026, "Brazilian Grand Prix"): "São Paulo Grand Prix",
 }
 F1_SLUGS = {
     "Bahrain Grand Prix": "bahrain",
@@ -90,6 +91,7 @@ F1_SLUGS = {
     "United States Grand Prix": "united-states",
     "Mexico City Grand Prix": "mexico",
     "São Paulo Grand Prix": "brazil",
+    "Brazilian Grand Prix": "brazil",
     "Abu Dhabi Grand Prix": "abu-dhabi",
     "Qatar Grand Prix": "qatar",
     "Las Vegas Grand Prix": "las-vegas",
