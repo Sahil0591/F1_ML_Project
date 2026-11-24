@@ -176,6 +176,7 @@ _ROUNDS = {
     (2026, "americas"): 18,
     (2026, "rodriguez"): 19,
     (2026, "interlagos"): 20,
+    (2026, "vegas"): 21,
     (2025, "suzuka"): 3,
     (2025, "bahrain"): 4,
     (2025, "jeddah"): 5,
